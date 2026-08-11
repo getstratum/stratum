@@ -1,0 +1,91 @@
+services:
+
+  proxy:
+    build:
+      context: .
+      dockerfile: proxy/Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      NODE_ENV: development
+      PORT: 8080
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/ai_governance
+      REDIS_URL: redis://redis:6379
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      OLLAMA_API_KEY: ${OLLAMA_API_KEY:-ollama}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY:-}
+      OLLAMA_URL: http://ollama:11434
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    restart: unless-stopped
+
+  dashboard:
+    build:
+      context: ./dashboard
+      args:
+        NEXT_PUBLIC_GATEWAY_URL: ${NEXT_PUBLIC_GATEWAY_URL:-http://localhost:8080}
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/ai_governance
+      NEXT_PUBLIC_GATEWAY_URL: http://localhost:8080
+      OLLAMA_URL: http://ollama:11434
+      SESSION_SECRET: ${SESSION_SECRET:-stratum-dashboard-secret-change-in-prod}
+      GATEWAY_INTERNAL_URL: http://proxy:8080
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: stratum-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      OLLAMA_KEEP_ALIVE: "-1"
+      OLLAMA_NUM_PARALLEL: "1"
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ai_governance
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/001_schema.sql:/docker-entrypoint-initdb.d/001_schema.sql
+      - ./db/002_seed.sql:/docker-entrypoint-initdb.d/002_seed.sql
+      - ./db/003_auth.sql:/docker-entrypoint-initdb.d/003_auth.sql
+      - ./db/004_agents.sql:/docker-entrypoint-initdb.d/004_agents.sql
+      - ./db/005_observability.sql:/docker-entrypoint-initdb.d/005_observability.sql
+      - ./db/006_providers.sql:/docker-entrypoint-initdb.d/006_providers.sql
+      - ./db/007_bonsai.sql:/docker-entrypoint-initdb.d/007_bonsai.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    ports:
+      - "5432:5432"
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redisdata:/data
+    ports:
+      - "6379:6379"
+
+volumes:
+  pgdata:
+  redisdata:
+  ollama_data:
