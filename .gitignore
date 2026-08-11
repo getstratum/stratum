@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build output
+.next/
+out/
+build/
+dist/
+
+# Environment — never commit real secrets
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+
+# Docker volumes (local state)
+pgdata/
+redisdata/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# Testing
+coverage/
+
+# Misc
+*.pem
+.vercel
