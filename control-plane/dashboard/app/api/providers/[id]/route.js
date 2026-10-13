@@ -5,7 +5,7 @@ export const dynamic = 'force-dynamic'
 
 export async function PATCH(req, { params }) {
   try {
-    const { id } = params
+    const { id } = await params
     const body   = await req.json()
     const sets   = []
     const vals   = []
@@ -60,7 +60,7 @@ export async function PATCH(req, { params }) {
 
 export async function DELETE(req, { params }) {
   try {
-    await query('DELETE FROM providers WHERE id = $1', [params.id])
+    await query('DELETE FROM providers WHERE id = $1', [(await params).id])
     return NextResponse.json({ ok: true })
   } catch (err) {
     return NextResponse.json({ error: err.message }, { status: 500 })

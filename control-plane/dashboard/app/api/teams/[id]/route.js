@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server'
 import { getDb } from '../../../../lib/db'
 
 export async function PATCH(req, { params }) {
-  const { id } = params
+  const { id } = await params
   const body   = await req.json()
   const db     = getDb()
 

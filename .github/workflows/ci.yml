@@ -83,10 +83,8 @@ jobs:
       - run: npm run build
         env:
           NEXT_TELEMETRY_DISABLED: "1"
-      - name: npm audit (critical)
-        # Informational until the Next.js 15 upgrade lands; see docs/release-checklist.md.
-        continue-on-error: true
-        run: npm audit --omit=dev --audit-level=critical
+      - name: npm audit (production dependencies)
+        run: npm audit --omit=dev --audit-level=high
 
   images:
     name: container images
