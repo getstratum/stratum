@@ -1,0 +1,119 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gateway:
+    name: gateway (Go)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: gateway
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: gateway/go.mod
+      - name: gofmt
+        run: test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
+      - name: go vet
+        run: go vet ./...
+      - name: staticcheck
+        run: go run honnef.co/go/tools/cmd/staticcheck@2025.1.1 ./...
+      - name: test (race)
+        run: go test -race -count=1 -coverprofile=coverage.out ./...
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
+      - name: reproducible build
+        # Two builds from the same tree in different directories must be
+        # byte-identical; this is what lets anyone verify a released binary.
+        run: |
+          build() { CGO_ENABLED=0 go build -trimpath -buildvcs=false -ldflags="-s -w -buildid=" -o "$1" ./cmd/stratum-gateway; }
+          build /tmp/a/stratum-gateway
+          cp -r . /tmp/copy && (cd /tmp/copy && build /tmp/b/stratum-gateway)
+          sha256sum /tmp/a/stratum-gateway /tmp/b/stratum-gateway
+          cmp /tmp/a/stratum-gateway /tmp/b/stratum-gateway
+
+  contract:
+    name: sync contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install check-jsonschema==0.33.0
+      - run: check-jsonschema --check-metaschema api/sync/v2/sync-response.schema.json
+      - run: check-jsonschema --schemafile api/sync/v2/sync-response.schema.json api/sync/v2/examples/*.json
+
+  control-plane:
+    name: control plane (Next.js)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: control-plane/dashboard
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: control-plane/dashboard/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+      - name: npm audit (critical)
+        # Informational until the Next.js 15 upgrade lands; see docs/release-checklist.md.
+        continue-on-error: true
+        run: npm audit --omit=dev --audit-level=critical
+
+  images:
+    name: container images
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@v3
+      - name: gateway image
+        uses: docker/build-push-action@v6
+        with:
+          context: gateway
+          push: false
+          cache-from: type=gha,scope=gateway
+          cache-to: type=gha,mode=max,scope=gateway
+      - name: control plane image
+        uses: docker/build-push-action@v6
+        with:
+          context: control-plane/dashboard
+          push: false
+          cache-from: type=gha,scope=cp
+          cache-to: type=gha,mode=max,scope=cp
+
+  pr-title:
+    name: conventional PR title
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    steps:
+      - uses: amannn/action-semantic-pull-request@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

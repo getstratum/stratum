@@ -1,0 +1,4 @@
+# Every change needs a maintainer review. Add owners per path as the team grows.
+*            @matiasmospan
+/api/        @matiasmospan
+/gateway/    @matiasmospan

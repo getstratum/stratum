@@ -1,0 +1,24 @@
+# Go
+/bin/
+/gateway/bin/
+*.test
+*.out
+coverage.*
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+
+# Local state and secrets
+*.bin
+.env
+.env.*
+!.env.example
+deploy/compose/.env
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

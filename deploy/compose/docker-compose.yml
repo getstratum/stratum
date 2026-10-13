@@ -1,0 +1,85 @@
+# Local development stack: PostgreSQL, control plane and gateway.
+# This is a single-node setup for development and evaluation. It is NOT a
+# high-availability deployment.
+#
+#   cp deploy/compose/.env.example deploy/compose/.env    # fill in the secrets
+#   make up                                               # postgres + control plane
+#
+# Then register a gateway instance (dashboard at http://localhost:3000, log in
+# with a seeded user and its API key), put the returned sync token and instance
+# id in .env, and start the gateway:
+#
+#   docker compose -f deploy/compose/docker-compose.yml --env-file deploy/compose/.env up -d gateway
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: stratum
+      POSTGRES_USER: stratum
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U stratum -d stratum"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  migrate:
+    image: postgres:16-alpine
+    restart: "no"
+    environment:
+      PGPASSWORD: "${POSTGRES_PASSWORD}"
+    volumes:
+      - ../../control-plane/migrations:/migrations:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: >
+      sh -c 'for f in $$(ls /migrations/*.sql | sort); do
+               echo "--> $$f"; psql -v ON_ERROR_STOP=1 -h postgres -U stratum -d stratum -f "$$f" || exit 1;
+             done'
+
+  control-plane:
+    build:
+      context: ../../control-plane/dashboard
+      args:
+        NEXT_PUBLIC_GATEWAY_URL: "http://localhost:20128"
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: "postgresql://stratum:${POSTGRES_PASSWORD}@postgres:5432/stratum"
+      SESSION_SECRET: "${SESSION_SECRET:?set SESSION_SECRET in .env (openssl rand -hex 32)}"
+      STRATUM_ENCRYPTION_KEY: "${STRATUM_ENCRYPTION_KEY:?set STRATUM_ENCRYPTION_KEY in .env (openssl rand -hex 32)}"
+      STRATUM_SYNC_INTERVAL_S: "30"
+      GATEWAY_INTERNAL_URL: "http://gateway:20128"
+    ports:
+      - "3000:3000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  gateway:
+    build:
+      context: ../../gateway
+    restart: unless-stopped
+    profiles: ["gateway"]
+    read_only: true
+    environment:
+      STRATUM_CP_URL: "http://control-plane:3000"
+      STRATUM_CP_ALLOW_HTTP: "true"          # local network only; use https everywhere else
+      STRATUM_SYNC_TOKEN: "${STRATUM_SYNC_TOKEN:?register a gateway instance first}"
+      STRATUM_INSTANCE_ID: "${STRATUM_INSTANCE_ID:?register a gateway instance first}"
+      STRATUM_SNAPSHOT_KEY: "${STRATUM_SNAPSHOT_KEY:?set STRATUM_SNAPSHOT_KEY in .env (openssl rand -hex 32)}"
+      STRATUM_CORS_ALLOWED_ORIGINS: "http://localhost:3000"
+    volumes:
+      - gateway-state:/var/lib/stratum
+    ports:
+      - "20128:20128"
+      - "127.0.0.1:9090:9090"
+    stop_grace_period: 2m
+
+volumes:
+  postgres-data:
+  gateway-state:

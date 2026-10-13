@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/getstratum/stratum/api/sync/v2/sync-response.schema.json",
+  "title": "Stratum sync response v2",
+  "description": "Body of GET /api/internal/sync on the control plane, and format of the gateway's standalone config file (STRATUM_CONFIG_FILE). Compatibility rule: the control plane at version N must serve gateways at N-1, and the gateway at N must understand control planes at N-1. Adding optional fields is compatible; removing or retyping a field is not.",
+  "type": "object",
+  "required": ["current_version", "policies", "api_keys"],
+  "properties": {
+    "current_version": {
+      "description": "Highest version in the control plane. The gateway sends it back as since_version on the next delta.",
+      "$ref": "#/$defs/integer"
+    },
+    "next_sync_in_seconds": {
+      "description": "Suggested wait before the next sync. Gateways clamp it to [5, 300].",
+      "$ref": "#/$defs/integer"
+    },
+    "policies": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/policy" }
+    },
+    "api_keys": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/apiKey" }
+    },
+    "provider_configs": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/providerConfig" }
+    }
+  },
+  "$defs": {
+    "integer": {
+      "description": "Integer. Numeric strings are accepted for compatibility with control planes that serialise PostgreSQL BIGINT as text; new producers must emit numbers.",
+      "anyOf": [
+        { "type": "integer" },
+        { "type": "string", "pattern": "^-?[0-9]+$" }
+      ]
+    },
+    "decimal": {
+      "anyOf": [
+        { "type": "number" },
+        { "type": "string", "pattern": "^-?[0-9]+(\\.[0-9]+)?$" }
+      ]
+    },
+    "action": {
+      "type": "string",
+      "enum": ["off", "log", "redact", "block"]
+    },
+    "policy": {
+      "description": "A team's policy. One entry per team; a policy shared by several teams appears once per team.",
+      "type": "object",
+      "required": ["id", "team_id", "version", "revoked"],
+      "properties": {
+        "id": { "type": "string" },
+        "team_id": { "type": "string", "minLength": 1 },
+        "version": { "$ref": "#/$defs/integer" },
+        "updated_at": { "type": ["string", "null"] },
+        "allowed_models": { "type": ["array", "null"], "items": { "type": "string" } },
+        "allow_all_models": { "type": "boolean" },
+        "allowed_providers": { "type": ["array", "null"], "items": { "type": "string" } },
+        "monthly_token_quota": { "anyOf": [{ "$ref": "#/$defs/integer" }, { "type": "null" }] },
+        "monthly_budget_usd": { "anyOf": [{ "$ref": "#/$defs/decimal" }, { "type": "null" }] },
+        "pii_action": { "$ref": "#/$defs/action" },
+        "dlp_action": { "$ref": "#/$defs/action" },
+        "revoked": { "type": "boolean", "description": "True disables the whole team." }
+      }
+    },
+    "apiKey": {
+      "description": "A developer key. Only the SHA-256 hex digest is ever transmitted.",
+      "type": "object",
+      "required": ["id", "key_hash", "team_id", "version", "revoked"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "key_hash": { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" },
+        "team_id": { "type": "string" },
+        "label": { "type": ["string", "null"] },
+        "version": { "$ref": "#/$defs/integer" },
+        "created_at": { "type": ["string", "null"] },
+        "revoked": { "type": "boolean" },
+        "key_revoked_at": { "type": ["string", "null"] }
+      }
+    },
+    "providerConfig": {
+      "description": "The customer's credentials for an upstream provider. api_key is plaintext on the wire (TLS + sync token) and must be encrypted at rest by the gateway. In a standalone config file it may be written as \"env:VAR_NAME\".",
+      "type": "object",
+      "required": ["id", "provider", "enabled", "version", "revoked"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "provider": { "type": "string", "minLength": 1, "examples": ["openai", "anthropic", "groq", "gemini", "azure", "ollama"] },
+        "display_name": { "type": ["string", "null"] },
+        "api_key": { "type": ["string", "null"] },
+        "base_url": { "type": ["string", "null"] },
+        "extra_config": { "type": ["object", "null"] },
+        "enabled": { "type": "boolean" },
+        "version": { "$ref": "#/$defs/integer" },
+        "revoked": { "type": "boolean" }
+      }
+    }
+  }
+}

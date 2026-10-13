@@ -1,0 +1,109 @@
+name: release
+
+# Runs when release-please (or a maintainer) pushes a version tag.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+env:
+  REGISTRY: ghcr.io
+  OWNER: ${{ github.repository_owner }}
+
+jobs:
+  images:
+    name: image ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write       # keyless signing with Sigstore
+      attestations: write   # SLSA build provenance
+    strategy:
+      matrix:
+        include:
+          - name: stratum-gateway
+            context: gateway
+          - name: stratum-control-plane
+            context: control-plane/dashboard
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.OWNER }}/${{ matrix.name }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+      - id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ github.ref_name }}
+            COMMIT=${{ github.sha }}
+          sbom: true
+          provenance: mode=max
+      - uses: sigstore/cosign-installer@v3
+      - name: sign image
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          IMAGE: ${{ env.REGISTRY }}/${{ env.OWNER }}/${{ matrix.name }}
+        run: cosign sign --yes "${IMAGE}@${DIGEST}"
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.OWNER }}/${{ matrix.name }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+  binaries:
+    name: gateway binaries
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write       # upload release assets
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: gateway/go.mod
+      - name: build
+        working-directory: gateway
+        run: |
+          mkdir -p ../dist
+          for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64; do
+            os=${target%/*}; arch=${target#*/}; ext=""; [ "$os" = windows ] && ext=.exe
+            CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -trimpath -buildvcs=false \
+              -ldflags "-s -w -buildid= -X main.version=${GITHUB_REF_NAME} -X main.commit=${GITHUB_SHA}" \
+              -o "../dist/stratum-gateway_${GITHUB_REF_NAME}_${os}_${arch}${ext}" ./cmd/stratum-gateway
+          done
+          cd ../dist && sha256sum stratum-gateway_* > SHA256SUMS
+      - uses: sigstore/cosign-installer@v3
+      - name: sign checksums
+        working-directory: dist
+        run: cosign sign-blob --yes --bundle SHA256SUMS.sigstore.json SHA256SUMS
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: dist/stratum-gateway_*
+      - name: upload to the GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${GITHUB_REF_NAME}" dist/* --clobber --repo "${GITHUB_REPOSITORY}"

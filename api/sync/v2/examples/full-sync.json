@@ -1,0 +1,74 @@
+{
+  "current_version": 42,
+  "next_sync_in_seconds": 30,
+  "policies": [
+    {
+      "id": "pol_engineering",
+      "team_id": "team_engineering",
+      "version": 35,
+      "allowed_models": ["gpt-4o", "gpt-4o-mini", "anthropic/claude-sonnet-4"],
+      "allow_all_models": false,
+      "allowed_providers": null,
+      "monthly_token_quota": 1000000,
+      "monthly_budget_usd": 100.0,
+      "pii_action": "redact",
+      "dlp_action": "block",
+      "revoked": false
+    },
+    {
+      "id": "pol_marketing",
+      "team_id": "team_marketing",
+      "version": 36,
+      "allowed_models": ["gpt-4o-mini"],
+      "allow_all_models": false,
+      "allowed_providers": ["openai"],
+      "monthly_token_quota": 200000,
+      "monthly_budget_usd": null,
+      "pii_action": "block",
+      "dlp_action": "block",
+      "revoked": false
+    }
+  ],
+  "api_keys": [
+    {
+      "id": "user_dev",
+      "key_hash": "3ba6ea2bd037fee129f1115ad2361d4692aa55d0c3e530fa5b82622792943d1f",
+      "team_id": "team_engineering",
+      "label": "dev@acme.com",
+      "version": 28,
+      "revoked": false
+    },
+    {
+      "id": "user_former",
+      "key_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "team_id": "team_marketing",
+      "label": "former@acme.com",
+      "version": 40,
+      "revoked": true
+    }
+  ],
+  "provider_configs": [
+    {
+      "id": "pc_openai_prod",
+      "provider": "openai",
+      "display_name": "OpenAI production",
+      "api_key": "sk-example-not-a-real-key",
+      "base_url": null,
+      "extra_config": {},
+      "enabled": true,
+      "version": 41,
+      "revoked": false
+    },
+    {
+      "id": "pc_anthropic",
+      "provider": "anthropic",
+      "display_name": "Anthropic",
+      "api_key": "sk-ant-example-not-a-real-key",
+      "base_url": null,
+      "extra_config": {},
+      "enabled": true,
+      "version": 42,
+      "revoked": false
+    }
+  ]
+}

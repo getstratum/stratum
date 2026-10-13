@@ -1,0 +1,47 @@
+{
+  "current_version": 1,
+  "policies": [
+    {
+      "id": "default",
+      "team_id": "engineering",
+      "version": 1,
+      "allowed_models": ["gpt-4o-mini", "anthropic/claude-sonnet-4"],
+      "allow_all_models": false,
+      "monthly_token_quota": 5000000,
+      "monthly_budget_usd": null,
+      "pii_action": "redact",
+      "dlp_action": "block",
+      "revoked": false
+    }
+  ],
+  "api_keys": [
+    {
+      "id": "ci-pipeline",
+      "key_hash": "REPLACE_WITH_OUTPUT_OF_stratum-gateway_hash-key",
+      "team_id": "engineering",
+      "label": "CI pipeline",
+      "version": 1,
+      "revoked": false
+    }
+  ],
+  "provider_configs": [
+    {
+      "id": "openai",
+      "provider": "openai",
+      "api_key": "env:OPENAI_API_KEY",
+      "base_url": null,
+      "enabled": true,
+      "version": 1,
+      "revoked": false
+    },
+    {
+      "id": "anthropic",
+      "provider": "anthropic",
+      "api_key": "env:ANTHROPIC_API_KEY",
+      "base_url": null,
+      "enabled": true,
+      "version": 1,
+      "revoked": false
+    }
+  ]
+}
