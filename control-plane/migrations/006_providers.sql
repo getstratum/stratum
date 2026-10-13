@@ -89,5 +89,5 @@ INSERT INTO ai_models (provider, model_id, display_name, cost_per_1k_input_token
 VALUES
   ('google-gemini', 'gemini-3.6-flash',      'Gemini 3.6 Flash',      0.001500, 0.007500),
   ('google-gemini', 'gemini-3.5-flash',      'Gemini 3.5 Flash',      0.000750, 0.004500),
-  ('google-gemini', 'gemini-3.5-flash-lite', 'Gemini 3.5 Flash-Lite', 0.000300, 0.002500),
+  ('google-gemini', 'gemini-3.5-flash-lite', 'Gemini 3.5 Flash-Lite', 0.000300, 0.002500)
 ON CONFLICT DO NOTHING;

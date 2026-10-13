@@ -1,9 +1,16 @@
+/**
+ * proxy.js — dashboard authentication (Next.js 16 "proxy", formerly middleware).
+ *
+ * Runs before every route. Pages and API routes outside PUBLIC_PATHS require a
+ * valid stratum_session cookie signed with SESSION_SECRET.
+ */
 import { NextResponse } from 'next/server'
 import { jwtVerify } from 'jose'
 import { getSessionSecret } from './lib/secret.js'
 
 // Paths that never require dashboard auth
 const PUBLIC_PATHS = [
+  '/api/healthz',            // container health check
   '/login',
   '/prompt',
   '/api/session',
@@ -19,7 +26,7 @@ function getSecret() {
   return getSessionSecret()
 }
 
-export async function middleware(request) {
+export async function proxy(request) {
   const { pathname } = request.nextUrl
 
   // Always allow public paths
@@ -35,6 +42,10 @@ export async function middleware(request) {
   const sessionCookie = request.cookies.get('stratum_session')?.value
 
   if (!sessionCookie) {
+    // API clients get a proper 401 instead of an HTML redirect
+    if (pathname.startsWith('/api/')) {
+      return NextResponse.json({ error: 'unauthorized', message: 'Sign in to the dashboard first' }, { status: 401 })
+    }
     // No session → send everyone to Playground first
     // Admins can reach the dashboard via the Admin button in the Playground
     if (pathname.startsWith('/login')) return NextResponse.next()
@@ -54,13 +65,7 @@ export async function middleware(request) {
       return NextResponse.redirect(new URL('/prompt', request.url))
     }
 
-    // Inject user info into headers for server components
-    const headers = new Headers(request.headers)
-    headers.set('x-session-email',    payload.email    ?? '')
-    headers.set('x-session-team',     payload.teamName ?? '')
-    headers.set('x-session-token',    payload.token    ?? '')
-
-    return NextResponse.next({ request: { headers } })
+    return NextResponse.next()
 
   } catch {
     // Invalid or expired session → back to login

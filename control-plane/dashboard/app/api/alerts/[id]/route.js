@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server'
 import { getDb } from '../../../../lib/db'
 
 export async function PATCH(req, { params }) {
-  const { id } = params
+  const { id } = await params
   const body   = await req.json()
   const db     = getDb()
 
@@ -31,6 +31,6 @@ export async function PATCH(req, { params }) {
 
 export async function DELETE(req, { params }) {
   const db = getDb()
-  await db.query('DELETE FROM alerts WHERE id = $1', [params.id])
+  await db.query('DELETE FROM alerts WHERE id = $1', [(await params).id])
   return NextResponse.json({ ok: true })
 }

@@ -18,15 +18,14 @@ Tracks what is done and what still blocks the first public release.
 
 ## Blocking the public release
 
-- [ ] **Control plane on a supported Next.js.** It is on 14.2.35, the last 14.x
-      release, which fixes the middleware authorization bypass (CVE-2025-29927)
-      but not later advisories that are only fixed in 15.5.x and newer. The
-      upgrade to Next 15/16 (React 19) is required before publishing.
+- [x] Control plane on a supported Next.js: Next 16.3 + React 19, Node 24 LTS.
+      `npm audit --omit=dev` is clean and now gates CI.
 - [ ] Control plane: replace the hard-coded `DEMO_ORG` with real multi-organisation scoping.
 - [ ] Control plane: the Playground still calls `/me` and `/auth/login` on the
       gateway, which no longer exist. It should send a developer key directly.
-- [ ] Control plane: migrations runner with locking and expand/contract discipline
-      instead of running every SQL file in a loop.
+- [x] Control plane: migrations runner (`control-plane/migrations/migrate.sh`) that
+      applies each file once, tracked in `schema_migrations`, under an advisory lock.
+- [ ] Control plane: expand/contract discipline for schema changes (documented in CONTRIBUTING).
 
 ## Phase 1 — static stability (started)
 

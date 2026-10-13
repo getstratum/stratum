@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server'
 import { getDb } from '../../../../lib/db'
 
 export async function PATCH(req, { params }) {
-  const { id } = params
+  const { id } = await params
   const { name, allowedModels, maxTokensPerRequest, monthlyTokenQuota, monthlyBudgetUsd } = await req.json()
 
   const db = getDb()
@@ -23,7 +23,7 @@ export async function PATCH(req, { params }) {
 }
 
 export async function DELETE(req, { params }) {
-  const { id } = params
+  const { id } = await params
   const db = getDb()
 
   // Check no teams are using it

@@ -64,26 +64,21 @@ CREATE TRIGGER trg_provider_configs_version
 -- 3. Extended columns on policies
 -- ---------------------------------------------------------------------------
 
-DO $$ BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_name = 'policies' AND column_name = 'pii_action'
-  ) THEN
-    ALTER TABLE policies
-      ADD COLUMN pii_action        TEXT NOT NULL DEFAULT 'off',
-      ADD COLUMN dlp_action        TEXT NOT NULL DEFAULT 'off',
-      ADD COLUMN allowed_providers TEXT[];  -- null = all enabled in the org
-  END IF;
-END $$;
+-- Each column is added on its own: pii_action already exists from 010_pii.sql,
+-- so guarding all three on it would silently skip dlp_action and
+-- allowed_providers.
+ALTER TABLE policies ADD COLUMN IF NOT EXISTS pii_action        TEXT NOT NULL DEFAULT 'off';
+ALTER TABLE policies ADD COLUMN IF NOT EXISTS dlp_action        TEXT NOT NULL DEFAULT 'off';
+ALTER TABLE policies ADD COLUMN IF NOT EXISTS allowed_providers TEXT[];  -- null = all enabled in the org
 
 -- Check constraints: valid values
 DO $$ BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint WHERE conname = 'chk_policies_pii_action'
-  ) THEN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_policies_pii_action') THEN
     ALTER TABLE policies
       ADD CONSTRAINT chk_policies_pii_action
         CHECK (pii_action IN ('off', 'log', 'redact', 'block'));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_policies_dlp_action') THEN
     ALTER TABLE policies
       ADD CONSTRAINT chk_policies_dlp_action
         CHECK (dlp_action IN ('off', 'log', 'redact', 'block'));

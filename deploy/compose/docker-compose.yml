@@ -31,16 +31,17 @@ services:
     image: postgres:16-alpine
     restart: "no"
     environment:
+      PGHOST: postgres
+      PGUSER: stratum
+      PGDATABASE: stratum
       PGPASSWORD: "${POSTGRES_PASSWORD}"
     volumes:
       - ../../control-plane/migrations:/migrations:ro
     depends_on:
       postgres:
         condition: service_healthy
-    command: >
-      sh -c 'for f in $$(ls /migrations/*.sql | sort); do
-               echo "--> $$f"; psql -v ON_ERROR_STOP=1 -h postgres -U stratum -d stratum -f "$$f" || exit 1;
-             done'
+    # Applies each migration once, tracked in schema_migrations.
+    command: ["sh", "/migrations/migrate.sh", "/migrations"]
 
   control-plane:
     build:

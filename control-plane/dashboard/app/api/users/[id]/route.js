@@ -4,7 +4,7 @@ import crypto from 'crypto'
 import { getDb } from '../../../../lib/db'
 
 export async function PATCH(req, { params }) {
-  const { id } = params
+  const { id } = await params
   const body   = await req.json()
   const db     = getDb()
 
@@ -48,7 +48,7 @@ export async function PATCH(req, { params }) {
 }
 
 export async function POST(req, { params }) {
-  const { id }     = params
+  const { id }     = await params
   const { action } = await req.json()
   const db         = getDb()
 
