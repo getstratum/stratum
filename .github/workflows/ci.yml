@@ -27,6 +27,9 @@ jobs:
         with:
           go-version-file: gateway/go.mod
           cache-dependency-path: gateway/go.mod
+          # Without this the runner's cached Go can be an older patch release
+          # that still has known standard library vulnerabilities.
+          check-latest: true
       - name: gofmt
         run: test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
       - name: go vet
