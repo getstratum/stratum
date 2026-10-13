@@ -1,4 +1,7 @@
 version: 2
+# Major version upgrades (Next.js, React, Tailwind, Node...) need a planned
+# migration and are done by hand in their own PR; Dependabot only proposes
+# minor and patch updates, plus security fixes.
 updates:
   - package-ecosystem: gomod
     directory: /gateway
@@ -6,9 +9,15 @@ updates:
   - package-ecosystem: docker
     directories: [/gateway, /control-plane/dashboard]
     schedule: { interval: weekly }
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: npm
     directory: /control-plane/dashboard
     schedule: { interval: weekly }
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     groups:
       minor-and-patch:
         update-types: [minor, patch]
