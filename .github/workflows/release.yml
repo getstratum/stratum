@@ -85,6 +85,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: gateway/go.mod
+          cache-dependency-path: gateway/go.mod
       - name: build
         working-directory: gateway
         run: |
