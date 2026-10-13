@@ -85,6 +85,10 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: gateway/go.mod
+          cache-dependency-path: gateway/go.mod
+          # Without this the runner's cached Go can be an older patch release
+          # that still has known standard library vulnerabilities.
+          check-latest: true
       - name: build
         working-directory: gateway
         run: |
