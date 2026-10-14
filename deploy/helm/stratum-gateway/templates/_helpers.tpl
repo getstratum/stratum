@@ -15,13 +15,17 @@ app.kubernetes.io/name: {{ include "stratum-gateway.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end -}}
 
-{{- define "stratum-gateway.labels" -}}
+{{- define "stratum-gateway.commonLabels" -}}
 helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" }}
 {{ include "stratum-gateway.selectorLabels" . }}
 app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
-app.kubernetes.io/component: data-plane
 app.kubernetes.io/part-of: stratum
 app.kubernetes.io/managed-by: {{ .Release.Service }}
+{{- end -}}
+
+{{- define "stratum-gateway.labels" -}}
+{{ include "stratum-gateway.commonLabels" . }}
+app.kubernetes.io/component: data-plane
 {{- end -}}
 
 {{- define "stratum-gateway.serviceAccountName" -}}

@@ -4,7 +4,7 @@ kind: Service
 metadata:
   name: {{ include "stratum-gateway.fullname" . }}-metrics
   labels:
-    {{- include "stratum-gateway.labels" . | nindent 4 }}
+    {{- include "stratum-gateway.commonLabels" . | nindent 4 }}
     app.kubernetes.io/component: metrics
 spec:
   type: ClusterIP
