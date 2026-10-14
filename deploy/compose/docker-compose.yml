@@ -74,6 +74,9 @@ services:
       STRATUM_INSTANCE_ID: "${STRATUM_INSTANCE_ID:?register a gateway instance first}"
       STRATUM_SNAPSHOT_KEY: "${STRATUM_SNAPSHOT_KEY:?set STRATUM_SNAPSHOT_KEY in .env (openssl rand -hex 32)}"
       STRATUM_CORS_ALLOWED_ORIGINS: "http://localhost:3000"
+      # One gateway counts quotas exactly on its own. If you run several,
+      # share the counters through Valkey (see README, "Quotas across replicas"):
+      # STRATUM_VALKEY_URL: "redis://valkey:6379/0"
     volumes:
       - gateway-state:/var/lib/stratum
     ports:

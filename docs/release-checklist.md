@@ -41,7 +41,7 @@ Tracks what is done and what still blocks the first public release.
 - [x] Delta sync + periodic full resync, jitter, exponential backoff
 - [x] `/livez` and `/readyz` independent of dependencies; graceful drain
 - [x] Per-phase upstream timeouts and stream idle watchdog; load shedding
-- [ ] Shared quota store (Valkey/Redis) with local fallback (ADR-0004)
+- [x] Shared quota store in Valkey, off the request path, idempotent flushes, local fallback (ADR-0004)
 - [ ] Circuit breaker per provider deployment and failover between equivalent deployments
 - [ ] Retries before the first byte with a retry budget
 - [ ] Signed snapshots in object storage as a second config channel (ADR-0003)

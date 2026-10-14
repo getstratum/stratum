@@ -4,3 +4,6 @@ existingSecret: stratum-gateway
 metrics:
   serviceMonitor:
     enabled: true
+quota:
+  valkey:
+    url: redis://valkey.stratum.svc:6379/0

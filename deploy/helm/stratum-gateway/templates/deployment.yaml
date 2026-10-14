@@ -101,6 +101,18 @@ spec:
               value: "{{ .Values.lifecycle.drainDelaySeconds }}s"
             - name: STRATUM_SHUTDOWN_TIMEOUT
               value: "{{ .Values.lifecycle.shutdownTimeoutSeconds }}s"
+            {{- with .Values.quota.valkey.url }}
+            - name: STRATUM_VALKEY_URL
+              value: {{ . | quote }}
+            {{- end }}
+            - name: STRATUM_VALKEY_KEY_PREFIX
+              value: {{ .Values.quota.valkey.keyPrefix | quote }}
+            - name: STRATUM_QUOTA_SYNC_INTERVAL
+              value: {{ .Values.quota.syncInterval | quote }}
+            - name: STRATUM_QUOTA_STALE_AFTER
+              value: {{ .Values.quota.staleAfter | quote }}
+            - name: STRATUM_QUOTA_FAIL_MODE
+              value: {{ .Values.quota.failMode | quote }}
             {{- with .Values.gateway.corsAllowedOrigins }}
             - name: STRATUM_CORS_ALLOWED_ORIGINS
               value: {{ . | quote }}

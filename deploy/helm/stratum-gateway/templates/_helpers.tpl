@@ -61,6 +61,12 @@ app.kubernetes.io/component: data-plane
 {{- else -}}
 {{- fail "mode must be controlPlane or static" -}}
 {{- end -}}
+{{- if not (has .Values.quota.failMode (list "open" "closed")) -}}
+{{- fail "quota.failMode must be open or closed" -}}
+{{- end -}}
+{{- if and .Values.quota.valkey.url (not (regexMatch "^(redis|rediss|valkey|valkeys)://" .Values.quota.valkey.url)) -}}
+{{- fail "quota.valkey.url must start with redis://, rediss://, valkey:// or valkeys://" -}}
+{{- end -}}
 {{- if lt (int .Values.replicaCount) 2 -}}
 {{- fail "replicaCount must be at least 2 for a highly available deployment (3 recommended)" -}}
 {{- end -}}

@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/getstratum/stratum/gateway/internal/valkey"
 )
 
 // Mode is where the gateway gets its configuration from.
@@ -54,6 +56,14 @@ type Config struct {
 	PIIEnabled            bool
 	CORSAllowedOrigins    []string
 
+	// Shared quota store (optional). Empty ValkeyURL means local counters.
+	ValkeyURL         string
+	ValkeyPassword    string // overrides the password in ValkeyURL
+	ValkeyKeyPrefix   string
+	QuotaSyncInterval time.Duration
+	QuotaStaleAfter   time.Duration
+	QuotaFailClosed   bool
+
 	// Lifecycle
 	DrainDelay      time.Duration // readiness fails this long before we stop accepting
 	ShutdownTimeout time.Duration // max wait for in-flight requests (streams) to finish
@@ -90,6 +100,12 @@ func Load(getenv func(string) string) (*Config, error) {
 		PIIEnabled:            e.bool("STRATUM_PII_ENABLED", true),
 		CORSAllowedOrigins:    e.list("STRATUM_CORS_ALLOWED_ORIGINS"),
 
+		ValkeyURL:         e.str("STRATUM_VALKEY_URL", ""),
+		ValkeyPassword:    e.str("STRATUM_VALKEY_PASSWORD", ""),
+		ValkeyKeyPrefix:   e.str("STRATUM_VALKEY_KEY_PREFIX", "stratum"),
+		QuotaSyncInterval: e.dur("STRATUM_QUOTA_SYNC_INTERVAL", time.Second),
+		QuotaStaleAfter:   e.dur("STRATUM_QUOTA_STALE_AFTER", 30*time.Second),
+
 		DrainDelay:      e.dur("STRATUM_DRAIN_DELAY", 5*time.Second),
 		ShutdownTimeout: e.dur("STRATUM_SHUTDOWN_TIMEOUT", 10*time.Minute),
 
@@ -125,6 +141,27 @@ func Load(getenv func(string) string) (*Config, error) {
 	}
 	if c.SnapshotMaxDropRatio <= 0 || c.SnapshotMaxDropRatio > 1 {
 		e.fail("STRATUM_SNAPSHOT_MAX_DROP_RATIO must be in (0, 1]")
+	}
+	switch mode := strings.ToLower(e.str("STRATUM_QUOTA_FAIL_MODE", "open")); mode {
+	case "open":
+	case "closed":
+		c.QuotaFailClosed = true
+	default:
+		e.fail("STRATUM_QUOTA_FAIL_MODE must be open or closed")
+	}
+	if c.ValkeyURL != "" {
+		if _, err := valkey.ParseURL(c.ValkeyURL); err != nil {
+			// Never echo the URL: it may carry a password.
+			e.fail("STRATUM_VALKEY_URL: " + err.Error())
+		}
+		if c.QuotaSyncInterval < 100*time.Millisecond || c.QuotaSyncInterval > time.Minute {
+			e.fail("STRATUM_QUOTA_SYNC_INTERVAL must be between 100ms and 1m")
+		}
+		if c.QuotaStaleAfter < 2*c.QuotaSyncInterval {
+			e.fail("STRATUM_QUOTA_STALE_AFTER must be at least twice STRATUM_QUOTA_SYNC_INTERVAL")
+		}
+	} else if c.QuotaFailClosed {
+		e.fail("STRATUM_QUOTA_FAIL_MODE=closed needs STRATUM_VALKEY_URL")
 	}
 	switch c.LogLevel {
 	case "debug", "info", "warn", "error":

@@ -59,6 +59,23 @@ gateway:
   corsAllowedOrigins: ""
   logLevel: info
 
+# Shared monthly token quotas across replicas (docs/adr/0004). Valkey is never
+# on the request path: a Valkey outage does not fail requests in the default
+# fail mode. Without it each replica counts on its own, so a team can spend up
+# to <replicas> times its quota.
+quota:
+  valkey:
+    # redis://host:6379/0, or rediss:// for TLS. Keep the password out of the
+    # URL and put STRATUM_VALKEY_PASSWORD in existingSecret, or leave this
+    # empty and put the whole STRATUM_VALKEY_URL in existingSecret.
+    url: ""
+    keyPrefix: stratum
+  syncInterval: 1s
+  staleAfter: 30s
+  # open: keep enforcing with last known totals while Valkey is down.
+  # closed: reject requests of teams with a quota (503) while it is down.
+  failMode: open
+
 # Graceful shutdown. Readiness fails first, the load balancer stops routing,
 # then in-flight requests (including long streams) get up to
 # shutdownTimeoutSeconds to finish. The pod's termination grace period is

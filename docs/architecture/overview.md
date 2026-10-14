@@ -32,7 +32,7 @@ Nothing except the LLM provider is allowed on the synchronous request path.
 | If this fails | The gateway |
 |---|---|
 | Control plane or its database | Keeps serving the last good snapshot, indefinitely (ADR-0005). Staleness is exported as a metric. |
-| Redis / shared quota store | Unaffected for auth and policy (in memory). Quotas fall back to local counters (ADR-0004). |
+| Valkey (shared quota store) | Unaffected: Valkey is never on the request path. Replicas keep counting locally and write the backlog when it returns (ADR-0004). |
 | Telemetry backend | Unaffected. |
 | One replica / one zone | The load balancer removes it via `/readyz`; peers absorb the load. |
 | A deploy | Readiness fails first, then in-flight streams finish before the process exits. |
@@ -45,7 +45,7 @@ client ──► /v1/* or /proxy/{provider}/*
             1. auth      SHA-256(key) → snapshot map lookup
             2. route     provider from path, "provider/model", or policy
             3. policy    team policy: disabled? provider? model?
-            4. quota     monthly tokens (local counters)
+            4. quota     monthly tokens (in-memory view of the shared Valkey counters)
             5. content   PII (pii_action) and secrets (dlp_action): block / redact / log
             6. forward   provider credentials injected; client key never forwarded
             7. stream    bytes passed through as they arrive; usage parsed on the side
@@ -78,6 +78,8 @@ The contract is `api/sync/v2/sync-response.schema.json` (ADR-0003).
 - Capacity planned so two zones carry peak traffic below ~70% utilisation.
 - Rolling deploys with no unavailable replicas, and a termination grace period
   longer than `STRATUM_DRAIN_DELAY + STRATUM_SHUTDOWN_TIMEOUT`.
+- Valkey for shared quota counters, with persistence (AOF) or a replica.
+  Its availability does not affect the request path.
 - Control plane: two or more stateless replicas, PostgreSQL with a synchronous
   standby.
 - Alerts on SLO burn rate and on `stratum_snapshot_age_seconds`.

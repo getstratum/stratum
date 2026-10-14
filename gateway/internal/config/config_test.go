@@ -80,3 +80,47 @@ func TestNeedsExactlyOneSource(t *testing.T) {
 		t.Fatal("persistence must be off without a key")
 	}
 }
+
+func TestSharedQuotaSettings(t *testing.T) {
+	base := func(extra map[string]string) map[string]string {
+		m := map[string]string{"STRATUM_CONFIG_FILE": "/etc/stratum/stratum.json"}
+		for k, v := range extra {
+			m[k] = v
+		}
+		return m
+	}
+
+	c, err := Load(envOf(base(nil)))
+	if err != nil || c.ValkeyURL != "" || c.QuotaFailClosed {
+		t.Fatalf("default must be local quotas, fail open: %+v %v", c, err)
+	}
+
+	c, err = Load(envOf(base(map[string]string{
+		"STRATUM_VALKEY_URL":        "rediss://:pw@cache:6380/1",
+		"STRATUM_QUOTA_FAIL_MODE":   "closed",
+		"STRATUM_QUOTA_STALE_AFTER": "10s",
+	})))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !c.QuotaFailClosed || c.QuotaSyncInterval != time.Second || c.QuotaStaleAfter != 10*time.Second {
+		t.Fatalf("got %+v", c)
+	}
+
+	for name, env := range map[string]map[string]string{
+		"bad scheme":            {"STRATUM_VALKEY_URL": "http://user:hunter2@cache"},
+		"bad fail mode":         {"STRATUM_VALKEY_URL": "redis://cache", "STRATUM_QUOTA_FAIL_MODE": "maybe"},
+		"closed without valkey": {"STRATUM_QUOTA_FAIL_MODE": "closed"},
+		"interval too short":    {"STRATUM_VALKEY_URL": "redis://cache", "STRATUM_QUOTA_SYNC_INTERVAL": "10ms"},
+		"stale below 2x":        {"STRATUM_VALKEY_URL": "redis://cache", "STRATUM_QUOTA_STALE_AFTER": "1s"},
+	} {
+		_, err := Load(envOf(base(env)))
+		if err == nil {
+			t.Errorf("%s: expected an error", name)
+			continue
+		}
+		if strings.Contains(err.Error(), "hunter2") {
+			t.Errorf("%s: error leaks the password: %v", name, err)
+		}
+	}
+}

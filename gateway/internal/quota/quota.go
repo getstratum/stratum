@@ -1,11 +1,17 @@
 // Package quota tracks monthly token usage per team.
 //
-// This first implementation keeps counters in process memory. With several
-// replicas each one enforces against its own counters, and counters reset on
-// restart, so enforcement is approximate. A shared Valkey/Redis backend that
-// degrades to these local counters when unreachable is the next step (see
-// docs/adr/0004). Budget in USD is not enforced yet: the gateway needs a
-// model price table from the control plane first.
+// Two implementations share one interface:
+//
+//   - Local keeps counters in process memory. It is exact for a single
+//     replica and resets on restart.
+//   - Shared keeps the authoritative counters in Valkey/Redis, so every
+//     replica enforces against the fleet-wide total. Valkey is never on the
+//     request path: checks read an in-memory copy that a background loop
+//     refreshes, and when Valkey is unreachable the gateway keeps counting
+//     locally and catches up when it returns (docs/adr/0004).
+//
+// Budget in USD is not enforced yet: the gateway needs a model price table
+// from the control plane first.
 package quota
 
 import (
@@ -17,6 +23,21 @@ import (
 	"github.com/getstratum/stratum/gateway/internal/snapshot"
 )
 
+// Enforcer is what the request path uses. Check must not block on I/O.
+type Enforcer interface {
+	// Check returns a violation when the team may not start another request.
+	Check(teamID string, pol snapshot.Policy) *policy.Violation
+	// Add records tokens consumed by a finished request.
+	Add(teamID string, tokens int64)
+}
+
+var exceeded = &policy.Violation{Status: http.StatusTooManyRequests, Code: "quota_exceeded",
+	Message: "this team has used its monthly token quota"}
+
+// Month is the UTC calendar month a counter belongs to, as "2006-01".
+func Month(t time.Time) string { return t.UTC().Format("2006-01") }
+
+// Local counts in process memory.
 type Local struct {
 	mu     sync.Mutex
 	month  string
@@ -36,8 +57,7 @@ func (l *Local) Check(teamID string, pol snapshot.Policy) *policy.Violation {
 	used := l.tokens[teamID]
 	l.mu.Unlock()
 	if used >= *pol.MonthlyTokenQuota {
-		return &policy.Violation{Status: http.StatusTooManyRequests, Code: "quota_exceeded",
-			Message: "this team has used its monthly token quota"}
+		return exceeded
 	}
 	return nil
 }
@@ -62,7 +82,7 @@ func (l *Local) Used(teamID string) int64 {
 }
 
 func (l *Local) rollover() {
-	m := l.now().UTC().Format("2006-01")
+	m := Month(l.now())
 	if m != l.month {
 		l.month = m
 		clear(l.tokens)

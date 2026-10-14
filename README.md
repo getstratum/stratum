@@ -99,6 +99,28 @@ Developers authenticate with `Authorization: Bearer <key>` or `x-api-key: <key>`
 | `STRATUM_DRAIN_DELAY` / `STRATUM_SHUTDOWN_TIMEOUT` | `5s` / `10m` | Graceful shutdown: readiness fails first, then in-flight streams get up to the timeout to finish. |
 | `STRATUM_PII_ENABLED` | `true` | Global switch for PII/DLP scanning (actions are set per policy). |
 | `STRATUM_CORS_ALLOWED_ORIGINS` | | Comma-separated origins allowed to call the gateway from a browser. |
+| `STRATUM_VALKEY_URL` | | Shared quota counters across replicas, e.g. `redis://valkey:6379/0` or `rediss://` for TLS. Without it each replica counts on its own. See [Quotas](#quotas-across-replicas). |
+| `STRATUM_VALKEY_PASSWORD` | | Overrides the password in the URL, so the URL can live in a ConfigMap. |
+| `STRATUM_QUOTA_SYNC_INTERVAL` / `STRATUM_QUOTA_STALE_AFTER` | `1s` / `30s` | How often usage is flushed to Valkey, and after how long without a flush the store counts as down. |
+| `STRATUM_QUOTA_FAIL_MODE` | `open` | While Valkey is down: `open` keeps enforcing with last known totals plus local usage; `closed` rejects requests of teams that have a quota (503). |
+
+## Quotas across replicas
+
+Monthly token quotas are enforced per team. With one replica, local counters
+are exact. With several, set `STRATUM_VALKEY_URL` so they share one counter
+per team in Valkey (or Redis 6.2+):
+
+- Valkey is **never on the request path**. Each replica checks against an
+  in-memory total and flushes its usage once per second in a single atomic,
+  idempotent script call that also refreshes the totals.
+- Overspend is bounded by roughly one flush interval of traffic per replica.
+- If Valkey is unreachable, requests keep flowing and each replica keeps
+  counting locally; the backlog is written once Valkey returns, exactly once.
+- Run Valkey with persistence (AOF) or a replica. A Valkey that restarts
+  empty resets the month's counters; the gateway reports it as
+  `stratum_quota_store_regressions_total`.
+
+Details in [ADR-0004](docs/adr/0004-quotas.md).
 
 ## Repository layout
 
