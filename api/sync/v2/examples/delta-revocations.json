@@ -1,0 +1,63 @@
+{
+  "current_version": 57,
+  "next_sync_in_seconds": 30,
+  "policies": [
+    {
+      "id": "pol_restricted",
+      "team_id": "team_engineering",
+      "version": 55,
+      "allowed_models": ["gpt-4o-mini"],
+      "allow_all_models": false,
+      "allowed_providers": null,
+      "monthly_token_quota": 100000,
+      "monthly_budget_usd": null,
+      "pii_action": "block",
+      "dlp_action": "block",
+      "revoked": false
+    },
+    {
+      "id": "",
+      "team_id": "team_marketing",
+      "version": 56,
+      "allowed_models": [],
+      "allow_all_models": false,
+      "allowed_providers": null,
+      "monthly_token_quota": null,
+      "monthly_budget_usd": null,
+      "pii_action": "off",
+      "dlp_action": "off",
+      "revoked": true
+    }
+  ],
+  "api_keys": [
+    {
+      "id": "user_dev",
+      "key_hash": "",
+      "team_id": "",
+      "label": null,
+      "version": 53,
+      "revoked": true
+    },
+    {
+      "id": "user_intern",
+      "key_hash": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+      "team_id": "team_engineering",
+      "label": "intern@acme.com",
+      "version": 54,
+      "revoked": true
+    }
+  ],
+  "provider_configs": [
+    {
+      "id": "pc_openai_prod",
+      "provider": "openai",
+      "display_name": null,
+      "api_key": null,
+      "base_url": null,
+      "extra_config": {},
+      "enabled": false,
+      "version": 57,
+      "revoked": true
+    }
+  ]
+}

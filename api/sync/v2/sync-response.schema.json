@@ -46,7 +46,7 @@
       "enum": ["off", "log", "redact", "block"]
     },
     "policy": {
-      "description": "A team's policy. One entry per team; a policy shared by several teams appears once per team.",
+      "description": "A team's policy. One entry per team; a policy shared by several teams appears once per team. version is the newer of the policy's version and the team's assignment, so moving a team to another policy always replaces the previous entry. A team without a policy, or deleted, is sent with revoked = true and an empty id: the team is disabled.",
       "type": "object",
       "required": ["id", "team_id", "version", "revoked"],
       "properties": {
@@ -65,12 +65,14 @@
       }
     },
     "apiKey": {
-      "description": "A developer key. Only the SHA-256 hex digest is ever transmitted.",
+      "description": "A developer key. Only the SHA-256 hex digest is ever transmitted. A key that stops working (revoked, removed, its user deactivated or left without a team, or deleted) is sent with revoked = true, never just left out. When the control plane no longer has the hash (a removed or deleted key), key_hash is empty.",
       "type": "object",
       "required": ["id", "key_hash", "team_id", "version", "revoked"],
+      "if": { "properties": { "revoked": { "const": false } } },
+      "then": { "properties": { "key_hash": { "minLength": 64 } } },
       "properties": {
         "id": { "type": "string", "minLength": 1 },
-        "key_hash": { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" },
+        "key_hash": { "type": "string", "pattern": "^([0-9a-fA-F]{64})?$", "description": "Empty only when revoked is true." },
         "team_id": { "type": "string" },
         "label": { "type": ["string", "null"] },
         "version": { "$ref": "#/$defs/integer" },
@@ -80,7 +82,7 @@
       }
     },
     "providerConfig": {
-      "description": "The customer's credentials for an upstream provider. api_key is plaintext on the wire (TLS + sync token) and must be encrypted at rest by the gateway. In a standalone config file it may be written as \"env:VAR_NAME\".",
+      "description": "The customer's credentials for an upstream provider. api_key is plaintext on the wire (TLS + sync token) and must be encrypted at rest by the gateway. In a standalone config file it may be written as \"env:VAR_NAME\". A deleted config is sent with revoked = true and enabled = false.",
       "type": "object",
       "required": ["id", "provider", "enabled", "version", "revoked"],
       "properties": {
