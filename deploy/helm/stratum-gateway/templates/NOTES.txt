@@ -8,3 +8,11 @@ Check that every replica is ready (readiness never depends on the control plane)
 
 Metrics: {{ if .Values.metrics.enabled }}service {{ include "stratum-gateway.fullname" . }}-metrics, port {{ .Values.metrics.port }}, path /metrics{{ else }}disabled{{ end }}
 Alert on stratum_snapshot_age_seconds: a growing value means the gateway cannot reach the control plane.
+{{- if .Values.quota.valkey.url }}
+Quotas: shared across replicas through Valkey (fail mode: {{ .Values.quota.failMode }}). Watch stratum_quota_store_age_seconds.
+{{- else }}
+
+WARNING: quota.valkey.url is not set. Unless STRATUM_VALKEY_URL is in existingSecret,
+each replica enforces monthly token quotas on its own, so a team can spend up to
+{{ if .Values.autoscaling.enabled }}{{ .Values.autoscaling.maxReplicas }}{{ else }}{{ .Values.replicaCount }}{{ end }}x its quota. See docs/adr/0004-quotas.md.
+{{- end }}

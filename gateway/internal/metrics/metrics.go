@@ -26,6 +26,15 @@ type Metrics struct {
 	SnapshotSynced  atomic.Int64 // unix seconds of last confirmation from the source
 	PersistFailure  atomic.Int64
 	UpstreamTokens  atomic.Int64
+
+	// Shared quota store (Valkey). Enabled is 0 when quotas are local only.
+	QuotaStoreEnabled  atomic.Int64
+	QuotaFlushSuccess  atomic.Int64
+	QuotaFlushFailure  atomic.Int64
+	QuotaLastSuccess   atomic.Int64 // unix seconds
+	QuotaPendingTokens atomic.Int64 // tokens counted locally, not yet confirmed by the store
+	// Counters that came back lower than last seen: data loss or a manual reset.
+	QuotaStoreRegressions atomic.Int64
 }
 
 type reqKey struct {
@@ -90,6 +99,19 @@ func (m *Metrics) WriteTo(w io.Writer, now time.Time) {
 		age = now.Unix() - s
 	}
 	gauge(&b, "stratum_snapshot_age_seconds", "Seconds since the source last confirmed the configuration (-1 = never).", age)
+
+	gauge(&b, "stratum_quota_store_enabled", "1 if quotas are enforced against a shared store (Valkey), 0 if local only.", m.QuotaStoreEnabled.Load())
+	if m.QuotaStoreEnabled.Load() == 1 {
+		counter(&b, "stratum_quota_store_flush_success_total", "Successful flushes to the shared quota store.", m.QuotaFlushSuccess.Load())
+		counter(&b, "stratum_quota_store_flush_failure_total", "Failed flushes to the shared quota store.", m.QuotaFlushFailure.Load())
+		counter(&b, "stratum_quota_store_regressions_total", "Team counters that came back lower than last seen (store data loss or manual reset).", m.QuotaStoreRegressions.Load())
+		gauge(&b, "stratum_quota_pending_tokens", "Tokens counted on this replica and not yet confirmed by the shared quota store.", m.QuotaPendingTokens.Load())
+		qage := int64(-1)
+		if s := m.QuotaLastSuccess.Load(); s > 0 {
+			qage = now.Unix() - s
+		}
+		gauge(&b, "stratum_quota_store_age_seconds", "Seconds since the last successful flush to the shared quota store (-1 = never).", qage)
+	}
 
 	io.WriteString(w, b.String())
 }

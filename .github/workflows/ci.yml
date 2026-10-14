@@ -16,6 +16,13 @@ jobs:
   gateway:
     name: gateway (Go)
     runs-on: ubuntu-latest
+    services:
+      # Real Valkey for the shared quota tests (the Lua script runs server-side).
+      valkey:
+        image: valkey/valkey:8.1-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "valkey-cli ping" --health-interval 2s --health-timeout 2s --health-retries 15
     defaults:
       run:
         working-directory: gateway
@@ -37,6 +44,8 @@ jobs:
       - name: staticcheck
         run: go run honnef.co/go/tools/cmd/staticcheck@2025.1.1 ./...
       - name: test (race)
+        env:
+          STRATUM_TEST_VALKEY_URL: redis://localhost:6379/15
         run: go test -race -count=1 -coverprofile=coverage.out ./...
       - name: govulncheck
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...

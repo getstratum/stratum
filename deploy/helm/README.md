@@ -15,6 +15,7 @@ What the defaults give you:
 | Probes | `/readyz` and `/livez` on the gateway port; neither depends on the control plane |
 | Security | non-root, read-only root filesystem, no capabilities, seccomp `RuntimeDefault`, no service account token |
 | Metrics | separate ClusterIP service on port 9090; optional ServiceMonitor |
+| Quotas | shared across replicas through Valkey when `quota.valkey.url` is set; off the request path |
 
 ## Install (control plane mode)
 
@@ -50,6 +51,28 @@ helm install stratum oci://ghcr.io/getstratum/charts/stratum-gateway -n stratum 
   --set-file static.config=stratum.json \
   --set 'extraEnvFrom[0].secretRef.name=provider-keys'
 ```
+
+## Shared quotas (Valkey)
+
+With more than one replica, point the gateway at a Valkey (or Redis 6.2+) so
+monthly token quotas are counted fleet-wide. Without it, each replica counts
+on its own and a team can spend up to N times its quota.
+
+```sh
+kubectl -n stratum create secret generic stratum-gateway ... \
+  --from-literal=STRATUM_VALKEY_PASSWORD=...
+
+helm upgrade stratum oci://ghcr.io/getstratum/charts/stratum-gateway -n stratum \
+  --reuse-values --set quota.valkey.url=redis://valkey.stratum.svc:6379/0
+```
+
+Valkey is never on the request path: a Valkey outage does not fail requests
+(with the default `quota.failMode=open`), and usage counted meanwhile is
+written once it returns. Bring your own Valkey: a managed service, or any
+Valkey chart with **persistence (AOF) or a replica** enabled, behind a stable
+endpoint (Sentinel discovery is not implemented). A Valkey that restarts empty
+resets the month's counters. Alert on `stratum_quota_store_age_seconds` and
+`stratum_quota_store_regressions_total`.
 
 ## Exposing the gateway
 

@@ -34,6 +34,7 @@ import (
 	"github.com/getstratum/stratum/gateway/internal/server"
 	"github.com/getstratum/stratum/gateway/internal/snapshot"
 	"github.com/getstratum/stratum/gateway/internal/syncer"
+	"github.com/getstratum/stratum/gateway/internal/valkey"
 )
 
 // Set at build time with -ldflags "-X main.version=... -X main.commit=...".
@@ -118,9 +119,32 @@ func serve() int {
 		go cp.Run(ctx)
 	}
 
-	// 3. Servers.
+	// 3. Quotas: shared counters in Valkey when configured, local otherwise.
+	//    Valkey is never on the request path (ADR-0004).
+	var enforcer quota.Enforcer = quota.NewLocal()
+	quotaDone := make(chan struct{})
+	if cfg.ValkeyURL != "" {
+		vo, _ := valkey.ParseURL(cfg.ValkeyURL) // validated by config
+		if cfg.ValkeyPassword != "" {
+			vo.Password = cfg.ValkeyPassword
+		}
+		shared := quota.NewShared(quota.SharedOptions{
+			Client: valkey.New(vo), Prefix: cfg.ValkeyKeyPrefix,
+			Interval: cfg.QuotaSyncInterval, StaleAfter: cfg.QuotaStaleAfter,
+			FailClosed: cfg.QuotaFailClosed, Metrics: m, Log: log.With("component", "quota"),
+		})
+		enforcer = shared
+		go func() { defer close(quotaDone); shared.Run(ctx, 3*time.Second) }()
+		log.Info("quotas use the shared store", "addr", vo.Addr, "tls", vo.TLS != nil,
+			"fail_mode", map[bool]string{true: "closed", false: "open"}[cfg.QuotaFailClosed])
+	} else {
+		close(quotaDone)
+		log.Info("quotas use local counters (set STRATUM_VALKEY_URL to share them across replicas)")
+	}
+
+	// 4. Servers.
 	px := &proxy.Handler{
-		Holder: holder, Quota: quota.NewLocal(), Metrics: m, Log: log.With("component", "proxy"),
+		Holder: holder, Quota: enforcer, Metrics: m, Log: log.With("component", "proxy"),
 		Client:            &http.Client{Transport: proxy.NewTransport(cfg.UpstreamHeaderTimeout)},
 		MaxRequestBytes:   cfg.MaxRequestBytes,
 		StreamIdleTimeout: cfg.StreamIdleTimeout,
@@ -145,7 +169,7 @@ func serve() int {
 		}
 	}
 
-	// 4. Graceful shutdown: fail readiness, give the load balancer time to
+	// 5. Graceful shutdown: fail readiness, give the load balancer time to
 	//    notice, stop accepting, then wait for in-flight streams to finish.
 	sigs := make(chan os.Signal, 2)
 	signal.Notify(sigs, syscall.SIGTERM, syscall.SIGINT)
@@ -180,6 +204,7 @@ func serve() int {
 		c()
 	}
 	stopBackground()
+	<-quotaDone // last flush of token usage, bounded
 	log.Info("stopped")
 	return code
 }

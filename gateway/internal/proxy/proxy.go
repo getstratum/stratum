@@ -28,7 +28,7 @@ import (
 
 type Handler struct {
 	Holder            *snapshot.Holder
-	Quota             *quota.Local
+	Quota             quota.Enforcer
 	Metrics           *metrics.Metrics
 	Log               *slog.Logger
 	Client            *http.Client
