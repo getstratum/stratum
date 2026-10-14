@@ -71,6 +71,10 @@ helm install stratum oci://ghcr.io/getstratum/charts/stratum-gateway -n stratum 
 Three replicas across zones, a disruption budget, zero-capacity-loss rollouts
 and graceful drain of streams by default. See [deploy/helm](deploy/helm/README.md).
 
+To try the whole highly available topology on Google Cloud (Terraform, GKE
+Autopilot, global load balancer, Cloud SQL HA, Memorystore) and run failure
+tests against it, see [deploy/gcp](deploy/gcp/README.md).
+
 ## Calling the gateway
 
 | Route | Use |
@@ -128,7 +132,7 @@ Details in [ADR-0004](docs/adr/0004-quotas.md).
 gateway/        Go data plane (standard library only)
 control-plane/  Next.js control plane and SQL migrations
 api/            sync contract between the planes (JSON Schema + examples)
-deploy/         Helm chart, Docker Compose and standalone examples
+deploy/         Helm chart, Docker Compose, GCP reference deployment, standalone example
 docs/           architecture and decision records (docs/adr)
 ```
 

@@ -1,0 +1,106 @@
+# One-shot psql job against Cloud SQL through the Auth Proxy (native
+# sidecar, so the job completes when psql exits). Used for migrations and
+# for the test bootstrap. Rendered by scripts/lib.sh:run_sql_job.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ${JOB_NAME}
+  namespace: ${NAMESPACE}
+  labels:
+    app.kubernetes.io/name: stratum-sql-job
+spec:
+  backoffLimit: 2
+  activeDeadlineSeconds: 600
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: stratum-sql-job
+    spec:
+      serviceAccountName: stratum-control-plane
+      automountServiceAccountToken: false
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 70 # postgres user in the alpine image
+        runAsGroup: 70
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: cloud-sql-proxy
+          image: ${PROXY_IMAGE}
+          restartPolicy: Always
+          args:
+            - --private-ip
+            - --structured-logs
+            - --port=5432
+            - --health-check
+            - --http-address=0.0.0.0
+            - --http-port=9801
+            - --exit-zero-on-sigterm
+            - ${SQL_CONNECTION_NAME}
+          startupProbe:
+            httpGet:
+              path: /startup
+              port: 9801
+            periodSeconds: 1
+            failureThreshold: 60
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 128Mi
+          securityContext:
+            runAsUser: 65532
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+      containers:
+        - name: psql
+          image: ${PSQL_IMAGE}
+          command: ${SQL_COMMAND}
+          env:
+            - name: PGHOST
+              value: 127.0.0.1
+            - name: PGPORT
+              value: "5432"
+            - name: PGSSLMODE
+              value: disable # the proxy encrypts; this hop is loopback
+            - name: PGDATABASE
+              value: ${SQL_DATABASE}
+            - name: PGUSER
+              valueFrom:
+                secretKeyRef:
+                  name: stratum-db
+                  key: username
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: stratum-db
+                  key: password
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: sql
+              mountPath: /sql
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: sql
+          configMap:
+            name: ${SQL_CONFIGMAP}
+        - name: tmp
+          emptyDir:
+            sizeLimit: 16Mi

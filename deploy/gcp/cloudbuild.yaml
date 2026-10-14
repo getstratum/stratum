@@ -1,0 +1,52 @@
+# Builds the three images of the test environment from this checkout and
+# pushes them to the environment's Artifact Registry. Run by
+# scripts/deploy.sh with the build service account created by Terraform.
+#
+#   gcloud builds submit --config deploy/gcp/cloudbuild.yaml \
+#     --substitutions=_REPO=...,_TAG=...,_PUBLIC_URL=... .
+substitutions:
+  _REPO: ""
+  _TAG: ""
+  _PUBLIC_URL: ""
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: E2_HIGHCPU_8
+  env:
+    - DOCKER_BUILDKIT=1
+
+steps:
+  - id: gateway
+    name: gcr.io/cloud-builders/docker
+    waitFor: ["-"]
+    args:
+      - build
+      - --build-arg=GO_VERSION=1.26
+      - --build-arg=VERSION=${_TAG}
+      - --build-arg=COMMIT=${_TAG}
+      - --tag=${_REPO}/stratum-gateway:${_TAG}
+      - gateway
+
+  - id: control-plane
+    name: gcr.io/cloud-builders/docker
+    waitFor: ["-"]
+    args:
+      - build
+      - --build-arg=NEXT_PUBLIC_GATEWAY_URL=${_PUBLIC_URL}
+      - --tag=${_REPO}/stratum-control-plane:${_TAG}
+      - control-plane/dashboard
+
+  - id: mock-llm
+    name: gcr.io/cloud-builders/docker
+    waitFor: ["-"]
+    args:
+      - build
+      - --tag=${_REPO}/mock-llm:${_TAG}
+      - deploy/gcp/mock-llm
+
+images:
+  - ${_REPO}/stratum-gateway:${_TAG}
+  - ${_REPO}/stratum-control-plane:${_TAG}
+  - ${_REPO}/mock-llm:${_TAG}
+
+timeout: 1800s
