@@ -1,0 +1,10 @@
+Stratum gateway {{ .Chart.AppVersion }} — {{ if .Values.autoscaling.enabled }}{{ .Values.autoscaling.minReplicas }}-{{ .Values.autoscaling.maxReplicas }}{{ else }}{{ .Values.replicaCount }}{{ end }} replicas, mode: {{ .Values.mode }}
+
+In-cluster endpoint:
+  http://{{ include "stratum-gateway.fullname" . }}.{{ .Release.Namespace }}.svc:{{ .Values.service.port }}/v1/chat/completions
+
+Check that every replica is ready (readiness never depends on the control plane):
+  kubectl -n {{ .Release.Namespace }} get pods -l app.kubernetes.io/instance={{ .Release.Name }}
+
+Metrics: {{ if .Values.metrics.enabled }}service {{ include "stratum-gateway.fullname" . }}-metrics, port {{ .Values.metrics.port }}, path /metrics{{ else }}disabled{{ end }}
+Alert on stratum_snapshot_age_seconds: a growing value means the gateway cannot reach the control plane.

@@ -1,0 +1,18 @@
+{{- if .Values.metrics.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "stratum-gateway.fullname" . }}-metrics
+  labels:
+    {{- include "stratum-gateway.labels" . | nindent 4 }}
+    app.kubernetes.io/component: metrics
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "stratum-gateway.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: metrics
+      port: {{ .Values.metrics.port }}
+      targetPort: admin
+      protocol: TCP
+{{- end }}

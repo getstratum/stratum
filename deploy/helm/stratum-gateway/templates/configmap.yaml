@@ -1,0 +1,11 @@
+{{- if and (eq .Values.mode "static") .Values.static.config (not .Values.static.existingConfigMap) }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "stratum-gateway.configMapName" . }}
+  labels:
+    {{- include "stratum-gateway.labels" . | nindent 4 }}
+data:
+  stratum.json: |
+    {{- .Values.static.config | nindent 4 }}
+{{- end }}

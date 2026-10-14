@@ -1,0 +1,12 @@
+mode: static
+autoscaling:
+  enabled: false
+replicaCount: 3
+topologySpread:
+  zoneWhenUnsatisfiable: ScheduleAnyway
+static:
+  config: |
+    {"current_version": 1, "policies": [], "api_keys": [], "provider_configs": []}
+extraEnvFrom:
+  - secretRef:
+      name: provider-keys

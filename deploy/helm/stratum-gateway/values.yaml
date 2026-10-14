@@ -1,0 +1,123 @@
+# Stratum gateway — values for a highly available deployment.
+#
+# Defaults follow docs/architecture/overview.md: at least three replicas
+# spread across zones, a PodDisruptionBudget, rolling updates that never
+# reduce capacity, and a termination grace period long enough for streamed
+# completions to finish.
+
+replicaCount: 3
+
+image:
+  repository: ghcr.io/getstratum/stratum-gateway
+  # Defaults to the chart's appVersion.
+  tag: ""
+  # Prefer pinning by digest in production: sha256:...
+  digest: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+# Where the gateway gets its configuration: "controlPlane" or "static".
+mode: controlPlane
+
+controlPlane:
+  # https URL of the Stratum control plane.
+  url: ""
+  # Plain http is refused unless this is true (development only).
+  allowHTTP: false
+  syncInterval: 30s
+  fullResyncInterval: 10m
+
+static:
+  # Standalone mode: the sync-format JSON configuration, inline.
+  # Provider keys can reference environment variables ("env:OPENAI_API_KEY")
+  # supplied through extraEnvFrom.
+  config: ""
+  # Or use an existing ConfigMap with a "stratum.json" key.
+  existingConfigMap: ""
+
+# Secret with the gateway's credentials. Create it yourself (or with your
+# secret manager) and reference it here; the chart never renders secrets.
+#   STRATUM_SYNC_TOKEN    (control plane mode)
+#   STRATUM_INSTANCE_ID   (control plane mode)
+#   STRATUM_SNAPSHOT_KEY  64 hex chars, enables the encrypted on-disk snapshot
+existingSecret: ""
+
+snapshot:
+  # Directory for the encrypted snapshot. With an emptyDir, a pod that is
+  # rescheduled while the control plane is unreachable starts without
+  # configuration and stays unready until the control plane returns; pods
+  # that keep running are unaffected.
+  sizeLimit: 64Mi
+
+gateway:
+  maxInflight: 1024
+  maxRequestBytes: 10485760
+  upstreamHeaderTimeout: 120s
+  streamIdleTimeout: 60s
+  piiEnabled: true
+  corsAllowedOrigins: ""
+  logLevel: info
+
+# Graceful shutdown. Readiness fails first, the load balancer stops routing,
+# then in-flight requests (including long streams) get up to
+# shutdownTimeoutSeconds to finish. The pod's termination grace period is
+# derived from these values.
+lifecycle:
+  drainDelaySeconds: 10
+  shutdownTimeoutSeconds: 600
+
+extraEnv: []
+extraEnvFrom: []
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 128Mi
+  limits:
+    memory: 256Mi
+
+service:
+  type: ClusterIP
+  port: 80
+  annotations: {}
+
+metrics:
+  # Separate ClusterIP service for /metrics on the admin port.
+  enabled: true
+  port: 9090
+  serviceMonitor:
+    # Requires the Prometheus Operator CRDs.
+    enabled: false
+    interval: 30s
+    labels: {}
+
+podDisruptionBudget:
+  enabled: true
+  maxUnavailable: 1
+
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 12
+  targetCPUUtilizationPercentage: 60
+
+# Spread replicas across zones and nodes. With "DoNotSchedule" a replica
+# stays pending rather than landing in a zone that already has one too many;
+# use "ScheduleAnyway" on single-zone clusters.
+topologySpread:
+  enabled: true
+  zoneWhenUnsatisfiable: DoNotSchedule
+  hostWhenUnsatisfiable: ScheduleAnyway
+
+podAnnotations: {}
+podLabels: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}
+priorityClassName: ""
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
