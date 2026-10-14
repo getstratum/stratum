@@ -143,6 +143,46 @@ jobs:
                   -kubernetes-version 1.29.0 -skip ServiceMonitor
           done
 
+  gcp-kit:
+    name: GCP reference deployment
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - name: terraform fmt and validate
+        working-directory: deploy/gcp/terraform
+        run: |
+          terraform fmt -check -recursive
+          terraform init -backend=false -input=false
+          terraform validate
+      - name: shellcheck
+        run: shellcheck -x -S warning deploy/gcp/scripts/*.sh
+      - name: mock provider builds
+        working-directory: deploy/gcp/mock-llm
+        run: go vet ./... && go build ./...
+      - name: render and validate manifests (core and GKE CRDs)
+        run: |
+          go install github.com/yannh/kubeconform/cmd/kubeconform@v0.6.7
+          export NAMESPACE=stratum HOST=203-0-113-10.sslip.io CERT_MAP=m EDGE_IP_NAME=ip SSL_POLICY=tls \
+            ARMOR_API=a ARMOR_CONSOLE=c ARMOR_SYNC=s CP_IMAGE=r/cp@sha256:0 MOCK_IMAGE=r/m@sha256:0 \
+            PROXY_IMAGE=p:1 PSQL_IMAGE=postgres:16-alpine K6_IMAGE=grafana/k6:1.0.0 SQL_CONNECTION_NAME=p:r:i \
+            SQL_DATABASE=stratum JOB_NAME=j SQL_COMMAND='["true"]' SQL_CONFIGMAP=c RATE=1 DURATION=1m \
+            MAX_ERROR_RATE=0 VALKEY_IP=10.0.0.1
+          mkdir -p /tmp/rendered
+          for f in deploy/gcp/k8s/*.yaml; do envsubst < "$f" > "/tmp/rendered/$(basename "$f")"; done
+          ! grep -n '${' /tmp/rendered/*.yaml
+          "$(go env GOPATH)/bin/kubeconform" -strict -summary -kubernetes-version 1.33.0 \
+            -schema-location default \
+            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+            /tmp/rendered/*.yaml
+
   pr-title:
     name: conventional PR title
     if: github.event_name == 'pull_request'

@@ -64,9 +64,12 @@ func NewHTTPServer(addr string, h http.Handler, log *slog.Logger) *http.Server {
 		Handler:           h,
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       60 * time.Second,
-		IdleTimeout:       120 * time.Second,
-		MaxHeaderBytes:    64 << 10,
-		ErrorLog:          slog.NewLogLogger(log.Handler(), slog.LevelWarn),
+		// Longer than the keep-alive of cloud load balancers (600 s on
+		// Google's, 350 s on AWS NLB): if the backend closed idle
+		// connections first, a request racing the close would get a 502.
+		IdleTimeout:    620 * time.Second,
+		MaxHeaderBytes: 64 << 10,
+		ErrorLog:       slog.NewLogLogger(log.Handler(), slog.LevelWarn),
 	}
 }
 

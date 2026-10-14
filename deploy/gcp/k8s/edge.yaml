@@ -1,0 +1,242 @@
+# Global external Application Load Balancer, declared with the Gateway API.
+# Rendered by scripts/deploy.sh (envsubst). One hostname:
+#   /v1/*, /proxy/*, /readyz      -> gateway (data plane)
+#   /api/internal/sync            -> control plane, sync endpoint (gateway egress IPs only)
+#   everything else               -> control plane console (operator IPs only)
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: stratum-edge
+  namespace: ${NAMESPACE}
+  annotations:
+    networking.gke.io/certmap: ${CERT_MAP}
+spec:
+  gatewayClassName: gke-l7-global-external-managed
+  addresses:
+    - type: NamedAddress
+      value: ${EDGE_IP_NAME}
+  listeners:
+    - name: https
+      protocol: HTTPS
+      port: 443
+      allowedRoutes:
+        namespaces:
+          from: Same
+    - name: http
+      protocol: HTTP
+      port: 80
+      allowedRoutes:
+        namespaces:
+          from: Same
+---
+apiVersion: networking.gke.io/v1
+kind: GCPGatewayPolicy
+metadata:
+  name: stratum-edge
+  namespace: ${NAMESPACE}
+spec:
+  default:
+    sslPolicy: ${SSL_POLICY}
+  targetRef:
+    group: gateway.networking.k8s.io
+    kind: Gateway
+    name: stratum-edge
+---
+# Plain HTTP only redirects.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: https-redirect
+  namespace: ${NAMESPACE}
+spec:
+  parentRefs:
+    - name: stratum-edge
+      sectionName: http
+  rules:
+    - filters:
+        - type: RequestRedirect
+          requestRedirect:
+            scheme: https
+            statusCode: 301
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: gateway
+  namespace: ${NAMESPACE}
+spec:
+  parentRefs:
+    - name: stratum-edge
+      sectionName: https
+  hostnames:
+    - ${HOST}
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /v1/
+        - path:
+            type: PathPrefix
+            value: /proxy/
+        - path:
+            type: Exact
+            value: /readyz
+      backendRefs:
+        - name: stratum-gateway
+          port: 80
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: control-plane
+  namespace: ${NAMESPACE}
+spec:
+  parentRefs:
+    - name: stratum-edge
+      sectionName: https
+  hostnames:
+    - ${HOST}
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /api/internal/sync
+      backendRefs:
+        - name: stratum-cp-sync
+          port: 80
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: stratum-cp-console
+          port: 80
+---
+# ── Backend policies (one GCPBackendPolicy per Service) ─────────────────────
+#
+# Gateway: a streamed completion can run for minutes, so the backend timeout
+# (which on this load balancer bounds the whole response) is above the
+# gateway's own STRATUM_SHUTDOWN_TIMEOUT, and connection draining lets
+# in-flight streams finish when a pod leaves.
+apiVersion: networking.gke.io/v1
+kind: GCPBackendPolicy
+metadata:
+  name: stratum-gateway
+  namespace: ${NAMESPACE}
+spec:
+  default:
+    timeoutSec: 900
+    securityPolicy: ${ARMOR_API}
+    connectionDraining:
+      drainingTimeoutSec: 600
+    logging:
+      enabled: true
+      sampleRate: 1000000
+  targetRef:
+    group: ""
+    kind: Service
+    name: stratum-gateway
+---
+# The load balancer's own health check, separate from kubelet probes. Fast
+# enough that a draining pod (readyz 503) leaves rotation well inside the
+# gateway's drain delay (30 s, see helm/values-gcp.yaml).
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: stratum-gateway
+  namespace: ${NAMESPACE}
+spec:
+  default:
+    checkIntervalSec: 5
+    timeoutSec: 3
+    healthyThreshold: 2
+    unhealthyThreshold: 2
+    config:
+      type: HTTP
+      httpHealthCheck:
+        port: 20128
+        requestPath: /readyz
+  targetRef:
+    group: ""
+    kind: Service
+    name: stratum-gateway
+---
+apiVersion: networking.gke.io/v1
+kind: GCPBackendPolicy
+metadata:
+  name: stratum-cp-console
+  namespace: ${NAMESPACE}
+spec:
+  default:
+    timeoutSec: 60
+    securityPolicy: ${ARMOR_CONSOLE}
+    connectionDraining:
+      drainingTimeoutSec: 30
+    logging:
+      enabled: true
+      sampleRate: 1000000
+  targetRef:
+    group: ""
+    kind: Service
+    name: stratum-cp-console
+---
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: stratum-cp-console
+  namespace: ${NAMESPACE}
+spec:
+  default:
+    checkIntervalSec: 5
+    timeoutSec: 3
+    healthyThreshold: 2
+    unhealthyThreshold: 2
+    config:
+      type: HTTP
+      httpHealthCheck:
+        port: 3000
+        requestPath: /api/healthz
+  targetRef:
+    group: ""
+    kind: Service
+    name: stratum-cp-console
+---
+apiVersion: networking.gke.io/v1
+kind: GCPBackendPolicy
+metadata:
+  name: stratum-cp-sync
+  namespace: ${NAMESPACE}
+spec:
+  default:
+    timeoutSec: 60
+    securityPolicy: ${ARMOR_SYNC}
+    connectionDraining:
+      drainingTimeoutSec: 30
+    logging:
+      enabled: true
+      sampleRate: 1000000
+  targetRef:
+    group: ""
+    kind: Service
+    name: stratum-cp-sync
+---
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: stratum-cp-sync
+  namespace: ${NAMESPACE}
+spec:
+  default:
+    checkIntervalSec: 5
+    timeoutSec: 3
+    healthyThreshold: 2
+    unhealthyThreshold: 2
+    config:
+      type: HTTP
+      httpHealthCheck:
+        port: 3000
+        requestPath: /api/healthz
+  targetRef:
+    group: ""
+    kind: Service
+    name: stratum-cp-sync

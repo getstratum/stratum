@@ -1,0 +1,15 @@
+# Copy to terraform.tfvars (scripts/up.sh does it for you on the first run).
+
+project_id = "stratum-test-xxxx"
+region     = "us-central1"
+env        = "test"
+suffix     = "abc123" # scripts/up.sh generates one
+
+# Your workstation's public IP (curl -s ifconfig.me), as /32.
+console_allowed_cidrs = ["203.0.113.10/32"]
+
+# Optional
+# domain          = "gw.example.com"   # then point an A record at the edge_ip output
+# alert_email     = "oncall@example.com"
+# billing_account = "XXXXXX-XXXXXX-XXXXXX"
+# budget_amount_usd = 30

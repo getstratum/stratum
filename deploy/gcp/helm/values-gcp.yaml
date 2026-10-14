@@ -1,0 +1,49 @@
+# Gateway chart values for the GCP reference deployment (GKE Autopilot,
+# global external Application Load Balancer through the Gateway API).
+# scripts/deploy.sh adds: image, controlPlane.url, quota.valkey.url.
+
+existingSecret: stratum-gateway # STRATUM_SYNC_TOKEN, STRATUM_INSTANCE_ID, STRATUM_SNAPSHOT_KEY
+
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 12
+  targetCPUUtilizationPercentage: 60
+
+# Autopilot bills requests and enforces a 250m / 512Mi minimum per pod.
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+  limits:
+    memory: 512Mi
+
+# When a pod starts draining, its endpoint has to leave the load balancer's
+# network endpoint group, and that has to reach every Google front end,
+# before the gateway stops accepting connections. 45 s covers the readiness
+# probe, NEG detachment, propagation and the LB health check (5 s x 2).
+# In-flight streams then get up to 10 minutes, matched by the backend's
+# connection draining (k8s/edge.yaml).
+lifecycle:
+  drainDelaySeconds: 45
+  shutdownTimeoutSeconds: 600
+
+quota:
+  syncInterval: 1s
+  staleAfter: 30s
+  failMode: open
+
+gateway:
+  logLevel: info
+
+topologySpread:
+  enabled: true
+  zoneWhenUnsatisfiable: DoNotSchedule
+  hostWhenUnsatisfiable: ScheduleAnyway
+
+# Prometheus scraping is done by Managed Service for Prometheus
+# (k8s/monitoring.yaml), not by a ServiceMonitor.
+metrics:
+  enabled: true
+  serviceMonitor:
+    enabled: false

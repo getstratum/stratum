@@ -1,0 +1,15 @@
+# Google Cloud Managed Service for Prometheus scrapes the gateway's admin
+# port. Alert rules live in Cloud Monitoring (terraform/monitoring.tf).
+apiVersion: monitoring.googleapis.com/v1
+kind: PodMonitoring
+metadata:
+  name: stratum-gateway
+  namespace: ${NAMESPACE}
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: stratum-gateway
+  endpoints:
+    - port: admin
+      path: /metrics
+      interval: 30s

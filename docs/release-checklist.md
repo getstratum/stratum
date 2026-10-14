@@ -31,7 +31,8 @@ Tracks what is done and what still blocks the first public release.
 
 - [x] Helm chart for the gateway: 3+ replicas, zone spread, PDB, HPA, zero-loss rollouts,
       graceful drain, hardened pod security; linted and schema-validated in CI, published as OCI
-- [ ] Helm chart for the control plane (stateless replicas, external PostgreSQL)
+- [ ] Helm chart for the control plane (stateless replicas, external PostgreSQL); plain manifests in deploy/gcp/k8s for now
+- [ ] GCP reference deployment (deploy/gcp): Terraform, Autopilot, global LB + Cloud Armor, Cloud SQL HA, Memorystore, failure tests. Statically validated; first real run pending
 - [ ] Load test in CI: rolling deploy under constant load with zero errors, streams included
 - [ ] SLO burn-rate alert rules (PrometheusRule) shipped with the chart
 
