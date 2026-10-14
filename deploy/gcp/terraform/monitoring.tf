@@ -63,8 +63,11 @@ locals {
   }
 }
 
+# Cloud Monitoring rejects a PromQL alert whose metric has never been
+# written, so on a fresh project these can only be created after
+# 'make deploy' has the gateway exporting metrics (var.metric_alerts).
 resource "google_monitoring_alert_policy" "stratum" {
-  for_each = local.alerts
+  for_each = { for k, v in local.alerts : k => v if var.metric_alerts }
 
   display_name          = each.value.display
   combiner              = "OR"

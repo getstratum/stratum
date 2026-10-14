@@ -79,7 +79,9 @@ quota:
 # Graceful shutdown. Readiness fails first, the load balancer stops routing,
 # then in-flight requests (including long streams) get up to
 # shutdownTimeoutSeconds to finish. The pod's termination grace period is
-# derived from these values.
+# derived from these values (drain + shutdown + 30 s). Some platforms cap it:
+# GKE Autopilot allows at most 600 s, so keep drain + shutdown <= 570 there
+# (deploy/gcp uses 45 + 520).
 lifecycle:
   drainDelaySeconds: 10
   shutdownTimeoutSeconds: 600

@@ -8,7 +8,8 @@
 # region, domain, alert e-mail or budget before running again.
 # shellcheck source-path=SCRIPTDIR source=lib.sh
 source "$(dirname "$0")/lib.sh"
-require gcloud "$TF" jq openssl
+require gcloud jq openssl
+require_terraform
 
 TFVARS="$TF_DIR/terraform.tfvars"
 
@@ -32,6 +33,7 @@ suffix                = "$suffix"
 console_allowed_cidrs = ["$cidr"]
 # domain            = ""     # empty = <edge-ip>.sslip.io
 # alert_email       = ""
+# metric_alerts     = false  # set true and re-run 'make up' after 'make deploy'
 # billing_account   = ""     # XXXXXX-XXXXXX-XXXXXX, enables a budget alert
 # budget_amount_usd = 30
 EOF
@@ -75,3 +77,7 @@ cat <<EOF
   egress IP    $EGRESS_IP
   next step    make deploy
 EOF
+if ! grep -q '^metric_alerts *= *true' "$TFVARS"; then
+  echo "  SLO alerts are off until the gateway exports metrics: after 'make deploy',"
+  echo "  set metric_alerts = true in terraform/terraform.tfvars and run 'make up' again."
+fi

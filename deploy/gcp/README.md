@@ -85,9 +85,26 @@ tiers at this volume. Cheaper still (but without the failover tests):
 
 ## Run it
 
-Use **Cloud Shell** (it already has `gcloud`, `terraform`, `kubectl`, `helm`,
-`jq`, `envsubst` and is authenticated). A **dedicated project** is strongly
+Use **Cloud Shell** (it already has `gcloud`, `kubectl`, `helm`, `jq`,
+`envsubst` and is authenticated). A **dedicated project** is strongly
 recommended: deleting it guarantees nothing is left billing.
+
+### Before you start: Terraform
+
+Cloud Shell no longer ships Terraform. Its `terraform` command is a
+placeholder that prints install instructions and exits with success, so the
+scripts check `terraform version` and stop if it is not real. Install it once
+(the home directory persists between sessions):
+
+```sh
+TF_VERSION=1.16.6
+curl -sSLo /tmp/tf.zip "https://releases.hashicorp.com/terraform/${TF_VERSION}/terraform_${TF_VERSION}_linux_amd64.zip"
+mkdir -p ~/bin && unzip -o /tmp/tf.zip terraform -d ~/bin && rm /tmp/tf.zip
+export PATH="$HOME/bin:$PATH"   # new Cloud Shell sessions add ~/bin by themselves
+terraform version               # must print "Terraform v1.x", not install steps
+```
+
+OpenTofu works too: `TF=tofu make up`.
 
 ```sh
 # Once: a project with billing
@@ -100,6 +117,12 @@ git clone https://github.com/getstratum/stratum && cd stratum/deploy/gcp
 # On your laptop, not in Cloud Shell: curl -s ifconfig.me  -> your IP
 PROJECT_ID=<project> CONSOLE_CIDR=<your-ip>/32 make up
 make deploy                 # OPENAI_API_KEY=... make deploy  also registers a real provider
+
+# SLO alerts: Cloud Monitoring rejects a PromQL alert on a metric that has
+# never been written, so they are created only now that the gateway exports
+# metrics. Set metric_alerts = true in terraform/terraform.tfvars, then:
+make up                     # about a minute
+
 make test                   # or make test-smoke, test-quota, test-rollout, ...
 make keys                   # API keys and console login
 make down
@@ -107,7 +130,7 @@ make down
 
 ## Test plan
 
-| Scenario | What happens | Pass criterion |
+| Scenario | What happens | Pass criterion (failures caused by Stratum; see below) |
 |---|---|---|
 | `smoke` | Unary and streamed completions through the edge; unknown key; published demo key; http→https; console from a non-allowlisted IP | 200 / stream completes / 401 / 401 / 301 / 403 |
 | `quota` | 80 requests with a team limited to 3000 tokens (30 × 100) across all replicas | 28–40 accepted (per-replica counters would accept up to 30 × replicas) |
@@ -121,6 +144,34 @@ make down
 Results are appended to `deploy/gcp/.results/<date>.md`. Load comes from k6
 inside the cluster but goes through the public hostname, so DNS, TLS, the
 load balancer and Cloud Armor are part of every measurement.
+
+### Reading the results
+
+Going through the real edge means some failures are not Stratum's. Every
+failed request is attributed to whoever produced it, and the verdict counts
+only the gateway's:
+
+| Counted as | How it is recognised | Verdict |
+|---|---|---|
+| **Stratum** | The response carries `X-Stratum-Request-Id` (the gateway sets it on everything it answers) and is a 5xx or unexpected status, or a 200 stream that ends without `[DONE]` | Must be within the scenario's limit (0 for most) |
+| **Edge** | An HTTP error without that header: the load balancer or Cloud Armor answered | Reported; flagged above `PATH_MAX_RATE` (0.1%) |
+| **Network** | No HTTP response at all (connection reset, timeout) on the path k6 → Cloud NAT → load balancer; the load balancer never logs these | Same as edge |
+
+When anything fails, the test prints the load balancer's own log of `/v1/`
+errors for that run grouped by `statusDetails` (`response_sent_by_backend`
+means the gateway answered; `retriable_error`, `failed_to_pick_backend` or
+no details mean the load balancer did) and how to list each failure with its
+timestamp: `kubectl -n stratum logs job/k6-<scenario> | grep K6_FAILURE`.
+
+In the first full run (October 2026, about 75,000 requests across
+rollout, zone, Valkey, control plane and database failures) Stratum produced
+0 errors; the load balancer and the NAT path produced 31 between them, the
+largest share (27) during one rolling restart.
+
+That is why end-to-end availability at 99.99% also needs **clients that
+retry** connection errors and 5xx before the first byte. The official OpenAI
+SDKs do by default (two retries with backoff); a custom client should too.
+A stream that already started cannot be retried transparently.
 
 What this cannot test: a real zone outage (Autopilot does not let you cordon
 Google's nodes; the `zone` scenario removes the pods instead) and a regional

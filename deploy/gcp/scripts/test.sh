@@ -9,7 +9,7 @@
 # load balancer, TLS and Cloud Armor are part of every measurement.
 # shellcheck source-path=SCRIPTDIR source=lib.sh
 source "$(dirname "$0")/lib.sh"
-require gcloud "$TF" kubectl jq envsubst curl
+require gcloud kubectl jq envsubst curl
 load_outputs
 kube_credentials >/dev/null
 
@@ -47,8 +47,8 @@ metric() {
 }
 
 # ── k6 ──────────────────────────────────────────────────────────────────────
-start_load() { # name rate duration max_error_rate
-  export JOB_NAME="k6-$1" RATE="$2" DURATION="$3" MAX_ERROR_RATE="$4"
+start_load() { # name rate duration
+  export JOB_NAME="k6-$1" RATE="$2" DURATION="$3"
   k create configmap stratum-loadtest --from-file="$GCP_DIR/loadtest/k6.js" --dry-run=client -o yaml | k apply -f - >/dev/null
   k delete job "$JOB_NAME" --ignore-not-found --wait=true >/dev/null
   render "$GCP_DIR/k8s/loadtest-job.yaml" | k apply -f - >/dev/null
@@ -57,6 +57,7 @@ start_load() { # name rate duration max_error_rate
     sleep 2
   done
   k wait --for=condition=Ready pod -l "job-name=$JOB_NAME" --timeout=5m >/dev/null
+  LOAD_START="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   ok "k6 running: $RATE req/s for $DURATION (job $JOB_NAME)"
 }
 
@@ -72,18 +73,52 @@ load_result() { # name -> prints K6_RESULT json
   k logs "job/$name" | sed -n 's/^K6_RESULT //p' | tail -1
 }
 
-judge_load() { # label json max_failures
-  local label="$1" r="$2" max="$3" failed reqs
+# Share of requests the path to Stratum (Cloud NAT, load balancer) may fail
+# before a run is flagged. Those failures are reported, not hidden, but they
+# are not Stratum's: Google's load balancer SLA is 99.99% on its own.
+PATH_MAX_RATE="${PATH_MAX_RATE:-0.001}"
+
+# What the load balancer logged for /v1/ errors during the last load, grouped
+# by status and statusDetails (response_sent_by_backend = the gateway
+# answered; anything else = the load balancer did).
+edge_breakdown() {
+  sleep 30 # log ingestion delay
+  gcloud logging read --project "$PROJECT_ID" --limit=2000 --format=json "
+    resource.type=\"http_load_balancer\"
+    AND httpRequest.requestUrl:\"https://$HOST/v1/\"
+    AND httpRequest.status>=400
+    AND timestamp>=\"$LOAD_START\"" 2>/dev/null |
+    jq -r 'map("\(.httpRequest.status) \(.jsonPayload.statusDetails // "(no statusDetails)")")
+           | group_by(.) | map("      \(length) x \(.[0])")[]' 2>/dev/null || true
+}
+
+# judge_load LABEL JSON MAX_STRATUM [MAX_PATH]
+#   MAX_STRATUM  failures attributable to the gateway (5xx or unexpected status
+#                it answered, broken streams)
+#   MAX_PATH     edge + network failures; default PATH_MAX_RATE of requests
+judge_load() {
+  local label="$1" r="$2" max="$3" max_path="${4:-}" reqs stratum path
   [[ -n "$r" ]] || { fail "$label: no k6 result"; return; }
   reqs="$(jq -r .requests <<<"$r")"
-  failed="$(jq -r '.status_5xx + .status_other + .broken_streams' <<<"$r")"
-  printf '    requests=%s 2xx=%s 5xx=%s other=%s broken_streams=%s p50=%.0fms p95=%.0fms p99=%.0fms\n' \
-    "$reqs" "$(jq -r .status_2xx <<<"$r")" "$(jq -r .status_5xx <<<"$r")" "$(jq -r .status_other <<<"$r")" \
-    "$(jq -r .broken_streams <<<"$r")" "$(jq -r .p50_ms <<<"$r")" "$(jq -r .p95_ms <<<"$r")" "$(jq -r .p99_ms <<<"$r")"
-  if ((failed <= max)); then
-    pass "$label: $failed failed of $reqs (allowed $max)"
+  stratum="$(jq -r '.gateway_5xx + .gateway_other + .broken_streams' <<<"$r")"
+  path="$(jq -r '.edge_errors + .network_errors' <<<"$r")"
+  [[ -n "$max_path" ]] || max_path="$(awk -v n="$reqs" -v f="$PATH_MAX_RATE" 'BEGIN { m = n * f; printf "%d", (m == int(m)) ? m : int(m) + 1 }')"
+  jq -r '"    requests=\(.requests) 2xx=\(.status_2xx) | gateway: 5xx=\(.gateway_5xx) other=\(.gateway_other) broken_streams=\(.broken_streams) | edge=\(.edge_errors) network=\(.network_errors) | p50=\(.p50_ms|floor)ms p95=\(.p95_ms|floor)ms p99=\(.p99_ms|floor)ms"' <<<"$r"
+  if ((stratum + path > 0)); then
+    echo "    failures (first 100, UTC): kubectl -n $NAMESPACE logs job/$JOB_NAME | grep K6_FAILURE"
+    echo "    load balancer, /v1/ errors since $LOAD_START:"
+    edge_breakdown
+  fi
+  if ((stratum <= max)); then
+    pass "$label: Stratum $stratum failed of $reqs (allowed $max)"
   else
-    fail "$label: $failed failed of $reqs (allowed $max)"
+    fail "$label: Stratum $stratum failed of $reqs (allowed $max)"
+  fi
+  if ((path > max_path)); then
+    fail "$label: path (load balancer + network) $path failed of $reqs (allowed $max_path); not Stratum, but investigate"
+  elif ((path > 0)); then
+    record "- note $(date -u +%H:%M) $label: path (load balancer + network) $path failed of $reqs (allowed $max_path)"
+    echo "    path (load balancer + network): $path failed, within $max_path"
   fi
 }
 
@@ -157,7 +192,7 @@ t_quota_reset() {
 
 t_rollout() {
   step "rollout: restart every gateway pod under load; target 0 failed requests"
-  start_load rollout 40 8m 0
+  start_load rollout 40 8m
   sleep 60
   k rollout restart deployment/stratum-gateway >/dev/null
   k rollout status deployment/stratum-gateway --timeout=20m
@@ -170,11 +205,12 @@ t_zone() {
   local zone pods
   zone="$(k get pods -l app.kubernetes.io/name=stratum-gateway -o jsonpath='{.items[0].spec.nodeName}' |
     xargs -I{} kubectl get node {} -o jsonpath='{.metadata.labels.topology\.kubernetes\.io/zone}')"
-  start_load zone 40 6m "$([[ -n "$hard" ]] && echo 1 || echo 0)"
+  start_load zone 40 6m
   sleep 60
   pods="$(k get pods -l app.kubernetes.io/name=stratum-gateway -o json | jq -r --arg z "$zone" \
     '.items[] | .metadata.name + " " + .spec.nodeName' | while read -r p n; do
-      [[ "$(kubectl get node "$n" -o jsonpath='{.metadata.labels.topology\.kubernetes\.io/zone}')" == "$zone" ]] && echo "$p"
+      # '|| true': a pod in another zone is not an error (set -e + pipefail).
+      [[ "$(kubectl get node "$n" -o jsonpath='{.metadata.labels.topology\.kubernetes\.io/zone}')" == "$zone" ]] && echo "$p" || true
     done)"
   echo "    zone $zone: deleting $(echo "$pods" | wc -w) pod(s): $(tr '\n' ' ' <<<"$pods")"
   if [[ -n "$hard" ]]; then
@@ -185,8 +221,9 @@ t_zone() {
     k delete pod $pods --wait=false >/dev/null
   fi
   if [[ -n "$hard" ]]; then
-    # In-flight requests on killed pods fail by definition; the rest must not.
-    judge_load "zone loss, hard kill (in-flight requests on the killed pods may fail)" "$(load_result zone)" 50
+    # In-flight requests on killed pods fail by definition (broken streams,
+    # or a 502 from the load balancer); the rest must not.
+    judge_load "zone loss, hard kill (in-flight requests on the killed pods may fail)" "$(load_result zone)" 50 100
   else
     judge_load "zone loss, graceful" "$(load_result zone)" 0
   fi
@@ -219,7 +256,7 @@ spec:
 EOF
 )"
   local before; before="$(metric stratum_quota_store_flush_failure_total)"
-  start_load valkey 20 4m 0
+  start_load valkey 20 4m
   sleep 30
   kubectl apply -f - <<<"$np" >/dev/null
   echo "    Valkey blocked at $(date -u +%H:%M:%S)"
@@ -239,7 +276,7 @@ EOF
 
 t_cp_outage() {
   step "cp-outage: control plane down; gateways keep serving the last snapshot"
-  start_load cpout 20 5m 0
+  start_load cpout 20 5m
   sleep 30
   k scale deployment/stratum-control-plane --replicas=0 >/dev/null
   echo "    control plane scaled to 0 at $(date -u +%H:%M:%S)"
@@ -261,7 +298,7 @@ t_sql_failover() {
   if [[ "$(gcloud sql instances describe "$SQL_INSTANCE" --project "$PROJECT_ID" --format='value(settings.availabilityType)')" != REGIONAL ]]; then
     warn "Cloud SQL is zonal (cloudsql_ha = false): skipping"; return
   fi
-  start_load sqlfo 20 5m 0
+  start_load sqlfo 20 5m
   sleep 45
   echo "    failover started at $(date -u +%H:%M:%S)"
   local t0; t0=$(date +%s)

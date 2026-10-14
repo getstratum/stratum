@@ -120,6 +120,10 @@ per team in Valkey (or Redis 6.2+):
 - Overspend is bounded by roughly one flush interval of traffic per replica.
 - If Valkey is unreachable, requests keep flowing and each replica keeps
   counting locally; the backlog is written once Valkey returns, exactly once.
+  During the outage a replica does not see the others' new usage, so a team
+  can go over its quota by up to what the other replicas serve it meanwhile.
+  If a quota is a hard billing limit, set `STRATUM_QUOTA_FAIL_MODE=closed`:
+  that team's requests get 503 while Valkey is down instead.
 - Run Valkey with persistence (AOF) or a replica. A Valkey that restarts
   empty resets the month's counters; the gateway reports it as
   `stratum_quota_store_regressions_total`.

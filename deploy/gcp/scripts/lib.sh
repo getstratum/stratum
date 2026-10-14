@@ -27,9 +27,23 @@ require() {
   ((${#missing[@]} == 0)) || die "missing tools: ${missing[*]} (Cloud Shell has all of them)"
 }
 
+# Cloud Shell no longer ships Terraform: `terraform` there is a placeholder
+# that prints install instructions and exits 0, so checking that the command
+# exists is not enough. Ask for the version as JSON instead (OpenTofu
+# answers the same way, so TF=tofu works too).
+TF_MIN_VERSION=1.6.0
+require_terraform() {
+  local v
+  v="$("$TF" version -json 2>/dev/null | jq -r '.terraform_version // empty' 2>/dev/null || true)"
+  [[ -n "$v" ]] || die "'$TF' is not a working Terraform. Install Terraform >= $TF_MIN_VERSION (README: \"Before you start\") or run with TF=tofu."
+  printf '%s\n%s\n' "$TF_MIN_VERSION" "$v" | sort -V -C ||
+    die "Terraform $v is too old; this kit needs >= $TF_MIN_VERSION"
+}
+
 # Reads every Terraform output into an upper-case shell variable
 # (host -> HOST, sql_connection_name -> SQL_CONNECTION_NAME, ...).
 load_outputs() {
+  require_terraform
   [[ -f "$TF_DIR/terraform.tfstate" || -d "$TF_DIR/.terraform" ]] || die "no Terraform state: run 'make up' first"
   local json
   json="$("$TF" -chdir="$TF_DIR" output -json)" || die "cannot read Terraform outputs"
@@ -50,7 +64,7 @@ kube_credentials() {
 k() { kubectl -n "$NAMESPACE" "$@"; }
 
 # render FILE: substitutes only ${VARS} listed here, so other "$" survive.
-RENDER_VARS='${NAMESPACE} ${HOST} ${CERT_MAP} ${EDGE_IP_NAME} ${SSL_POLICY} ${ARMOR_API} ${ARMOR_CONSOLE} ${ARMOR_SYNC} ${CP_IMAGE} ${MOCK_IMAGE} ${PROXY_IMAGE} ${PSQL_IMAGE} ${K6_IMAGE} ${SQL_CONNECTION_NAME} ${SQL_DATABASE} ${JOB_NAME} ${SQL_COMMAND} ${SQL_CONFIGMAP} ${RATE} ${DURATION} ${MAX_ERROR_RATE} ${VALKEY_IP}'
+RENDER_VARS='${NAMESPACE} ${HOST} ${CERT_MAP} ${EDGE_IP_NAME} ${SSL_POLICY} ${ARMOR_API} ${ARMOR_CONSOLE} ${ARMOR_SYNC} ${CP_IMAGE} ${MOCK_IMAGE} ${PROXY_IMAGE} ${PSQL_IMAGE} ${K6_IMAGE} ${SQL_CONNECTION_NAME} ${SQL_DATABASE} ${JOB_NAME} ${SQL_COMMAND} ${SQL_CONFIGMAP} ${RATE} ${DURATION} ${VALKEY_IP}'
 render() {
   export CERT_MAP="${CERTIFICATE_MAP:-}" ARMOR_API="${ARMOR_API_POLICY:-}" \
     ARMOR_CONSOLE="${ARMOR_CONSOLE_POLICY:-}" ARMOR_SYNC="${ARMOR_SYNC_POLICY:-}" \
