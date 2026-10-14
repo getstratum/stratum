@@ -1,0 +1,6 @@
+controlPlane:
+  url: https://cp.example.com
+existingSecret: stratum-gateway
+metrics:
+  serviceMonitor:
+    enabled: true

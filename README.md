@@ -60,6 +60,17 @@ make up                                              # PostgreSQL + control plan
 Then follow the comments in `deploy/compose/docker-compose.yml` to register a
 gateway and start it.
 
+## Quick start: Kubernetes (highly available)
+
+```sh
+helm install stratum oci://ghcr.io/getstratum/charts/stratum-gateway -n stratum \
+  --set controlPlane.url=https://stratum-cp.example.com \
+  --set existingSecret=stratum-gateway
+```
+
+Three replicas across zones, a disruption budget, zero-capacity-loss rollouts
+and graceful drain of streams by default. See [deploy/helm](deploy/helm/README.md).
+
 ## Calling the gateway
 
 | Route | Use |
@@ -95,7 +106,7 @@ Developers authenticate with `Authorization: Bearer <key>` or `x-api-key: <key>`
 gateway/        Go data plane (standard library only)
 control-plane/  Next.js control plane and SQL migrations
 api/            sync contract between the planes (JSON Schema + examples)
-deploy/         Docker Compose and standalone examples
+deploy/         Helm chart, Docker Compose and standalone examples
 docs/           architecture and decision records (docs/adr)
 ```
 

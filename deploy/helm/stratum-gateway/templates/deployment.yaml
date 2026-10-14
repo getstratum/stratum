@@ -1,0 +1,191 @@
+{{- include "stratum-gateway.validate" . -}}
+{{- $grace := add .Values.lifecycle.drainDelaySeconds .Values.lifecycle.shutdownTimeoutSeconds 30 -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "stratum-gateway.fullname" . }}
+  labels:
+    {{- include "stratum-gateway.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      {{- include "stratum-gateway.selectorLabels" . | nindent 6 }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      # Never drop below the current capacity during a rollout.
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        {{- include "stratum-gateway.selectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      annotations:
+        {{- if and (eq .Values.mode "static") .Values.static.config }}
+        checksum/config: {{ .Values.static.config | sha256sum }}
+        {{- end }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "stratum-gateway.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: {{ $grace }}
+      {{- with .Values.priorityClassName }}
+      priorityClassName: {{ . }}
+      {{- end }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      {{- if .Values.topologySpread.enabled }}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: {{ .Values.topologySpread.zoneWhenUnsatisfiable }}
+          labelSelector:
+            matchLabels:
+              {{- include "stratum-gateway.selectorLabels" . | nindent 14 }}
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: {{ .Values.topologySpread.hostWhenUnsatisfiable }}
+          labelSelector:
+            matchLabels:
+              {{- include "stratum-gateway.selectorLabels" . | nindent 14 }}
+      {{- end }}
+      containers:
+        - name: gateway
+          image: {{ include "stratum-gateway.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 20128
+              protocol: TCP
+            - name: admin
+              containerPort: 9090
+              protocol: TCP
+          env:
+            - name: STRATUM_LISTEN_ADDR
+              value: ":20128"
+            - name: STRATUM_ADMIN_ADDR
+              value: ":9090"
+            - name: STRATUM_SNAPSHOT_PATH
+              value: /var/lib/stratum/snapshot.bin
+            - name: STRATUM_MAX_INFLIGHT
+              value: {{ .Values.gateway.maxInflight | quote }}
+            - name: STRATUM_MAX_REQUEST_BYTES
+              value: {{ .Values.gateway.maxRequestBytes | int64 | quote }}
+            - name: STRATUM_UPSTREAM_HEADER_TIMEOUT
+              value: {{ .Values.gateway.upstreamHeaderTimeout | quote }}
+            - name: STRATUM_STREAM_IDLE_TIMEOUT
+              value: {{ .Values.gateway.streamIdleTimeout | quote }}
+            - name: STRATUM_PII_ENABLED
+              value: {{ .Values.gateway.piiEnabled | quote }}
+            - name: STRATUM_LOG_LEVEL
+              value: {{ .Values.gateway.logLevel | quote }}
+            - name: STRATUM_DRAIN_DELAY
+              value: "{{ .Values.lifecycle.drainDelaySeconds }}s"
+            - name: STRATUM_SHUTDOWN_TIMEOUT
+              value: "{{ .Values.lifecycle.shutdownTimeoutSeconds }}s"
+            {{- with .Values.gateway.corsAllowedOrigins }}
+            - name: STRATUM_CORS_ALLOWED_ORIGINS
+              value: {{ . | quote }}
+            {{- end }}
+            {{- if eq .Values.mode "controlPlane" }}
+            - name: STRATUM_CP_URL
+              value: {{ .Values.controlPlane.url | quote }}
+            - name: STRATUM_CP_ALLOW_HTTP
+              value: {{ .Values.controlPlane.allowHTTP | quote }}
+            - name: STRATUM_SYNC_INTERVAL
+              value: {{ .Values.controlPlane.syncInterval | quote }}
+            - name: STRATUM_FULL_RESYNC_INTERVAL
+              value: {{ .Values.controlPlane.fullResyncInterval | quote }}
+            {{- else }}
+            - name: STRATUM_CONFIG_FILE
+              value: /etc/stratum/stratum.json
+            {{- end }}
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- if or .Values.existingSecret .Values.extraEnvFrom }}
+          envFrom:
+            {{- if .Values.existingSecret }}
+            - secretRef:
+                name: {{ .Values.existingSecret }}
+            {{- end }}
+            {{- with .Values.extraEnvFrom }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- end }}
+          startupProbe:
+            httpGet:
+              path: /livez
+              port: http
+            periodSeconds: 2
+            failureThreshold: 15
+          livenessProbe:
+            httpGet:
+              path: /livez
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          readinessProbe:
+            # Ready = configuration loaded and not draining. Never depends on
+            # the control plane or any other dependency.
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 3
+            timeoutSeconds: 2
+            failureThreshold: 2
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: state
+              mountPath: /var/lib/stratum
+            {{- if eq .Values.mode "static" }}
+            - name: config
+              mountPath: /etc/stratum
+              readOnly: true
+            {{- end }}
+      volumes:
+        - name: state
+          emptyDir:
+            sizeLimit: {{ .Values.snapshot.sizeLimit }}
+        {{- if eq .Values.mode "static" }}
+        - name: config
+          configMap:
+            name: {{ include "stratum-gateway.configMapName" . }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

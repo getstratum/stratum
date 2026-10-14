@@ -1,0 +1,35 @@
+{{- if .Values.autoscaling.enabled }}
+{{- if lt (int .Values.autoscaling.minReplicas) 2 }}
+{{- fail "autoscaling.minReplicas must be at least 2 (3 recommended)" }}
+{{- end }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "stratum-gateway.fullname" . }}
+  labels:
+    {{- include "stratum-gateway.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "stratum-gateway.fullname" . }}
+  minReplicas: {{ .Values.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.autoscaling.targetCPUUtilizationPercentage }}
+  behavior:
+    # Scale up fast, scale down slowly: draining a gateway can take minutes.
+    scaleUp:
+      stabilizationWindowSeconds: 0
+    scaleDown:
+      stabilizationWindowSeconds: 600
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 120
+{{- end }}

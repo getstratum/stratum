@@ -82,5 +82,5 @@ The contract is `api/sync/v2/sync-response.schema.json` (ADR-0003).
   standby.
 - Alerts on SLO burn rate and on `stratum_snapshot_age_seconds`.
 
-Packaging of this topology for the open-source edition is under discussion in
-ADR-0006.
+This topology is part of the open-source edition (ADR-0006). The Helm chart in
+`deploy/helm/stratum-gateway` implements it for the gateway.

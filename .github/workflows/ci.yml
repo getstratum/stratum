@@ -109,6 +109,31 @@ jobs:
           cache-from: type=gha,scope=cp
           cache-to: type=gha,mode=max,scope=cp
 
+  helm:
+    name: helm chart
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: azure/setup-helm@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - name: helm lint
+        run: |
+          for v in deploy/helm/stratum-gateway/ci/*-values.yaml; do
+            helm lint --strict deploy/helm/stratum-gateway -f "$v"
+          done
+      - name: render and validate against Kubernetes schemas
+        run: |
+          go install github.com/yannh/kubeconform/cmd/kubeconform@v0.6.7
+          for v in deploy/helm/stratum-gateway/ci/*-values.yaml; do
+            helm template stratum deploy/helm/stratum-gateway -f "$v" \
+              | "$(go env GOPATH)/bin/kubeconform" -strict -summary \
+                  -kubernetes-version 1.29.0 -skip ServiceMonitor
+          done
+
   pr-title:
     name: conventional PR title
     if: github.event_name == 'pull_request'

@@ -14,7 +14,7 @@ Tracks what is done and what still blocks the first public release.
 - [ ] Pin base images by digest in both Dockerfiles
 - [ ] Enable branch protection on `main` (required checks, signed-off commits, linear history)
 - [ ] Enable GitHub private vulnerability reporting and OpenSSF Scorecard publishing
-- [ ] Decide ADR-0006 (high availability in the open-source edition)
+- [x] Decide ADR-0006: high availability is part of the open-source edition
 
 ## Blocking the public release
 
@@ -26,6 +26,14 @@ Tracks what is done and what still blocks the first public release.
 - [x] Control plane: migrations runner (`control-plane/migrations/migrate.sh`) that
       applies each file once, tracked in `schema_migrations`, under an advisory lock.
 - [ ] Control plane: expand/contract discipline for schema changes (documented in CONTRIBUTING).
+
+## Phase 2 — HA topology (started)
+
+- [x] Helm chart for the gateway: 3+ replicas, zone spread, PDB, HPA, zero-loss rollouts,
+      graceful drain, hardened pod security; linted and schema-validated in CI, published as OCI
+- [ ] Helm chart for the control plane (stateless replicas, external PostgreSQL)
+- [ ] Load test in CI: rolling deploy under constant load with zero errors, streams included
+- [ ] SLO burn-rate alert rules (PrometheusRule) shipped with the chart
 
 ## Phase 1 — static stability (started)
 
