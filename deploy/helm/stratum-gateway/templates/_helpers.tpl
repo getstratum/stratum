@@ -67,6 +67,9 @@ app.kubernetes.io/component: data-plane
 {{- if and .Values.quota.valkey.url (not (regexMatch "^(redis|rediss|valkey|valkeys)://" .Values.quota.valkey.url)) -}}
 {{- fail "quota.valkey.url must start with redis://, rediss://, valkey:// or valkeys://" -}}
 {{- end -}}
+{{- if not (regexMatch "^([0-9]+(\\.[0-9]+)?(ms|s|m|h))+$" (toString .Values.snapshot.bootstrapTimeout)) -}}
+{{- fail "snapshot.bootstrapTimeout must be a duration such as 10s" -}}
+{{- end -}}
 {{- if lt (int .Values.replicaCount) 2 -}}
 {{- fail "replicaCount must be at least 2 for a highly available deployment (3 recommended)" -}}
 {{- end -}}

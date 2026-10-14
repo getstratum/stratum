@@ -10,6 +10,10 @@ Metrics: {{ if .Values.metrics.enabled }}service {{ include "stratum-gateway.ful
 Alert on stratum_snapshot_age_seconds: a growing value means the gateway cannot reach the control plane.
 {{- if .Values.quota.valkey.url }}
 Quotas: shared across replicas through Valkey (fail mode: {{ .Values.quota.failMode }}). Watch stratum_quota_store_age_seconds.
+{{- if and .Values.snapshot.shared (eq .Values.mode "controlPlane") }}
+Snapshot: a copy is kept in Valkey, so pods can start while the control plane is unreachable
+(needs STRATUM_SNAPSHOT_KEY in existingSecret). Check stratum_snapshot_shared_enabled = 1.
+{{- end }}
 {{- else }}
 
 WARNING: quota.valkey.url is not set. Unless STRATUM_VALKEY_URL is in existingSecret,

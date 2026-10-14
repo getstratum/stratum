@@ -203,3 +203,14 @@ func (h *Holder) State() *State {
 func (h *Holder) Store(st *State, snap *Snapshot) {
 	h.cur.Store(&entry{state: st, snap: snap})
 }
+
+// Replace stores st only if the current state is still old (nil = none
+// yet). It reports whether it did. A fallback source uses it so that it can
+// never overwrite a configuration the primary source stored meanwhile.
+func (h *Holder) Replace(old, st *State, snap *Snapshot) bool {
+	cur := h.cur.Load()
+	if (cur == nil && old != nil) || (cur != nil && cur.state != old) {
+		return false
+	}
+	return h.cur.CompareAndSwap(cur, &entry{state: st, snap: snap})
+}

@@ -81,13 +81,20 @@ ingress in front of it and point its health check at `/readyz`. For long
 streamed completions, raise the load balancer's idle/response timeout to at
 least `gateway.upstreamHeaderTimeout` plus `gateway.streamIdleTimeout`.
 
-## Known limitation
+## Starting during a control plane outage
 
-The encrypted snapshot lives in an `emptyDir`. Pods that keep running are
-unaffected by a control plane outage, but a pod rescheduled during one starts
-without configuration and stays unready (and out of the load balancer) until
-the control plane is back. Signed snapshots in object storage, which remove
-this gap, are on the roadmap (ADR-0003).
+Each pod keeps the encrypted snapshot in an `emptyDir`, which survives a
+container restart but not a new pod. With Valkey configured
+(`quota.valkey.url`) and `STRATUM_SNAPSHOT_KEY` in `existingSecret`, the
+gateways also keep the same encrypted snapshot in Valkey (ADR-0008). A pod
+that starts while the control plane is unreachable waits
+`snapshot.bootstrapTimeout` (10 s) for it, then serves the copy from Valkey.
+
+Run Valkey next to the gateways, in the same cluster or network, never on the
+far side of the link to the control plane: the point is that everything the
+gateways need to start lives where they run. Without Valkey (or with
+`snapshot.shared=false`), a pod that starts during an outage stays unready
+until the control plane is back; pods that keep running are unaffected.
 
 ## Single-zone and development clusters
 

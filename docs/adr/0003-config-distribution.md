@@ -1,6 +1,6 @@
 # ADR-0003: Configuration distribution and the sync contract
 
-- **Status:** Accepted (object-storage channel: Proposed)
+- **Status:** Accepted (decision 5 superseded by ADR-0008)
 - **Date:** 2026-10-13
 
 ## Context
@@ -27,9 +27,10 @@ version 41 can commit after one holding 42. A gateway that already asked for
    control plane in lockstep.
 4. **Standalone mode.** The same format, as a file (`STRATUM_CONFIG_FILE`), lets
    the gateway run without any control plane (GitOps).
-5. **Proposed:** the control plane also publishes a signed full snapshot to
-   object storage, so a brand-new gateway can bootstrap during a control plane
-   outage.
+5. **Superseded by ADR-0008:** a brand-new gateway bootstraps during a control
+   plane outage from an encrypted copy of the snapshot that the gateways keep
+   in Valkey, inside the data plane's failure domain, instead of from object
+   storage.
 
 ## Consequences
 

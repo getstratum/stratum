@@ -187,3 +187,45 @@ func TestHolderConcurrentReads(t *testing.T) {
 		}
 	}
 }
+
+func TestSealDetectsTampering(t *testing.T) {
+	key := []byte(strings.Repeat("k", 32))
+	st, _ := (*State)(nil).Apply(&SyncResponse{CurrentVersion: 3}, true)
+	sealed, err := Seal(key, st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := Open(key, sealed)
+	if err != nil || got.Version != 3 {
+		t.Fatalf("open: %v %+v", err, got)
+	}
+	bad := append([]byte(nil), sealed...)
+	bad[len(bad)-1] ^= 1
+	if _, err := Open(key, bad); err == nil {
+		t.Fatal("a modified blob must not open")
+	}
+	if _, err := Open(key, []byte("not a snapshot")); err == nil {
+		t.Fatal("garbage must not open")
+	}
+}
+
+func TestHolderReplace(t *testing.T) {
+	var h Holder
+	a, _ := (*State)(nil).Apply(&SyncResponse{CurrentVersion: 1}, true)
+	b, _ := (*State)(nil).Apply(&SyncResponse{CurrentVersion: 2}, true)
+	c, _ := (*State)(nil).Apply(&SyncResponse{CurrentVersion: 3}, true)
+
+	if h.Replace(a, b, Build(b, time.Time{})) {
+		t.Fatal("replace must fail when the holder does not hold old")
+	}
+	if !h.Replace(nil, a, Build(a, time.Time{})) || h.State() != a {
+		t.Fatal("replace on an empty holder with old=nil must succeed")
+	}
+	if h.Replace(nil, b, Build(b, time.Time{})) {
+		t.Fatal("replace with old=nil must fail once the holder is not empty")
+	}
+	h.Store(c, Build(c, time.Time{})) // the primary source wins meanwhile
+	if h.Replace(a, b, Build(b, time.Time{})) || h.State() != c {
+		t.Fatal("replace must not overwrite what the primary source stored")
+	}
+}

@@ -27,12 +27,16 @@ Two consequences of the arithmetic:
 
 ## Static stability
 
-Nothing except the LLM provider is allowed on the synchronous request path.
+Nothing except the LLM provider is allowed on the synchronous request path,
+and everything a gateway needs to start and to serve lives in the data
+plane's own failure domain (ADR-0008): nothing on those paths depends on the
+control plane or on the network between the customer and the control plane.
 
 | If this fails | The gateway |
 |---|---|
-| Control plane or its database | Keeps serving the last good snapshot, indefinitely (ADR-0005). Staleness is exported as a metric. |
-| Valkey (shared quota store) | Unaffected: Valkey is never on the request path. Replicas keep counting locally and write the backlog when it returns (ADR-0004). |
+| Control plane or its database | Keeps serving the last good snapshot, indefinitely (ADR-0005). Staleness is exported as a metric. A pod that starts meanwhile loads the encrypted copy from Valkey (ADR-0008). |
+| Network between the gateways and the control plane | Same as a control plane outage. |
+| Valkey | Unaffected: Valkey is never on the request path. Replicas keep counting quotas locally and write the backlog when it returns (ADR-0004). New pods start from the control plane as usual. |
 | Telemetry backend | Unaffected. |
 | One replica / one zone | The load balancer removes it via `/readyz`; peers absorb the load. |
 | A deploy | Readiness fails first, then in-flight streams finish before the process exits. |
@@ -66,8 +70,12 @@ control plane ──(GET /api/internal/sync, deltas + periodic full resync)─�
                                                    atomic swap of the snapshot
                                                                      │
                                                                      ▼
-                                     encrypted snapshot on disk (cold start)
+                       encrypted snapshot on disk, and in Valkey (cold start)
 ```
+
+A new pod tries the control plane first. If it has not synced within
+`STRATUM_SNAPSHOT_BOOTSTRAP_TIMEOUT`, it serves the copy in Valkey when that
+copy is newer than its own (ADR-0008).
 
 The contract is `api/sync/v2/sync-response.schema.json` (ADR-0003).
 
@@ -78,8 +86,9 @@ The contract is `api/sync/v2/sync-response.schema.json` (ADR-0003).
 - Capacity planned so two zones carry peak traffic below ~70% utilisation.
 - Rolling deploys with no unavailable replicas, and a termination grace period
   longer than `STRATUM_DRAIN_DELAY + STRATUM_SHUTDOWN_TIMEOUT`.
-- Valkey for shared quota counters, with persistence (AOF) or a replica.
-  Its availability does not affect the request path.
+- Valkey next to the gateways (never across the link to the control plane)
+  for shared quota counters and the snapshot copy, with persistence (AOF) or
+  a replica. Its availability does not affect the request path.
 - Control plane: two or more stateless replicas, PostgreSQL with a synchronous
   standby.
 - Alerts on SLO burn rate and on `stratum_snapshot_age_seconds`.

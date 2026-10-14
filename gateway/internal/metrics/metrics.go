@@ -35,6 +35,12 @@ type Metrics struct {
 	QuotaPendingTokens atomic.Int64 // tokens counted locally, not yet confirmed by the store
 	// Counters that came back lower than last seen: data loss or a manual reset.
 	QuotaStoreRegressions atomic.Int64
+
+	// Shared copy of the snapshot in Valkey (ADR-0008).
+	SnapshotSharedEnabled       atomic.Int64
+	SnapshotSharedWrites        atomic.Int64 // copies the store accepted (newer version)
+	SnapshotSharedWriteFailures atomic.Int64
+	SnapshotSharedBootstraps    atomic.Int64 // starts served from the shared copy
 }
 
 type reqKey struct {
@@ -111,6 +117,13 @@ func (m *Metrics) WriteTo(w io.Writer, now time.Time) {
 			qage = now.Unix() - s
 		}
 		gauge(&b, "stratum_quota_store_age_seconds", "Seconds since the last successful flush to the shared quota store (-1 = never).", qage)
+	}
+
+	gauge(&b, "stratum_snapshot_shared_enabled", "1 if this gateway keeps a copy of its snapshot in Valkey and can start from it (ADR-0008).", m.SnapshotSharedEnabled.Load())
+	if m.SnapshotSharedEnabled.Load() == 1 {
+		counter(&b, "stratum_snapshot_shared_writes_total", "Snapshot versions this gateway stored in Valkey.", m.SnapshotSharedWrites.Load())
+		counter(&b, "stratum_snapshot_shared_write_failures_total", "Failed writes of the snapshot to Valkey.", m.SnapshotSharedWriteFailures.Load())
+		counter(&b, "stratum_snapshot_shared_bootstraps_total", "Starts served from the copy in Valkey because the control plane did not answer in time.", m.SnapshotSharedBootstraps.Load())
 	}
 
 	io.WriteString(w, b.String())
