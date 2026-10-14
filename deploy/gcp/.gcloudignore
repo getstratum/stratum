@@ -1,0 +1,10 @@
+# Source uploaded to Cloud Build: only what the three images need.
+.git
+.github
+**/node_modules
+**/.next
+deploy/gcp/terraform/.terraform
+deploy/gcp/terraform/*.tfstate*
+deploy/gcp/.results
+/docs
+/api

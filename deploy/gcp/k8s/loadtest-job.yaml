@@ -1,0 +1,67 @@
+# k6 load generator inside the cluster, calling the public hostname so the
+# whole edge is exercised. Its traffic leaves through Cloud NAT, whose IP is
+# exempt from the edge rate limit. Rendered by scripts/test.sh.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ${JOB_NAME}
+  namespace: ${NAMESPACE}
+  labels:
+    app.kubernetes.io/name: stratum-loadtest
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 7200
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: stratum-loadtest
+    spec:
+      automountServiceAccountToken: false
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 12345
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: k6
+          image: ${K6_IMAGE}
+          args: ["run", "--quiet", "/scripts/k6.js"]
+          env:
+            - name: TARGET
+              value: https://${HOST}
+            - name: RATE
+              value: "${RATE}"
+            - name: DURATION
+              value: ${DURATION}
+            - name: MAX_ERROR_RATE
+              value: "${MAX_ERROR_RATE}"
+            - name: API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: stratum-test-keys
+                  key: engineering
+          resources:
+            requests:
+              cpu: "1"
+              memory: 1Gi
+            limits:
+              memory: 1Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: scripts
+          configMap:
+            name: stratum-loadtest
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi

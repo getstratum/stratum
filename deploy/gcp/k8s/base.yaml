@@ -1,0 +1,20 @@
+# Namespace with the "restricted" Pod Security Standard enforced: every pod
+# runs as non-root, without privilege escalation or extra capabilities.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ${NAMESPACE}
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/warn: restricted
+---
+# Identity of the control plane and its database jobs. Workload Identity
+# Federation maps it to IAM (roles/cloudsql.client, cloudsql.instanceUser);
+# no key files.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: stratum-control-plane
+  namespace: ${NAMESPACE}
+automountServiceAccountToken: false
