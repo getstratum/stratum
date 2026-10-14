@@ -45,6 +45,6 @@ Tracks what is done and what still blocks the first public release.
 - [x] Shared quota store in Valkey, off the request path, idempotent flushes, local fallback (ADR-0004)
 - [ ] Circuit breaker per provider deployment and failover between equivalent deployments
 - [ ] Retries before the first byte with a retry budget
-- [ ] Signed snapshots in object storage as a second config channel (ADR-0003)
+- [x] A gateway can start during a control plane outage from the encrypted snapshot copy in Valkey (ADR-0008)
 - [ ] Metrics push to the control plane for dashboards and billing
 - [ ] OpenTelemetry traces and metrics with GenAI semantic conventions

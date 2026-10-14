@@ -93,8 +93,10 @@ Developers authenticate with `Authorization: Bearer <key>` or `x-api-key: <key>`
 | `STRATUM_CP_URL` | | Control plane URL (control plane mode). Must be https unless `STRATUM_CP_ALLOW_HTTP=true`. |
 | `STRATUM_SYNC_TOKEN`, `STRATUM_INSTANCE_ID` | | Issued when you register the gateway in the control plane. |
 | `STRATUM_CONFIG_FILE` | | Standalone mode: path to the configuration file. |
-| `STRATUM_SNAPSHOT_KEY` | | 64 hex chars. Enables the encrypted snapshot on disk, so the gateway can start while the control plane is unreachable. |
+| `STRATUM_SNAPSHOT_KEY` | | 64 hex chars. Enables the encrypted snapshot on disk and, with `STRATUM_VALKEY_URL`, its shared copy in Valkey, so the gateway can start while the control plane is unreachable. |
 | `STRATUM_SNAPSHOT_PATH` | `/var/lib/stratum/snapshot.bin` | Where the snapshot is stored. |
+| `STRATUM_SNAPSHOT_SHARED` | `true` | Keep the encrypted snapshot in Valkey too, so a new replica can start during a control plane outage. Needs Valkey and the snapshot key. See [Starting without the control plane](#starting-without-the-control-plane). |
+| `STRATUM_SNAPSHOT_BOOTSTRAP_TIMEOUT` | `10s` | How long a starting gateway waits for the control plane before it serves the copy in Valkey. |
 | `STRATUM_LISTEN_ADDR` / `STRATUM_ADMIN_ADDR` | `:20128` / `:9090` | Public and admin listeners. |
 | `STRATUM_SYNC_INTERVAL` / `STRATUM_FULL_RESYNC_INTERVAL` | `30s` / `10m` | Delta sync cadence and full resync cadence. |
 | `STRATUM_MAX_INFLIGHT` | `1024` | Concurrent requests before shedding load with 503 + `Retry-After`. |
@@ -103,7 +105,7 @@ Developers authenticate with `Authorization: Bearer <key>` or `x-api-key: <key>`
 | `STRATUM_DRAIN_DELAY` / `STRATUM_SHUTDOWN_TIMEOUT` | `5s` / `10m` | Graceful shutdown: readiness fails first, then in-flight streams get up to the timeout to finish. |
 | `STRATUM_PII_ENABLED` | `true` | Global switch for PII/DLP scanning (actions are set per policy). |
 | `STRATUM_CORS_ALLOWED_ORIGINS` | | Comma-separated origins allowed to call the gateway from a browser. |
-| `STRATUM_VALKEY_URL` | | Shared quota counters across replicas, e.g. `redis://valkey:6379/0` or `rediss://` for TLS. Without it each replica counts on its own. See [Quotas](#quotas-across-replicas). |
+| `STRATUM_VALKEY_URL` | | Shared quota counters across replicas and the shared snapshot copy, e.g. `redis://valkey:6379/0` or `rediss://` for TLS. Without it each replica counts on its own. See [Quotas](#quotas-across-replicas). |
 | `STRATUM_VALKEY_PASSWORD` | | Overrides the password in the URL, so the URL can live in a ConfigMap. |
 | `STRATUM_QUOTA_SYNC_INTERVAL` / `STRATUM_QUOTA_STALE_AFTER` | `1s` / `30s` | How often usage is flushed to Valkey, and after how long without a flush the store counts as down. |
 | `STRATUM_QUOTA_FAIL_MODE` | `open` | While Valkey is down: `open` keeps enforcing with last known totals plus local usage; `closed` rejects requests of teams that have a quota (503). |
@@ -129,6 +131,25 @@ per team in Valkey (or Redis 6.2+):
   `stratum_quota_store_regressions_total`.
 
 Details in [ADR-0004](docs/adr/0004-quotas.md).
+
+## Starting without the control plane
+
+A gateway serves from its in-memory snapshot and keeps serving the last good
+one while the control plane is unreachable. To let a *new* replica start
+during such an outage (a pod rescheduled by Kubernetes, a scale-up, a network
+cut between your datacenter and a hosted control plane), the gateways keep
+the same encrypted snapshot they write to disk in Valkey as well:
+
+- Each gateway stores it after every change; a version only replaces an
+  older one, so racing replicas never put an old configuration back.
+- A starting gateway tries the control plane first and uses the copy in
+  Valkey only if it has not synced within `STRATUM_SNAPSHOT_BOOTSTRAP_TIMEOUT`.
+- Valkey only sees ciphertext (AES-256-GCM with `STRATUM_SNAPSHOT_KEY`).
+- Run Valkey **next to the gateways**, never on the far side of the link to
+  the control plane: everything the gateways need to start has to live where
+  they run.
+
+Details in [ADR-0008](docs/adr/0008-snapshot-in-the-data-plane.md).
 
 ## Repository layout
 

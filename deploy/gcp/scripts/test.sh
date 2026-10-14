@@ -285,9 +285,18 @@ t_cp_outage() {
   k delete pod "$victim" --wait=false >/dev/null
   echo "    restarted $victim during the outage"
   sleep 90
-  local ready; ready="$(ready_gateways)"
-  echo "    ready gateways during outage: $ready (a pod started during the outage has no snapshot: known limitation, ADR-0003)"
-  echo "    snapshot age (max over pods, s): $(metric stratum_snapshot_age_seconds)"
+  # The replacement pod has no snapshot of its own; it must start from the
+  # copy the gateways keep in Valkey (ADR-0008).
+  local ready total bootstraps
+  ready="$(ready_gateways)"
+  total="$(k get pods -l app.kubernetes.io/name=stratum-gateway -o json | jq '[.items[] | select(.metadata.deletionTimestamp == null)] | length')"
+  bootstraps="$(metric stratum_snapshot_shared_bootstraps_total)"
+  echo "    ready gateways during outage: $ready of $total; started from the snapshot in Valkey: $bootstraps"
+  if ((ready == total && bootstraps >= 1)); then
+    pass "control plane outage: the replacement pod started from the snapshot in Valkey and is serving"
+  else
+    fail "control plane outage: $ready of $total gateways ready, $bootstraps started from Valkey (expected all ready, at least 1)"
+  fi
   k scale deployment/stratum-control-plane --replicas=2 >/dev/null
   k rollout status deployment/stratum-control-plane --timeout=10m >/dev/null
   judge_load "control plane outage" "$(load_result cpout)" 0

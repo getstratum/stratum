@@ -124,3 +124,44 @@ func TestSharedQuotaSettings(t *testing.T) {
 		}
 	}
 }
+
+func TestSharedSnapshotSettings(t *testing.T) {
+	base := func() map[string]string {
+		return map[string]string{
+			"STRATUM_CP_URL":       "https://cp.example.com",
+			"STRATUM_SYNC_TOKEN":   "t",
+			"STRATUM_INSTANCE_ID":  "dp_1",
+			"STRATUM_VALKEY_URL":   "redis://valkey:6379/0",
+			"STRATUM_SNAPSHOT_KEY": strings.Repeat("ab", 32),
+		}
+	}
+	c, err := Load(envOf(base()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !c.SharedSnapshotEnabled() || c.SnapshotBootstrapTimeout != 10*time.Second {
+		t.Fatalf("Valkey + snapshot key should share the snapshot by default: %+v", c)
+	}
+
+	for name, change := range map[string]func(map[string]string){
+		"opt-out":   func(m map[string]string) { m["STRATUM_SNAPSHOT_SHARED"] = "false" },
+		"no Valkey": func(m map[string]string) { delete(m, "STRATUM_VALKEY_URL") },
+		"no key":    func(m map[string]string) { delete(m, "STRATUM_SNAPSHOT_KEY") },
+	} {
+		m := base()
+		change(m)
+		c, err := Load(envOf(m))
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if c.SharedSnapshotEnabled() {
+			t.Fatalf("%s: shared snapshot should be off", name)
+		}
+	}
+
+	m := base()
+	m["STRATUM_SNAPSHOT_BOOTSTRAP_TIMEOUT"] = "-1s"
+	if _, err := Load(envOf(m)); err == nil {
+		t.Fatal("negative bootstrap timeout must be rejected")
+	}
+}

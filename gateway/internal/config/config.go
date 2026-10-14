@@ -47,6 +47,10 @@ type Config struct {
 	SnapshotKey          []byte // 32 bytes; persistence is off when nil
 	SnapshotMaxDropRatio float64
 	SnapshotGuardMinKeys int
+	// Shared copy of the snapshot in Valkey (ADR-0008). On when Valkey and
+	// the snapshot key are both configured, unless STRATUM_SNAPSHOT_SHARED=false.
+	SnapshotShared           bool
+	SnapshotBootstrapTimeout time.Duration // wait for the control plane before using the shared copy
 
 	// Request path
 	MaxInflight           int
@@ -89,9 +93,11 @@ func Load(getenv func(string) string) (*Config, error) {
 
 		ConfigFile: e.str("STRATUM_CONFIG_FILE", ""),
 
-		SnapshotPath:         e.str("STRATUM_SNAPSHOT_PATH", "/var/lib/stratum/snapshot.bin"),
-		SnapshotMaxDropRatio: e.float("STRATUM_SNAPSHOT_MAX_DROP_RATIO", 0.5),
-		SnapshotGuardMinKeys: e.int("STRATUM_SNAPSHOT_GUARD_MIN_KEYS", 10),
+		SnapshotPath:             e.str("STRATUM_SNAPSHOT_PATH", "/var/lib/stratum/snapshot.bin"),
+		SnapshotMaxDropRatio:     e.float("STRATUM_SNAPSHOT_MAX_DROP_RATIO", 0.5),
+		SnapshotGuardMinKeys:     e.int("STRATUM_SNAPSHOT_GUARD_MIN_KEYS", 10),
+		SnapshotShared:           e.bool("STRATUM_SNAPSHOT_SHARED", true),
+		SnapshotBootstrapTimeout: e.dur("STRATUM_SNAPSHOT_BOOTSTRAP_TIMEOUT", 10*time.Second),
 
 		MaxInflight:           e.int("STRATUM_MAX_INFLIGHT", 1024),
 		MaxRequestBytes:       int64(e.int("STRATUM_MAX_REQUEST_BYTES", 10<<20)),
@@ -192,6 +198,9 @@ func (c *Config) validateControlPlane(e *env) {
 	if c.InstanceID == "" {
 		e.fail("STRATUM_INSTANCE_ID is required with STRATUM_CP_URL")
 	}
+	if c.SnapshotBootstrapTimeout < 0 {
+		e.fail("STRATUM_SNAPSHOT_BOOTSTRAP_TIMEOUT must not be negative")
+	}
 	if c.SyncInterval < time.Second {
 		e.fail("STRATUM_SYNC_INTERVAL must be >= 1s")
 	}
@@ -199,6 +208,12 @@ func (c *Config) validateControlPlane(e *env) {
 
 // PersistenceEnabled reports whether snapshots are written to disk.
 func (c *Config) PersistenceEnabled() bool { return c.SnapshotKey != nil && c.SnapshotPath != "" }
+
+// SharedSnapshotEnabled reports whether gateways keep an encrypted copy of
+// the snapshot in Valkey and can start from it (ADR-0008).
+func (c *Config) SharedSnapshotEnabled() bool {
+	return c.Mode == ModeControlPlane && c.SnapshotShared && c.ValkeyURL != "" && c.SnapshotKey != nil
+}
 
 type env struct {
 	get  func(string) string

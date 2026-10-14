@@ -43,8 +43,11 @@ type ControlPlane struct {
 	MaxDropRatio float64
 	GuardMinKeys int
 
-	Holder  *snapshot.Holder
-	Persist func(*snapshot.State) // optional; called after a change is applied
+	Holder *snapshot.Holder
+	// Persist is optional; it is called after a change is applied, with the
+	// state it replaced (nil on the first sync) and whether next came from a
+	// full resync, i.e. is the control plane's complete current state.
+	Persist func(prev, next *snapshot.State, full bool)
 	Client  *http.Client
 	Log     *slog.Logger
 	Metrics *metrics.Metrics
@@ -135,7 +138,7 @@ func (c *ControlPlane) SyncOnce(ctx context.Context, forceFull bool) (time.Durat
 
 	changed := full || prev == nil || len(resp.Policies)+len(resp.APIKeys)+len(resp.ProviderConfigs) > 0
 	if changed && c.Persist != nil {
-		c.Persist(next)
+		c.Persist(prev, next, full)
 	}
 	if changed {
 		c.Log.Info("configuration applied", "version", next.Version, "full", full,

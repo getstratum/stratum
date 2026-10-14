@@ -138,7 +138,7 @@ make down
 | `zone` | Delete every gateway pod in one zone under load (graceful) | 0 failed requests |
 | `scripts/test.sh zone --hard` | Same, with `--grace-period=0 --force` | Only requests in flight on the killed pods fail |
 | `valkey` | NetworkPolicy cuts gateways off from Valkey for 90 s under load | 0 failed requests; outage detected in metrics; 0 pending tokens after recovery |
-| `cp-outage` | Control plane scaled to 0 under load; one gateway pod restarted meanwhile | 0 failed requests; the restarted pod stays unready until the control plane returns (known limitation, ADR-0003) |
+| `cp-outage` | Control plane scaled to 0 under load; one gateway pod restarted meanwhile | 0 failed requests; the replacement pod starts from the snapshot copy in Valkey and becomes ready during the outage (ADR-0008) |
 | `sql-failover` | `gcloud sql instances failover` under load | 0 failed gateway requests; control plane serving again afterwards |
 
 Results are appended to `deploy/gcp/.results/<date>.md`. Load comes from k6
@@ -163,10 +163,12 @@ means the gateway answered; `retriable_error`, `failed_to_pick_backend` or
 no details mean the load balancer did) and how to list each failure with its
 timestamp: `kubectl -n stratum logs job/k6-<scenario> | grep K6_FAILURE`.
 
-In the first full run (October 2026, about 75,000 requests across
+In the first full run (October 2026, 69,605 requests across
 rollout, zone, Valkey, control plane and database failures) Stratum produced
 0 errors; the load balancer and the NAT path produced 31 between them, the
-largest share (27) during one rolling restart.
+largest share (27) during one rolling restart. The same run showed that a
+gateway pod replaced during a control plane outage could not start (2 of 3
+ready). ADR-0008 closes that gap, and `cp-outage` now checks it.
 
 That is why end-to-end availability at 99.99% also needs **clients that
 retry** connection errors and 5xx before the first byte. The official OpenAI
@@ -199,18 +201,18 @@ priority order:
 1. **Valkey transport security.** In-transit encryption and IAM/token auth
    need CA-bundle and token support in the gateway's Valkey client. Today
    Valkey is reachable only inside the VPC through Private Service Connect.
+   The snapshot copy the gateways keep there (ADR-0008) is encrypted by the
+   gateway itself, but quota counters are not, and the link should be.
 2. **Control plane.** Real multi-organisation scoping (no `DEMO_ORG`), RBAC on
    instance and provider registration, IAP or SSO in front of the console,
    no seeded demo users.
-3. **Snapshots in object storage** (ADR-0003), so a pod rescheduled during a
-   control plane outage can start.
-4. **Supply chain.** Images from the signed release pipeline instead of an
+3. **Supply chain.** Images from the signed release pipeline instead of an
    ad-hoc Cloud Build; Binary Authorization; third-party images pinned by
    digest.
-5. **State and secrets.** Terraform state in a GCS backend
+4. **State and secrets.** Terraform state in a GCS backend
    (`backend.tf.example`), External Secrets Operator or the Secret Manager
    add-on instead of script-created Kubernetes secrets, application-layer
    secret encryption with Cloud KMS.
-6. **Sizing.** Valkey `STANDARD_SMALL` or larger, Cloud SQL sized for real
+5. **Sizing.** Valkey `STANDARD_SMALL` or larger, Cloud SQL sized for real
    log volume, `minReplicas` set so two zones carry peak traffic.
-7. **Database IAM authentication** for the control plane (no password).
+6. **Database IAM authentication** for the control plane (no password).

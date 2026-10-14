@@ -78,7 +78,7 @@ func TestFirstSyncIsFullThenDeltas(t *testing.T) {
 	f := &fakeCP{full: keysJSON(5, "a1", "b1"), delta: keysJSON(6, "c1")}
 	c, h, _ := newCP(t, f)
 	persisted := 0
-	c.Persist = func(*snapshot.State) { persisted++ }
+	c.Persist = func(_, _ *snapshot.State, _ bool) { persisted++ }
 
 	if _, _, err := c.SyncOnce(context.Background(), false); err != nil {
 		t.Fatal(err)

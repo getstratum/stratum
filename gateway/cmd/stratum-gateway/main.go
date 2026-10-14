@@ -33,6 +33,7 @@ import (
 	"github.com/getstratum/stratum/gateway/internal/quota"
 	"github.com/getstratum/stratum/gateway/internal/server"
 	"github.com/getstratum/stratum/gateway/internal/snapshot"
+	"github.com/getstratum/stratum/gateway/internal/snapstore"
 	"github.com/getstratum/stratum/gateway/internal/syncer"
 	"github.com/getstratum/stratum/gateway/internal/valkey"
 )
@@ -92,6 +93,22 @@ func serve() int {
 		}
 	}
 
+	// Shared copy of the snapshot in Valkey, inside the data plane's failure
+	// domain, so a gateway that starts during a control plane outage can
+	// still serve (ADR-0008). Its own connection: never on the request path.
+	var shared *snapstore.Store
+	if cfg.SharedSnapshotEnabled() {
+		vo := valkeyOptions(cfg)
+		// The snapshot can be megabytes; allow more than the 1 s per command
+		// that suits quota flushes.
+		vo.IOTimeout = 15 * time.Second
+		shared = &snapstore.Store{Client: valkey.New(vo), Key: snapstore.Key(cfg.ValkeyKeyPrefix, cfg.InstanceID)}
+		m.SnapshotSharedEnabled.Store(1)
+	} else if cfg.Mode == config.ModeControlPlane && cfg.ValkeyURL != "" && cfg.SnapshotKey == nil {
+		log.Warn("STRATUM_SNAPSHOT_KEY is not set: the snapshot is not shared through Valkey, " +
+			"so a gateway that starts while the control plane is unreachable cannot serve")
+	}
+
 	// 2. Configuration source.
 	switch cfg.Mode {
 	case config.ModeStatic:
@@ -108,15 +125,14 @@ func serve() int {
 			Holder: holder, Client: &http.Client{Timeout: 30 * time.Second},
 			Log: log.With("component", "sync"), Metrics: m,
 		}
-		if cfg.PersistenceEnabled() {
-			cp.Persist = func(st *snapshot.State) {
-				if err := snapshot.Save(cfg.SnapshotPath, cfg.SnapshotKey, st); err != nil {
-					m.PersistFailure.Add(1)
-					log.Error("cannot persist snapshot", "path", cfg.SnapshotPath, "err", err)
-				}
-			}
+		if cfg.PersistenceEnabled() || shared != nil {
+			cp.Persist = persister(ctx, cfg, shared, m, log)
 		}
+		base := holder.State() // nil, or the snapshot restored from disk
 		go cp.Run(ctx)
+		if shared != nil {
+			go bootstrapFromShared(ctx, cfg, holder, base, shared, m, log)
+		}
 	}
 
 	// 3. Quotas: shared counters in Valkey when configured, local otherwise.
@@ -124,17 +140,14 @@ func serve() int {
 	var enforcer quota.Enforcer = quota.NewLocal()
 	quotaDone := make(chan struct{})
 	if cfg.ValkeyURL != "" {
-		vo, _ := valkey.ParseURL(cfg.ValkeyURL) // validated by config
-		if cfg.ValkeyPassword != "" {
-			vo.Password = cfg.ValkeyPassword
-		}
-		shared := quota.NewShared(quota.SharedOptions{
+		vo := valkeyOptions(cfg)
+		sharedQuota := quota.NewShared(quota.SharedOptions{
 			Client: valkey.New(vo), Prefix: cfg.ValkeyKeyPrefix,
 			Interval: cfg.QuotaSyncInterval, StaleAfter: cfg.QuotaStaleAfter,
 			FailClosed: cfg.QuotaFailClosed, Metrics: m, Log: log.With("component", "quota"),
 		})
-		enforcer = shared
-		go func() { defer close(quotaDone); shared.Run(ctx, 3*time.Second) }()
+		enforcer = sharedQuota
+		go func() { defer close(quotaDone); sharedQuota.Run(ctx, 3*time.Second) }()
 		log.Info("quotas use the shared store", "addr", vo.Addr, "tls", vo.TLS != nil,
 			"fail_mode", map[bool]string{true: "closed", false: "open"}[cfg.QuotaFailClosed])
 	} else {
@@ -242,6 +255,87 @@ func restoreSnapshot(cfg *config.Config, holder *snapshot.Holder, m *metrics.Met
 	m.SnapshotVersion.Store(st.Version)
 	m.SnapshotSynced.Store(savedAt.Unix())
 	log.Info("restored snapshot from disk", "version", st.Version, "saved_at", savedAt)
+}
+
+func valkeyOptions(cfg *config.Config) valkey.Options {
+	vo, _ := valkey.ParseURL(cfg.ValkeyURL) // validated by config
+	if cfg.ValkeyPassword != "" {
+		vo.Password = cfg.ValkeyPassword
+	}
+	return vo
+}
+
+// persister writes each applied change to disk and, when enabled, to the
+// shared copy in Valkey. The snapshot is encrypted once; both get the same
+// bytes. A version lower than the one it replaces means the control plane's
+// database went back in time, so the shared copy is overwritten even though
+// its version is higher.
+func persister(ctx context.Context, cfg *config.Config, shared *snapstore.Store, m *metrics.Metrics, log *slog.Logger) func(prev, next *snapshot.State, full bool) {
+	return func(prev, next *snapshot.State, full bool) {
+		sealed, err := snapshot.Seal(cfg.SnapshotKey, next)
+		if err != nil {
+			m.PersistFailure.Add(1)
+			log.Error("cannot encrypt snapshot", "err", err)
+			return
+		}
+		if cfg.PersistenceEnabled() {
+			if err := snapshot.SaveSealed(cfg.SnapshotPath, sealed); err != nil {
+				m.PersistFailure.Add(1)
+				log.Error("cannot persist snapshot", "path", cfg.SnapshotPath, "err", err)
+			}
+		}
+		if shared == nil {
+			return
+		}
+		mode := snapstore.ModeDelta
+		switch {
+		case prev != nil && prev.Version > next.Version:
+			mode = snapstore.ModeForce
+		case full:
+			mode = snapstore.ModeFull
+		}
+		wctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+		defer cancel()
+		stored, err := shared.Put(wctx, next.Version, sealed, time.Now(), mode)
+		switch {
+		case err != nil:
+			m.SnapshotSharedWriteFailures.Add(1)
+			log.Warn("cannot store snapshot in Valkey; retrying at the next change or full resync",
+				"version", next.Version, "err", err)
+		case stored:
+			m.SnapshotSharedWrites.Add(1)
+			log.Debug("snapshot stored in Valkey", "version", next.Version, "mode", string(mode))
+		}
+	}
+}
+
+// bootstrapFromShared serves the copy in Valkey when the control plane has
+// not answered within STRATUM_SNAPSHOT_BOOTSTRAP_TIMEOUT and the copy is
+// newer than what this gateway has (nothing, or its disk snapshot).
+func bootstrapFromShared(ctx context.Context, cfg *config.Config, holder *snapshot.Holder, base *snapshot.State, shared *snapstore.Store, m *metrics.Metrics, log *slog.Logger) {
+	out, st, err := snapstore.Bootstrap(ctx, holder, base, shared, cfg.SnapshotKey, cfg.SnapshotBootstrapTimeout, 200*time.Millisecond)
+	switch out {
+	case snapstore.Loaded:
+		m.SnapshotSharedBootstraps.Add(1)
+		// Metrics follow the holder; a sync that landed right after the
+		// load has already set them.
+		if snap := holder.Load(); holder.State() == st && snap != nil {
+			m.SnapshotVersion.Store(st.Version)
+			if !snap.SyncedAt.IsZero() {
+				m.SnapshotSynced.Store(snap.SyncedAt.Unix())
+			}
+		}
+		log.Warn("control plane did not answer in time; serving the snapshot shared through Valkey",
+			"version", st.Version, "waited", cfg.SnapshotBootstrapTimeout.String())
+	case snapstore.Missing:
+		if holder.Load() == nil {
+			log.Warn("control plane did not answer in time and Valkey has no snapshot for this instance; waiting for the control plane")
+		}
+	case snapstore.Failed:
+		if ctx.Err() == nil {
+			log.Error("cannot read the snapshot shared through Valkey; waiting for the control plane", "err", err)
+		}
+	}
 }
 
 func loadStatic(cfg *config.Config, holder *snapshot.Holder, m *metrics.Metrics, log *slog.Logger) error {

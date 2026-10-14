@@ -40,15 +40,21 @@ static:
 # secret manager) and reference it here; the chart never renders secrets.
 #   STRATUM_SYNC_TOKEN    (control plane mode)
 #   STRATUM_INSTANCE_ID   (control plane mode)
-#   STRATUM_SNAPSHOT_KEY  64 hex chars, enables the encrypted on-disk snapshot
+#   STRATUM_SNAPSHOT_KEY  64 hex chars, enables the encrypted snapshot on disk
+#                         and, with Valkey, its shared copy (snapshot.shared)
 existingSecret: ""
 
 snapshot:
-  # Directory for the encrypted snapshot. With an emptyDir, a pod that is
-  # rescheduled while the control plane is unreachable starts without
-  # configuration and stays unready until the control plane returns; pods
-  # that keep running are unaffected.
+  # Size of the emptyDir that holds the encrypted snapshot on each pod.
   sizeLimit: 64Mi
+  # Keep an encrypted copy of the snapshot in Valkey (docs/adr/0008), so a pod
+  # that starts while the control plane is unreachable can still serve. On
+  # when quota.valkey.url (or STRATUM_VALKEY_URL) and STRATUM_SNAPSHOT_KEY are
+  # set. Without it, such a pod stays unready until the control plane returns.
+  shared: true
+  # How long a starting pod waits for the control plane before it uses the
+  # copy in Valkey. In normal operation pods start from the control plane.
+  bootstrapTimeout: 10s
 
 gateway:
   maxInflight: 1024

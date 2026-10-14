@@ -53,6 +53,13 @@ locals {
       severity = "WARNING"
       doc      = "Gateways cannot reach Valkey. Requests are unaffected; quotas are enforced per replica until it returns."
     }
+    snapshot-shared-write = {
+      display  = "Stratum ${var.env}: snapshot copy in Valkey not updated"
+      query    = "sum(increase(stratum_snapshot_shared_write_failures_total{namespace=\"${var.namespace}\"}[15m])) > 0"
+      duration = "600s"
+      severity = "WARNING"
+      doc      = "Gateways cannot store the configuration snapshot in Valkey (ADR-0008). Requests are unaffected, but a pod that starts during a control plane outage may find an old copy or none."
+    }
     quota-store-reset = {
       display  = "Stratum ${var.env}: quota counters went backwards"
       query    = "sum(increase(stratum_quota_store_regressions_total{namespace=\"${var.namespace}\"}[10m])) > 0"

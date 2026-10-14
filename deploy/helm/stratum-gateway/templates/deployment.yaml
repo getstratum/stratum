@@ -85,6 +85,10 @@ spec:
               value: ":9090"
             - name: STRATUM_SNAPSHOT_PATH
               value: /var/lib/stratum/snapshot.bin
+            - name: STRATUM_SNAPSHOT_SHARED
+              value: {{ .Values.snapshot.shared | quote }}
+            - name: STRATUM_SNAPSHOT_BOOTSTRAP_TIMEOUT
+              value: {{ .Values.snapshot.bootstrapTimeout | quote }}
             - name: STRATUM_MAX_INFLIGHT
               value: {{ .Values.gateway.maxInflight | quote }}
             - name: STRATUM_MAX_REQUEST_BYTES
