@@ -34,8 +34,6 @@ spec:
               value: "${RATE}"
             - name: DURATION
               value: ${DURATION}
-            - name: MAX_ERROR_RATE
-              value: "${MAX_ERROR_RATE}"
             - name: API_KEY
               valueFrom:
                 secretKeyRef:

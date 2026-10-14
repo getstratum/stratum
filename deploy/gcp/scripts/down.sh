@@ -11,7 +11,8 @@
 #   ./down.sh -y     does not
 # shellcheck source-path=SCRIPTDIR source=lib.sh
 source "$(dirname "$0")/lib.sh"
-require gcloud "$TF" kubectl helm jq
+require gcloud kubectl helm jq
+require_terraform
 
 TFVARS="$TF_DIR/terraform.tfvars"
 [[ -f "$TFVARS" ]] || die "no terraform/terraform.tfvars: nothing was created from this checkout"

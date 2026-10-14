@@ -10,7 +10,7 @@
 #   CERT_WAIT_MINUTES=45           how long to wait for the TLS certificate
 # shellcheck source-path=SCRIPTDIR source=lib.sh
 source "$(dirname "$0")/lib.sh"
-require gcloud "$TF" kubectl helm jq envsubst openssl curl
+require gcloud kubectl helm jq envsubst openssl curl
 load_outputs
 export SQL_DATABASE
 
@@ -201,3 +201,7 @@ cat <<EOF
              make test-smoke      (one scenario: smoke|quota|rollout|zone|valkey|cp-outage|sql-failover)
   Teardown   make down            ${c_yellow}(do not forget: ~US\$0.5/hour while it runs)${c_off}
 EOF
+if ! grep -q '^metric_alerts *= *true' "$TF_DIR/terraform.tfvars" 2>/dev/null; then
+  warn "SLO alerts are not created yet. The gateway is exporting metrics now: set"
+  warn "metric_alerts = true in terraform/terraform.tfvars and run 'make up' (about 1 minute)."
+fi

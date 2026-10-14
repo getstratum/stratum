@@ -88,6 +88,12 @@ variable "alert_email" {
   default     = ""
 }
 
+variable "metric_alerts" {
+  description = "Create the PromQL SLO alerts. Leave false on the first 'make up': Cloud Monitoring rejects alerts on metrics that do not exist yet. Set true and apply again after 'make deploy'."
+  type        = bool
+  default     = false
+}
+
 variable "billing_account" {
   description = "Billing account ID (XXXXXX-XXXXXX-XXXXXX) for a budget alert on this project. Empty = no budget (needs billing.budgets.create on the account)."
   type        = string

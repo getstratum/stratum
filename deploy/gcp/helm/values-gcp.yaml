@@ -22,11 +22,14 @@ resources:
 # network endpoint group, and that has to reach every Google front end,
 # before the gateway stops accepting connections. 45 s covers the readiness
 # probe, NEG detachment, propagation and the LB health check (5 s x 2).
-# In-flight streams then get up to 10 minutes, matched by the backend's
-# connection draining (k8s/edge.yaml).
+# In-flight streams then get up to 520 s to finish. Autopilot caps
+# terminationGracePeriodSeconds at 600 and the chart sets it to
+# drain + shutdown + 30 s, so 45 + 520 + 30 = 595 is the most that fits.
+# The backend's connection draining (k8s/edge.yaml) stays at 600 s, longer
+# than any stream the gateway still serves.
 lifecycle:
   drainDelaySeconds: 45
-  shutdownTimeoutSeconds: 600
+  shutdownTimeoutSeconds: 520
 
 quota:
   syncInterval: 1s
