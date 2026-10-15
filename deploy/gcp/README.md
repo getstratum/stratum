@@ -163,12 +163,13 @@ means the gateway answered; `retriable_error`, `failed_to_pick_backend` or
 no details mean the load balancer did) and how to list each failure with its
 timestamp: `kubectl -n stratum logs job/k6-<scenario> | grep K6_FAILURE`.
 
-In the first full run (October 2026, 69,605 requests across
-rollout, zone, Valkey, control plane and database failures) Stratum produced
-0 errors; the load balancer and the NAT path produced 31 between them, the
-largest share (27) during one rolling restart. The same run showed that a
-gateway pod replaced during a control plane outage could not start (2 of 3
-ready). ADR-0008 closes that gap, and `cp-outage` now checks it.
+In the first full run ([report](../../docs/testing/gcp-2026-10-14.md); October
+2026, 69,605 requests across rollout, zone, Valkey, control plane and database
+failures) Stratum produced 0 errors; the load balancer and the NAT path
+produced 31 between them, the largest share (27) during one rolling restart.
+The same run showed that a gateway pod replaced during a control plane outage
+could not start (2 of 3 ready). ADR-0008 closes that gap, and `cp-outage` now
+checks it.
 
 That is why end-to-end availability at 99.99% also needs **clients that
 retry** connection errors and 5xx before the first byte. The official OpenAI
