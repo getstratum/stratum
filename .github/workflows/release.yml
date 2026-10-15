@@ -29,25 +29,25 @@ jobs:
           - name: stratum-control-plane
             context: control-plane/dashboard
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ env.OWNER }}/${{ matrix.name }}
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
       - id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ${{ matrix.context }}
           platforms: linux/amd64,linux/arm64
@@ -65,7 +65,7 @@ jobs:
           DIGEST: ${{ steps.build.outputs.digest }}
           IMAGE: ${{ env.REGISTRY }}/${{ env.OWNER }}/${{ matrix.name }}
         run: cosign sign --yes "${IMAGE}@${DIGEST}"
-      - uses: actions/attest-build-provenance@v2
+      - uses: actions/attest-build-provenance@v4
         with:
           subject-name: ${{ env.REGISTRY }}/${{ env.OWNER }}/${{ matrix.name }}
           subject-digest: ${{ steps.build.outputs.digest }}
@@ -79,10 +79,10 @@ jobs:
       id-token: write
       attestations: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: gateway/go.mod
           cache-dependency-path: gateway/go.mod
@@ -104,7 +104,7 @@ jobs:
       - name: sign checksums
         working-directory: dist
         run: cosign sign-blob --yes --bundle SHA256SUMS.sigstore.json SHA256SUMS
-      - uses: actions/attest-build-provenance@v2
+      - uses: actions/attest-build-provenance@v4
         with:
           subject-path: dist/stratum-gateway_*
       - name: upload to the GitHub release
@@ -121,10 +121,10 @@ jobs:
       packages: write
       id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: azure/setup-helm@v4
+      - uses: azure/setup-helm@v5
       - uses: sigstore/cosign-installer@v3
       - name: package and push to ghcr.io (OCI)
         env:
