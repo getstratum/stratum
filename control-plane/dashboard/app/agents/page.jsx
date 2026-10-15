@@ -114,7 +114,7 @@ function AgentModal({ agent, teams, models, onSave, onClose }) {
 
         <Field
           label="Model"
-          hint="Stratum always injects this model, overriding whatever the agent sends"
+          hint="For reference only: gateways do not enforce it yet. The team's policy decides which models the agent may use."
         >
           {(() => {
             // Filter models to only those allowed by the selected team's policy

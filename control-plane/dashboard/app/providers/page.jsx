@@ -3,173 +3,118 @@
 import { useState, useEffect, useCallback } from 'react'
 import Modal, { Field, Input, Select, Btn } from '../../components/Modal'
 
-const API_TYPES = ['openai-compatible', 'anthropic', 'aws-bedrock']
+const API = '/api/internal/providers'
 
-// ── Add Model modal ───────────────────────────────────────────────────────────
-function AddModelModal({ provider, onSave, onClose }) {
-  const [form, setForm] = useState({ modelId: '', displayName: '', inputCost: '', outputCost: '' })
-  const [saving, setSaving] = useState(false)
-  const [error,  setError]  = useState('')
-
-  function set(k, v) { setForm(f => ({ ...f, [k]: v })) }
-
-  async function submit() {
-    if (!form.modelId || !form.displayName) return setError('Model ID y nombre son requeridos')
-    setSaving(true); setError('')
-    try {
-      const res = await fetch(`/api/providers/${provider.id}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          addModel: {
-            modelId:     form.modelId.trim(),
-            displayName: form.displayName.trim(),
-            inputCost:   parseFloat(form.inputCost)  || 0,
-            outputCost:  parseFloat(form.outputCost) || 0,
-          }
-        }),
-      })
-      if (!res.ok) { const d = await res.json(); setError(d.message ?? d.error ?? 'Error'); return }
-      onSave()
-    } catch { setError('Error de conexión') }
-    finally { setSaving(false) }
-  }
-
-  return (
-    <Modal title={`Agregar modelo — ${provider.display_name}`} onClose={onClose} width="max-w-lg">
-      <div className="space-y-4">
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Model ID *" hint="Ej: gpt-4o-mini, gemini-3.6-flash">
-            <Input placeholder="model-id-exacto" value={form.modelId}
-              onChange={e => set('modelId', e.target.value)} autoFocus />
-          </Field>
-          <Field label="Nombre visible *">
-            <Input placeholder="GPT-4o Mini" value={form.displayName}
-              onChange={e => set('displayName', e.target.value)} />
-          </Field>
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Costo input ($/1K tokens)" hint="0 para modelos locales">
-            <Input type="number" step="0.000001" placeholder="0.00150" value={form.inputCost}
-              onChange={e => set('inputCost', e.target.value)} />
-          </Field>
-          <Field label="Costo output ($/1K tokens)">
-            <Input type="number" step="0.000001" placeholder="0.00600" value={form.outputCost}
-              onChange={e => set('outputCost', e.target.value)} />
-          </Field>
-        </div>
-        {error && <p className="text-xs text-err">{error}</p>}
-        <div className="flex gap-3">
-          <Btn variant="secondary" onClick={onClose} className="flex-1">Cancelar</Btn>
-          <Btn onClick={submit} disabled={saving} className="flex-1">
-            {saving ? 'Guardando…' : 'Agregar modelo'}
-          </Btn>
-        </div>
-      </div>
-    </Modal>
-  )
-}
-
-// ── Provider create/edit modal ────────────────────────────────────────────────
-function ProviderModal({ provider, onSave, onClose }) {
-  const isEdit = !!provider
-  const [form, setForm] = useState({
-    slug:        provider?.slug         ?? '',
-    displayName: provider?.display_name ?? '',
-    baseUrl:     provider?.base_url     ?? '',
-    apiType:     provider?.api_type     ?? 'openai-compatible',
-    apiKeyEnv:   provider?.api_key_env  ?? '',
-    apiKey:      '',   // never pre-filled for security
-    isActive:    provider?.is_active    ?? false,
-    notes:       provider?.notes        ?? '',
+async function send(url, method, body) {
+  const res = await fetch(url, {
+    method, headers: { 'Content-Type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
   })
+  const data = await res.json().catch(() => ({}))
+  return { ok: res.ok, data }
+}
+
+function fmtDate(v) {
+  return v ? new Date(v).toLocaleDateString('es-UY', { day: 'numeric', month: 'short' }) : ''
+}
+
+function TestResult({ result }) {
+  if (!result) return null
+  return (
+    <p role="status" className={`text-xs rounded-lg px-3 py-2 ${result.ok ? 'text-ok bg-ok-light' : 'text-err bg-err-light'}`}>
+      {result.message}
+      {result.ok && result.models != null && ` ${result.models} modelos disponibles.`}
+      {result.ms > 0 && ` (${result.ms} ms)`}
+    </p>
+  )
+}
+
+// ── Add (or replace) a provider ─────────────────────────────────────────────
+function AddModal({ presets, existing, onClose, onSaved }) {
+  const [form, setForm] = useState({ kind: 'anthropic', customName: '', displayName: '', baseUrl: '', apiVersion: '', apiKey: '' })
+  const [error, setError]   = useState('')
   const [saving, setSaving] = useState(false)
-  const [error,  setError]  = useState('')
+  const [test, setTest]     = useState(null)
+  const set = (k, v) => { setForm(f => ({ ...f, [k]: v })); setTest(null) }
 
-  function set(k, v) { setForm(f => ({ ...f, [k]: v })) }
+  const custom   = form.kind === 'custom'
+  const preset   = presets.find(p => p.id === form.kind)
+  const provider = custom ? `custom-${form.customName.trim().toLowerCase()}` : form.kind
+  const needsUrl = custom || !preset?.base
+  const replaces = existing.find(p => p.provider === provider)
+  const testable = !custom && preset?.base && !form.baseUrl && form.kind !== 'azure'
 
-  async function submit() {
-    if (!form.slug || !form.displayName || !form.baseUrl || !form.apiType)
-      return setError('Slug, nombre, URL y tipo son requeridos')
+  function payload() {
+    return {
+      provider,
+      display_name: form.displayName || undefined,
+      base_url: form.baseUrl || undefined,
+      api_key: form.apiKey || undefined,
+      ...(form.kind === 'azure' ? { extra_config: { api_version: form.apiVersion } } : {}),
+    }
+  }
 
+  async function runTest() {
+    setTest({ ok: true, message: 'Probando…', ms: 0 })
+    const { data } = await send(`${API}/test`, 'POST', { provider, api_key: form.apiKey })
+    setTest(data.message ? data : { ok: false, message: 'No se pudo probar.', ms: 0 })
+  }
+
+  async function save() {
     setSaving(true); setError('')
-    try {
-      const url    = isEdit ? `/api/providers/${provider.id}` : '/api/providers'
-      const method = isEdit ? 'PATCH' : 'POST'
-      const payload = {
-        ...form,
-        // Only send apiKey if it was filled in (empty = don't change on edit)
-        apiKey: form.apiKey || (isEdit ? undefined : null),
-      }
-
-      const res  = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
-      const data = await res.json()
-      if (!res.ok) { setError(data.message ?? data.error ?? 'Error al guardar'); return }
-      onSave(data)
-    } catch { setError('Error de conexión') }
-    finally { setSaving(false) }
+    const { ok, data } = await send(API, 'POST', payload())
+    setSaving(false)
+    if (!ok) return setError(data.message ?? 'No se pudo guardar.')
+    onSaved()
   }
 
   return (
-    <Modal title={isEdit ? `Editar — ${provider.display_name}` : 'Nuevo provider'} onClose={onClose} width="max-w-xl">
+    <Modal title="Agregar proveedor" onClose={onClose}>
       <div className="space-y-4">
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Slug *" hint="Identificador único, sin espacios">
-            <Input placeholder="my-provider" value={form.slug}
-              onChange={e => set('slug', e.target.value.toLowerCase().replace(/\s+/g, '-'))}
-              disabled={isEdit} autoFocus={!isEdit} />
-          </Field>
-          <Field label="Nombre visible *">
-            <Input placeholder="Mi Provider" value={form.displayName}
-              onChange={e => set('displayName', e.target.value)} autoFocus={isEdit} />
-          </Field>
-        </div>
-
-        <Field label="Base URL *" hint="Sin /v1 al final si es OpenAI-compatible">
-          <Input placeholder="https://api.example.com" value={form.baseUrl}
-            onChange={e => set('baseUrl', e.target.value)} />
+        <Field label="Proveedor">
+          <Select value={form.kind} onChange={e => set('kind', e.target.value)}>
+            {presets.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
+            <option value="custom">Custom (compatible con OpenAI)</option>
+          </Select>
         </Field>
-
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Tipo de API *">
-            <Select value={form.apiType} onChange={e => set('apiType', e.target.value)}>
-              {API_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-            </Select>
+        {custom && (
+          <Field label="Nombre corto" hint={`Los clientes lo usan como modelo "${provider}/<modelo>". Minúsculas, números y guiones.`}>
+            <Input value={form.customName} onChange={e => set('customName', e.target.value)} placeholder="vllm-interno" />
           </Field>
-          <Field label="Env var de API key" hint="Fallback si no se guarda la key aquí">
-            <Input placeholder="MY_PROVIDER_API_KEY" value={form.apiKeyEnv}
-              onChange={e => set('apiKeyEnv', e.target.value.toUpperCase())} />
-          </Field>
-        </div>
-
-        {/* API key stored in DB — no rebuild needed */}
+        )}
+        <Field label="Nombre visible">
+          <Input value={form.displayName} onChange={e => set('displayName', e.target.value)} placeholder={custom ? 'vLLM interno' : preset?.label} />
+        </Field>
         <Field
-          label={isEdit ? 'Nueva API key (dejar vacío para no cambiarla)' : 'API key'}
-          hint="Se guarda en la DB. No se necesita rebuild al cambiarla."
+          label={needsUrl ? 'URL base' : 'URL base (opcional)'}
+          hint={needsUrl
+            ? 'La resuelven los gateways, no la consola: puede ser una dirección interna de tu red.'
+            : `Por defecto ${preset?.base}. Cambiala solo para pasar por un proxy corporativo.`}
         >
-          <Input type="password" placeholder={isEdit && provider?.has_api_key ? '••••••• (ya guardada)' : 'sk-...'}
-            value={form.apiKey} onChange={e => set('apiKey', e.target.value)} />
+          <Input value={form.baseUrl} onChange={e => set('baseUrl', e.target.value)} placeholder={needsUrl ? 'http://vllm.interno:8000' : preset?.base} />
+        </Field>
+        {form.kind === 'azure' && (
+          <Field label="API version" hint="Por ejemplo 2024-10-21">
+            <Input value={form.apiVersion} onChange={e => set('apiVersion', e.target.value)} placeholder="2024-10-21" />
+          </Field>
+        )}
+        <Field label={preset?.keyRequired === false || custom ? 'API key (opcional)' : 'API key'} hint="Se guarda cifrada. Después solo vas a ver sus últimos 4 caracteres.">
+          <Input type="password" autoComplete="off" value={form.apiKey} onChange={e => set('apiKey', e.target.value)} />
         </Field>
 
-        <Field label="Notas">
-          <Input placeholder="Descripción, modelos soportados, etc." value={form.notes}
-            onChange={e => set('notes', e.target.value)} />
-        </Field>
+        {replaces && (
+          <p className="text-xs text-warn bg-warn-light rounded-lg px-3 py-2">
+            Ya hay una configuración de {replaces.provider_label}: guardar la reemplaza (los gateways usan una por proveedor).
+          </p>
+        )}
+        <TestResult result={test} />
+        {error && <p className="text-xs text-err bg-err-light rounded-lg px-3 py-2">{error}</p>}
 
-        <label className="flex items-center gap-2.5 cursor-pointer">
-          <input type="checkbox" className="accent-accent"
-            checked={form.isActive} onChange={e => set('isActive', e.target.checked)} />
-          <div>
-            <div className="text-sm font-medium text-default">Habilitado</div>
-            <div className="text-xs text-muted">El proxy puede rutear requests a este provider</div>
-          </div>
-        </label>
-
-        {error && <p className="text-xs text-err">{error}</p>}
-
-        <div className="flex gap-3 pt-1">
-          <Btn variant="secondary" onClick={onClose} className="flex-1">Cancelar</Btn>
-          <Btn onClick={submit} disabled={saving} className="flex-1">
-            {saving ? 'Guardando…' : isEdit ? 'Guardar cambios' : 'Crear provider'}
+        <div className="flex flex-wrap justify-end gap-2 pt-1">
+          {testable && <Btn variant="secondary" onClick={runTest} disabled={!form.apiKey}>Probar conexión</Btn>}
+          <Btn variant="secondary" onClick={onClose}>Cancelar</Btn>
+          <Btn onClick={save} disabled={saving || (custom && !form.customName.trim())}>
+            {saving ? 'Guardando…' : replaces ? 'Reemplazar' : 'Guardar'}
           </Btn>
         </div>
       </div>
@@ -177,184 +122,183 @@ function ProviderModal({ provider, onSave, onClose }) {
   )
 }
 
-// ── Provider card ─────────────────────────────────────────────────────────────
-function ProviderCard({ provider, onEdit, onToggle, onAddModel, onRemoveModel, toggling }) {
+// ── Edit name, address, credential ─────────────────────────────────────────
+function EditModal({ provider, onClose, onSaved }) {
+  const [form, setForm] = useState({
+    displayName: provider.display_name, baseUrl: provider.base_url ?? '',
+    apiVersion: provider.extra_config?.api_version ?? '', apiKey: '',
+  })
+  const [error, setError]   = useState('')
+  const [saving, setSaving] = useState(false)
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  async function save() {
+    const body = {}
+    if (form.displayName !== provider.display_name) body.display_name = form.displayName
+    if (form.baseUrl !== (provider.base_url ?? '')) body.base_url = form.baseUrl || null
+    if (provider.provider === 'azure' && form.apiVersion !== (provider.extra_config?.api_version ?? '')) {
+      body.extra_config = { api_version: form.apiVersion }
+    }
+    if (form.apiKey) body.api_key = form.apiKey
+    if (!Object.keys(body).length) return onClose()
+    setSaving(true); setError('')
+    const { ok, data } = await send(`${API}?id=${provider.id}`, 'PATCH', body)
+    setSaving(false)
+    if (!ok) return setError(data.message ?? 'No se pudo guardar.')
+    onSaved()
+  }
+
   return (
-    <div className={`bg-card border border-border rounded-xl overflow-hidden shadow-card transition-opacity ${!provider.is_active ? 'opacity-60' : ''}`}>
-      {/* Header */}
-      <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="font-semibold text-strong">{provider.display_name}</span>
-            {provider.is_active
-              ? <span className="text-xs text-ok font-semibold">● Activo</span>
-              : <span className="text-xs text-subtle">○ Inactivo</span>}
-            {provider.has_api_key && (
-              <span className="text-xs bg-accent-light text-accent-text border border-accent/20 rounded-full px-2 py-0.5">
-                Key guardada
-              </span>
-            )}
-          </div>
-          <div className="text-xs text-muted mt-0.5 font-mono">{provider.base_url}</div>
-        </div>
-        <div className="flex items-center gap-2">
-          <button onClick={() => onEdit(provider)}
-            className="text-xs text-muted hover:text-default px-2 py-1 rounded hover:bg-raised transition-colors">
-            Editar
-          </button>
-          <button
-            onClick={() => onToggle(provider)}
-            disabled={toggling === provider.id}
-            className={`text-xs px-2.5 py-1 rounded-lg border font-medium transition-colors disabled:opacity-40 ${
-              provider.is_active
-                ? 'border-err/30 text-err hover:bg-err/5'
-                : 'border-ok/30 text-ok hover:bg-ok/5'
-            }`}>
-            {toggling === provider.id ? '…' : provider.is_active ? 'Deshabilitar' : 'Habilitar'}
-          </button>
+    <Modal title={`Editar ${provider.display_name}`} onClose={onClose}>
+      <div className="space-y-4">
+        <Field label="Nombre visible">
+          <Input value={form.displayName} onChange={e => set('displayName', e.target.value)} />
+        </Field>
+        <Field label="URL base" hint={provider.default_base_url ? `Vacía = ${provider.default_base_url}` : 'Obligatoria para este proveedor.'}>
+          <Input value={form.baseUrl} onChange={e => set('baseUrl', e.target.value)} placeholder={provider.default_base_url ?? ''} />
+        </Field>
+        {provider.provider === 'azure' && (
+          <Field label="API version">
+            <Input value={form.apiVersion} onChange={e => set('apiVersion', e.target.value)} />
+          </Field>
+        )}
+        <Field label="Reemplazar la API key" hint={provider.api_key_hint ? `Actual: ${provider.api_key_hint}. Vacío = no cambia.` : 'Vacío = no cambia.'}>
+          <Input type="password" autoComplete="off" value={form.apiKey} onChange={e => set('apiKey', e.target.value)} />
+        </Field>
+        {error && <p className="text-xs text-err bg-err-light rounded-lg px-3 py-2">{error}</p>}
+        <div className="flex justify-end gap-2 pt-1">
+          <Btn variant="secondary" onClick={onClose}>Cancelar</Btn>
+          <Btn onClick={save} disabled={saving}>{saving ? 'Guardando…' : 'Guardar y publicar a gateways'}</Btn>
         </div>
       </div>
+    </Modal>
+  )
+}
 
-      {/* Models */}
-      <div className="px-5 py-3">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-xs font-semibold text-muted uppercase tracking-wide">
-            Modelos ({provider.models?.length ?? 0})
-          </span>
-          <button onClick={() => onAddModel(provider)}
-            className="text-xs text-accent hover:text-accent-hover font-medium transition-colors">
-            + Agregar modelo
-          </button>
-        </div>
+// ── Page ───────────────────────────────────────────────────────────────────
+export default function ProvidersPage() {
+  const [providers, setProviders] = useState([])
+  const [presets, setPresets]     = useState([])
+  const [canManage, setCanManage] = useState(false)
+  const [loading, setLoading]     = useState(true)
+  const [error, setError]         = useState('')
+  const [modal, setModal]         = useState(null)
+  const [tests, setTests]         = useState({})
 
-        {!provider.models?.length ? (
-          <p className="text-xs text-subtle py-2">
-            Sin modelos — agregá al menos uno para que aparezca en las políticas.
+  const load = useCallback(async () => {
+    const res = await fetch(API)
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) { setError(data.message ?? 'No se pudieron cargar los proveedores.'); setLoading(false); return }
+    setProviders(data.providers); setPresets(data.presets); setLoading(false)
+  }, [])
+
+  useEffect(() => {
+    load()
+    fetch('/api/session').then(r => r.json()).then(me => setCanManage(me.permissions?.['providers.manage'] === 'org')).catch(() => {})
+  }, [load])
+
+  async function toggle(p) {
+    const { ok, data } = await send(`${API}?id=${p.id}`, 'PATCH', { enabled: !p.enabled })
+    if (!ok) window.alert(data.message ?? 'No se pudo cambiar.')
+    load()
+  }
+
+  async function revoke(p) {
+    if (!window.confirm(`¿Revocar ${p.display_name}? Los gateways dejan de usarlo en 30 s como máximo y la credencial se descarta.`)) return
+    const { ok, data } = await send(`${API}?id=${p.id}`, 'DELETE')
+    if (!ok) window.alert(data.message ?? 'No se pudo revocar.')
+    load()
+  }
+
+  async function test(p) {
+    setTests(t => ({ ...t, [p.id]: { ok: true, message: 'Probando…', ms: 0 } }))
+    const { data } = await send(`${API}/test`, 'POST', { id: p.id })
+    setTests(t => ({ ...t, [p.id]: data.message ? data : { ok: false, message: 'No se pudo probar.', ms: 0 } }))
+  }
+
+  const done = () => { setModal(null); load() }
+
+  return (
+    <div className="p-7 max-w-6xl">
+      <div className="flex flex-wrap items-end justify-between gap-4 mb-6">
+        <div className="max-w-2xl">
+          <h1 className="text-lg font-semibold text-strong">Proveedores</h1>
+          <p className="text-sm text-muted mt-1">
+            Las credenciales se cifran en el control plane y llegan cifradas a los gateways, que las usan en 30 s como máximo.
+            Nadie puede volver a verlas: solo reemplazarlas.
           </p>
-        ) : (
-          <div className="space-y-1">
-            {provider.models.map(m => (
-              <div key={m.model_id} className="flex items-center justify-between group py-1">
-                <div>
-                  <span className="text-sm text-default">{m.display_name}</span>
-                  <span className="text-xs text-subtle ml-2 font-mono">{m.model_id}</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  {(parseFloat(m.input_cost ?? m.cost_per_1k_input_tokens) > 0) && (
-                    <span className="text-xs text-muted">
-                      ${parseFloat(m.input_cost ?? m.cost_per_1k_input_tokens).toFixed(4)} / ${parseFloat(m.output_cost ?? m.cost_per_1k_output_tokens).toFixed(4)}
-                    </span>
-                  )}
-                  {(parseFloat(m.input_cost ?? m.cost_per_1k_input_tokens) === 0) && (
-                    <span className="text-xs text-ok">Local · $0</span>
-                  )}
-                  <button
-                    onClick={() => onRemoveModel(provider, m.model_id)}
-                    className="text-xs text-err opacity-0 group-hover:opacity-100 transition-opacity px-1">
-                    ✕
-                  </button>
-                </div>
-              </div>
-            ))}
+        </div>
+        {canManage && <Btn onClick={() => setModal({ add: true })}>Agregar proveedor</Btn>}
+      </div>
+
+      {error && <p className="text-sm text-err bg-err-light rounded-lg px-4 py-3 mb-4">{error}</p>}
+
+      <div className="bg-card border border-border rounded-xl overflow-x-auto">
+        {loading ? (
+          <p className="p-6 text-sm text-muted">Cargando…</p>
+        ) : providers.length === 0 ? (
+          <div className="p-8 text-sm text-muted">
+            Todavía no hay proveedores. {canManage ? 'Agregá uno para que los gateways puedan atender requests.' : ''}
           </div>
+        ) : (
+          <table className="w-full min-w-[860px] text-sm">
+            <thead>
+              <tr className="text-left text-xs uppercase tracking-wide text-muted border-b border-border">
+                <th className="px-5 py-3 font-semibold">Conexión</th>
+                <th className="px-4 py-3 font-semibold">Credencial</th>
+                <th className="px-4 py-3 font-semibold">Dirección</th>
+                <th className="px-4 py-3 font-semibold">Estado</th>
+                <th className="px-5 py-3"><span className="sr-only">Acciones</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              {providers.map(p => (
+                <tr key={p.id} className="border-b border-border last:border-0 align-top">
+                  <td className="px-5 py-3.5">
+                    <div className="font-semibold text-strong">{p.display_name}</div>
+                    <div className="text-xs text-muted">{p.provider_label} · modelo <code>{p.provider}/…</code></div>
+                  </td>
+                  <td className="px-4 py-3.5">
+                    <code className="text-xs">{p.api_key_hint ?? (p.key_updated_at ? 'sin credencial' : 'configurada')}</code>
+                    {p.key_updated_by && <div className="text-xs text-muted">{p.key_updated_by} · {fmtDate(p.key_updated_at)}</div>}
+                  </td>
+                  <td className="px-4 py-3.5 text-xs text-muted break-all">
+                    {p.base_url ?? <span>por defecto</span>}
+                  </td>
+                  <td className="px-4 py-3.5">
+                    <span className={`text-xs font-semibold ${p.enabled ? 'text-ok' : 'text-subtle'}`}>
+                      {p.enabled ? '● Habilitado' : '○ Deshabilitado'}
+                    </span>
+                    {tests[p.id] && <div className="mt-2 max-w-xs"><TestResult result={tests[p.id]} /></div>}
+                  </td>
+                  <td className="px-5 py-3.5">
+                    {canManage && (
+                      <div className="flex flex-wrap justify-end gap-1">
+                        {p.testable && (
+                          <button onClick={() => test(p)} className="text-xs text-accent hover:text-accent-hover px-2 py-1 rounded hover:bg-raised">Probar</button>
+                        )}
+                        <button onClick={() => setModal({ edit: p })} className="text-xs text-muted hover:text-default px-2 py-1 rounded hover:bg-raised">Editar</button>
+                        <button onClick={() => toggle(p)} className="text-xs text-muted hover:text-default px-2 py-1 rounded hover:bg-raised">
+                          {p.enabled ? 'Deshabilitar' : 'Habilitar'}
+                        </button>
+                        <button onClick={() => revoke(p)} className="text-xs text-err px-2 py-1 rounded hover:bg-raised">Revocar</button>
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         )}
       </div>
 
-      {/* API info */}
-      <div className="px-5 py-2.5 bg-raised border-t border-border flex items-center gap-3 text-xs text-muted">
-        <span className="font-mono bg-border rounded px-1.5 py-0.5">{provider.api_type}</span>
-        {provider.api_key_env && <span>env: <code className="font-mono">{provider.api_key_env}</code></span>}
-        {provider.notes && <span className="text-subtle truncate">{provider.notes}</span>}
-      </div>
-    </div>
-  )
-}
+      <p className="text-xs text-subtle mt-4 max-w-2xl">
+        Los clientes eligen el proveedor con <code>"model": "proveedor/modelo"</code>, por ejemplo <code>anthropic/claude-haiku-4-5</code>.
+        Con un solo proveedor configurado, el nombre del modelo alcanza.
+      </p>
 
-// ── Main page ─────────────────────────────────────────────────────────────────
-export default function ProvidersPage() {
-  const [providers, setProviders] = useState([])
-  const [loading,   setLoading]   = useState(true)
-  const [modal,     setModal]     = useState(null)   // 'create' | { edit: p } | { addModel: p }
-  const [toggling,  setToggling]  = useState(null)
-
-  const load = useCallback(async () => {
-    setLoading(true)
-    const res = await fetch('/api/providers')
-    const data = await res.json()
-    setProviders(Array.isArray(data) ? data : [])
-    setLoading(false)
-  }, [])
-
-  useEffect(() => { load() }, [load])
-
-  async function toggleProvider(provider) {
-    setToggling(provider.id)
-    await fetch(`/api/providers/${provider.id}`, {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ isActive: !provider.is_active }),
-    })
-    setToggling(null)
-    load()
-  }
-
-  async function removeModel(provider, modelId) {
-    await fetch(`/api/providers/${provider.id}`, {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ removeModelId: modelId }),
-    })
-    load()
-  }
-
-  const active   = providers.filter(p => p.is_active)
-  const inactive = providers.filter(p => !p.is_active)
-
-  return (
-    <div className="p-7 max-w-5xl">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-2">
-        <div>
-          <h1 className="text-xl font-bold text-strong">Providers</h1>
-          <p className="text-sm text-muted mt-0.5">
-            {active.length} activos · {inactive.length} inactivos
-          </p>
-        </div>
-        <Btn onClick={() => setModal('create')}>+ Nuevo provider</Btn>
-      </div>
-
-      {/* Info banner */}
-      <div className="bg-accent-light border border-accent/20 rounded-xl px-4 py-3 mb-6 text-xs text-accent-text">
-        💡 Las API keys guardadas aquí no requieren rebuild. El proxy las toma automáticamente en hasta 60 segundos.
-        Los modelos agregados aparecen de inmediato en el selector de políticas.
-      </div>
-
-      {loading ? (
-        <div className="text-center py-20 text-muted text-sm">Cargando…</div>
-      ) : (
-        <div className="space-y-4">
-          {providers.length === 0 ? (
-            <div className="text-center py-20 text-subtle text-sm">
-              No hay providers configurados todavía.
-            </div>
-          ) : (
-            providers.map(p => (
-              <ProviderCard
-                key={p.id}
-                provider={p}
-                toggling={toggling}
-                onEdit={p => setModal({ edit: p })}
-                onToggle={toggleProvider}
-                onAddModel={p => setModal({ addModel: p })}
-                onRemoveModel={removeModel}
-              />
-            ))
-          )}
-        </div>
-      )}
-
-      {/* Modals */}
-      {modal === 'create'   && <ProviderModal onSave={() => { setModal(null); load() }} onClose={() => setModal(null)} />}
-      {modal?.edit          && <ProviderModal provider={modal.edit} onSave={() => { setModal(null); load() }} onClose={() => setModal(null)} />}
-      {modal?.addModel      && <AddModelModal provider={modal.addModel} onSave={() => { setModal(null); load() }} onClose={() => setModal(null)} />}
+      {modal?.add && <AddModal presets={presets} existing={providers} onClose={() => setModal(null)} onSaved={done} />}
+      {modal?.edit && <EditModal provider={modal.edit} onClose={() => setModal(null)} onSaved={done} />}
     </div>
   )
 }

@@ -26,8 +26,11 @@ Tracks what is done and what still blocks the first public release.
 - [x] Control plane: the Playground, which called gateway routes that no longer
       exist, is removed until it uses the current gateway contract.
 - [ ] Control plane: TOTP second factor, required for Owner and Admin.
-- [ ] Control plane: the console's Providers page edits `provider_configs` (what gateways read).
-- [ ] Control plane: agent keys (`agents` table) reach gateways through the sync.
+- [x] Control plane: the console's Providers page edits `provider_configs` (what gateways read), with
+      presets, custom OpenAI-compatible endpoints and a connection test; gateways are registered,
+      rotated and disabled from the console.
+- [x] Control plane: agent keys (`agents` table) reach gateways through the sync (migration 017).
+- [ ] Gateway: enforce an agent's default model (the console stores it; the sync does not send it yet).
 - [ ] Control plane: `request_logs` partitions are created ahead of time (today they end in January 2027).
 - [x] Control plane: migrations runner (`control-plane/migrations/migrate.sh`) that
       applies each file once, tracked in `schema_migrations`, under an advisory lock.

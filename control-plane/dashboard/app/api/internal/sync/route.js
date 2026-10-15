@@ -13,16 +13,16 @@
  */
 
 import { NextResponse } from 'next/server'
-import { createHash, createDecipheriv } from 'crypto'
+import { createHash } from 'crypto'
 import { query, getDb } from '@/lib/db'
 import { buildSyncResponse } from '@/lib/sync'
+import { decryptSecret } from '@/lib/secrets'
 
 import { tokenRoute } from '@/lib/route'
 
 export const dynamic = 'force-dynamic'
 
 const SYNC_INTERVAL_S = parseInt(process.env.STRATUM_SYNC_INTERVAL_S ?? '30', 10)
-const ENCRYPTION_KEY  = process.env.STRATUM_ENCRYPTION_KEY  // 32-byte hex (64 chars)
 
 // ---------------------------------------------------------------------------
 // Auth helpers
@@ -46,32 +46,6 @@ async function authenticateInstance(authHeader) {
     [tokenHash]
   )
   return rows[0] ?? null
-}
-
-// ---------------------------------------------------------------------------
-// Decryption — AES-256-GCM
-// Format stored: "<iv_hex>:<ciphertext_base64>"
-// ---------------------------------------------------------------------------
-
-function decryptApiKey(encryptedValue) {
-  if (!ENCRYPTION_KEY) {
-    throw new Error('STRATUM_ENCRYPTION_KEY not configured')
-  }
-  const [ivHex, ciphertextB64] = encryptedValue.split(':')
-  if (!ivHex || !ciphertextB64) {
-    throw new Error('Invalid encrypted format')
-  }
-  const key        = Buffer.from(ENCRYPTION_KEY, 'hex')
-  const iv         = Buffer.from(ivHex, 'hex')
-  const ciphertext = Buffer.from(ciphertextB64, 'base64')
-
-  // AES-256-GCM: last 16 bytes are the auth tag
-  const authTag    = ciphertext.slice(-16)
-  const encrypted  = ciphertext.slice(0, -16)
-
-  const decipher = createDecipheriv('aes-256-gcm', key, iv)
-  decipher.setAuthTag(authTag)
-  return decipher.update(encrypted, undefined, 'utf8') + decipher.final('utf8')
 }
 
 async function handleSync(request) {
@@ -103,7 +77,7 @@ async function handleSync(request) {
       orgId:         instance.org_id,
       sinceVersion:  Number.isFinite(sinceVersion) ? sinceVersion : 0,
       syncIntervalS: SYNC_INTERVAL_S,
-      decrypt:       decryptApiKey,
+      decrypt:       decryptSecret,
     })
     client.release()
   } catch (err) {

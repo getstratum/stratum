@@ -5,6 +5,12 @@ import RequestsLog from '../../components/RequestsLog'
 import DateFilter  from '../../components/DateFilter'
 import { toCSV, downloadCSV, LOG_COLUMNS } from '../../lib/csv'
 
+const PROVIDER_FILTER = [
+  ['anthropic', 'Anthropic'], ['openai', 'OpenAI'], ['gemini', 'Google Gemini'], ['mistral', 'Mistral'],
+  ['groq', 'Groq'], ['deepseek', 'DeepSeek'], ['openrouter', 'OpenRouter'], ['xai', 'xAI'],
+  ['together', 'Together AI'], ['azure', 'Azure OpenAI'], ['ollama', 'Ollama'],
+].map(([slug, label]) => ({ slug, label }))
+
 const STATUS_OPTIONS = [
   { value: '',        label: 'All statuses' },
   { value: 'success', label: 'Success (2xx)' },
@@ -62,13 +68,10 @@ export default function LogsPage() {
 
   // Load filter options once
   useEffect(() => {
-    Promise.all([
-      fetch('/api/teams').then(r => r.json()),
-      fetch('/api/providers').then(r => r.json()),
-    ]).then(([t, p]) => {
-      setTeams(t)
-      setProviders(p.filter(p => p.is_active))
-    })
+    fetch('/api/teams').then(r => (r.ok ? r.json() : [])).then(setTeams)
+    // Provider names as requests record them; every role that reads logs
+    // can filter by them, without reading the organization's configuration.
+    setProviders(PROVIDER_FILTER)
   }, [])
 
   // Debounce model text filter
@@ -139,7 +142,7 @@ export default function LogsPage() {
               className="w-full text-sm border border-border rounded-lg px-3 py-2 bg-raised text-default focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/20"
             >
               <option value="">All providers</option>
-              {providers.map(p => <option key={p.slug} value={p.slug}>{p.display_name}</option>)}
+              {providers.map(p => <option key={p.slug} value={p.slug}>{p.label}</option>)}
             </select>
           </div>
 

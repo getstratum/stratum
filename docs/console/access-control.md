@@ -118,6 +118,6 @@ organization's log (Owner, Admin, Auditor).
   receive the revocation in their next sync.
 - The Playground (`/prompt`) is removed: it called gateway routes that no
   longer exist.
-- The legacy `providers` table (global, not read by gateways) is read-only;
-  provider credentials are managed per organization through
-  `/api/internal/providers`.
+- The legacy `providers` table (global, not read by gateways) is no longer
+  used by the console; provider credentials are managed per organization in
+  Providers (`/api/internal/providers`).

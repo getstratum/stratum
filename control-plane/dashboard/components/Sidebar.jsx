@@ -15,6 +15,7 @@ const NAV = [
   { href: '/policy',    label: 'Policies',  permission: 'policies.read' },
   { href: '/alerts',    label: 'Alerts',    permission: 'alerts.read' },
   { href: '/providers', label: 'Providers', permission: 'providers.read' },
+  { href: '/gateways',  label: 'Gateways',  permission: 'gateways.read' },
 ]
 
 const ROLE_LABEL = {
