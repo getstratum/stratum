@@ -28,7 +28,9 @@ export const POST = route('keys.manage', async (req, { session, db }) => {
   const body = await readJson(req)
   const name = typeof body.name === 'string' ? body.name.trim() : ''
   if (!name) throw badRequest('El nombre es obligatorio.')
+  // A key works only under a team's policy, so an agent always has a team.
   const teamId = body.teamId || (session.scope === 'team' ? session.teamId : null)
+  if (!teamId) throw badRequest('El agente necesita un equipo.')
   await assertTeamInScope(db, session, teamId)
 
   const key = newApiKey('aig_agt_')
