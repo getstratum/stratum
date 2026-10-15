@@ -76,6 +76,17 @@ jobs:
   control-plane:
     name: control plane (Next.js)
     runs-on: ubuntu-latest
+    services:
+      # Real PostgreSQL for the migrations and the sync endpoint's queries.
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: stratum
+          POSTGRES_PASSWORD: stratum
+          POSTGRES_DB: stratum
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U stratum" --health-interval 2s --health-timeout 2s --health-retries 15
     defaults:
       run:
         working-directory: control-plane/dashboard
@@ -89,6 +100,27 @@ jobs:
           cache: npm
           cache-dependency-path: control-plane/dashboard/package-lock.json
       - run: npm ci --no-audit --no-fund
+      - name: migrations
+        working-directory: control-plane
+        env:
+          PGHOST: localhost
+          PGUSER: stratum
+          PGPASSWORD: stratum
+          PGDATABASE: stratum
+        run: |
+          sh migrations/migrate.sh migrations
+          # migrate.sh skips applied files; re-run the newest directly to
+          # prove it is idempotent, as every migration must be.
+          psql -X -q -v ON_ERROR_STOP=1 -f "$(ls migrations/*.sql | sort | tail -1)"
+      - name: sync endpoint against PostgreSQL
+        env:
+          DATABASE_URL: postgres://stratum:stratum@localhost:5432/stratum
+          SYNC_EXAMPLES_DIR: ${{ runner.temp }}/sync-responses
+        run: mkdir -p "$SYNC_EXAMPLES_DIR" && npm test
+      - name: sync responses from the tests match the contract
+        run: >-
+          pipx run --spec check-jsonschema==0.33.0 check-jsonschema
+          --schemafile ../../api/sync/v2/sync-response.schema.json "$RUNNER_TEMP"/sync-responses/*.json
       - run: npm run build
         env:
           NEXT_TELEMETRY_DISABLED: "1"

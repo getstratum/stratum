@@ -37,10 +37,11 @@ func Key(prefix, instanceID string) string { return prefix + ":{snapshot}:" + in
 //   - "delta": only a higher version replaces the stored one. A delta can
 //     miss rows (ADR-0003), so it never overwrites an equal version.
 //   - "full": a full resync is the control plane's complete current state,
-//     so it also replaces an equal version. Some changes (a removed key, a
-//     team moved to another policy) reach gateways only through a full
-//     resync and do not raise the version. It also refreshes the saved-at
-//     time, so the copy's age reflects the last confirmation.
+//     so it also replaces an equal version: a change a delta missed (a row
+//     committed out of order, or a control plane older than migration 015,
+//     where some changes did not raise the version) arrives that way. It also
+//     refreshes the saved-at time, so the copy's age reflects the last
+//     confirmation.
 //   - "force": always replaces. A gateway that saw the control plane's version
 //     go backwards (for example a database restored from a backup) uses it
 //     for a copy whose version is now ahead of the truth.
