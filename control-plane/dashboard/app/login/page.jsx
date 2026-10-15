@@ -11,7 +11,7 @@ export default function LoginPage() {
     // Show message if redirected due to session expiry
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search)
-      if (params.get('reason') === 'session_expired') return 'Your session expired. Please sign in again.'
+      if (params.get('reason') === 'session_expired') return 'Tu sesión terminó. Volvé a ingresar.'
     }
     return ''
   })
@@ -31,19 +31,16 @@ export default function LoginPage() {
       const data = await res.json()
 
       if (!res.ok) {
-        setError(data.error ?? 'Invalid credentials')
+        setError(data.message ?? 'No se pudo iniciar sesión.')
         return
       }
 
-      // Show redirecting state before navigating
       setRedirecting(true)
-      const dest = data.teamName === 'Engineering' ? '/' : '/prompt'
-
-      // Small delay ensures cookie is fully committed before navigation
-      setTimeout(() => { window.location.replace(dest) }, 100)
+      // Small delay ensures the cookie is committed before navigating.
+      setTimeout(() => { window.location.replace('/') }, 100)
 
     } catch {
-      setError('Cannot reach the gateway. Is the stack running?')
+      setError('No se pudo conectar con la consola.')
     } finally {
       if (!redirecting) setLoading(false)
     }
@@ -65,8 +62,8 @@ export default function LoginPage() {
 
         {/* Card */}
         <div className="bg-card border border-border rounded-2xl shadow-card p-8">
-          <h1 className="text-base font-semibold text-strong mb-1">Sign in</h1>
-          <p className="text-sm text-muted mb-6">Enter your email and API key</p>
+          <h1 className="text-base font-semibold text-strong mb-1">Ingresar</h1>
+          <p className="text-sm text-muted mb-6">Consola de administración</p>
 
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
@@ -78,6 +75,7 @@ export default function LoginPage() {
                 value={email}
                 onChange={e => setEmail(e.target.value)}
                 placeholder="you@company.com"
+                autoComplete="username"
                 autoFocus
                 required
                 disabled={redirecting}
@@ -87,13 +85,12 @@ export default function LoginPage() {
 
             <div>
               <label className="block text-xs font-semibold text-muted uppercase tracking-wide mb-1.5">
-                API Key
+                Contraseña
               </label>
               <input
-                type="password" autoComplete="off"
+                type="password" autoComplete="current-password"
                 value={password}
                 onChange={e => setPassword(e.target.value)}
-                placeholder="aig_sk_eng_..."
                 required
                 disabled={redirecting}
                 className="w-full bg-raised border border-border rounded-lg px-3.5 py-2.5 text-sm text-strong placeholder-subtle focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent transition-all disabled:opacity-50"
@@ -111,16 +108,13 @@ export default function LoginPage() {
               disabled={loading || redirecting || !email || !password}
               className="w-full bg-accent hover:bg-accent-hover disabled:opacity-40 text-white font-semibold rounded-lg py-2.5 text-sm transition-colors shadow-sm mt-2"
             >
-              {redirecting ? 'Redirecting…' : loading ? 'Signing in…' : 'Continue'}
+              {redirecting ? 'Entrando…' : loading ? 'Verificando…' : 'Continuar'}
             </button>
           </form>
         </div>
 
         <p className="text-center text-xs text-subtle mt-4">
-          Not an admin?{' '}
-          <a href="/prompt" className="text-accent hover:text-accent-hover transition-colors">
-            Go to Playground →
-          </a>
+          La sesión vence tras 30 minutos sin actividad.
         </p>
 
       </div>

@@ -68,7 +68,7 @@ function AgentModal({ agent, teams, models, onSave, onClose }) {
         }
       )
       const data = await res.json()
-      if (!res.ok) { setError(data.error ?? 'Error saving'); return }
+      if (!res.ok) { setError(data.message ?? data.error ?? 'Error saving'); return }
       onSave(data)
     } catch { setError('Connection error') }
     finally { setSaving(false) }

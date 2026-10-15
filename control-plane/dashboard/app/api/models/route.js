@@ -1,14 +1,14 @@
 export const dynamic = 'force-dynamic'
-import { NextResponse } from 'next/server'
-import { query } from '../../../lib/db'
+import { route, json } from '../../../lib/route.js'
 
-export async function GET() {
-  const models = await query(`
+// The model catalog is shared by every organization (prices, no secrets).
+export const GET = route('models.read', async (req, { db }) => {
+  const { rows } = await db.query(`
     SELECT provider, model_id, display_name,
            cost_per_1k_input_tokens, cost_per_1k_output_tokens
-    FROM ai_models
-    WHERE is_active = true
-    ORDER BY provider, display_name
+      FROM ai_models
+     WHERE is_active = true
+     ORDER BY provider, display_name
   `)
-  return NextResponse.json(models)
-}
+  return json(rows)
+})

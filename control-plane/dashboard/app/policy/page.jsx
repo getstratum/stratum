@@ -46,7 +46,7 @@ function PolicyModal({ policy, allModels, onSave, onClose }) {
         body: JSON.stringify(form),
       })
       const data = await res.json()
-      if (!res.ok) { setError(data.error ?? 'Error al guardar'); return }
+      if (!res.ok) { setError(data.message ?? data.error ?? 'Error al guardar'); return }
       onSave(data)
     } catch { setError('Error de conexión') }
     finally { setSaving(false) }
@@ -161,7 +161,7 @@ function DeleteConfirm({ policy, onConfirm, onClose }) {
     setDeleting(true)
     const res  = await fetch(`/api/policies/${policy.id}`, { method: 'DELETE' })
     const data = await res.json()
-    if (!res.ok) { setError(data.error); setDeleting(false); return }
+    if (!res.ok) { setError(data.message ?? data.error); setDeleting(false); return }
     onConfirm()
   }
 

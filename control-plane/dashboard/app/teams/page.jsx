@@ -27,7 +27,7 @@ function TeamModal({ team, policies, onSave, onClose }) {
         }),
       })
       const data = await res.json()
-      if (!res.ok) { setError(data.error ?? 'Error saving'); return }
+      if (!res.ok) { setError(data.message ?? data.error ?? 'Error saving'); return }
       onSave()
     } catch { setError('Connection error') }
     finally { setSaving(false) }

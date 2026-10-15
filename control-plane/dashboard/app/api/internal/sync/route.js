@@ -17,6 +17,8 @@ import { createHash, createDecipheriv } from 'crypto'
 import { query, getDb } from '@/lib/db'
 import { buildSyncResponse } from '@/lib/sync'
 
+import { tokenRoute } from '@/lib/route'
+
 export const dynamic = 'force-dynamic'
 
 const SYNC_INTERVAL_S = parseInt(process.env.STRATUM_SYNC_INTERVAL_S ?? '30', 10)
@@ -72,7 +74,7 @@ function decryptApiKey(encryptedValue) {
   return decipher.update(encrypted, undefined, 'utf8') + decipher.final('utf8')
 }
 
-export async function GET(request) {
+async function handleSync(request) {
   const authHeader = request.headers.get('authorization')
   const instance   = await authenticateInstance(authHeader)
 
@@ -122,3 +124,6 @@ export async function GET(request) {
 
   return NextResponse.json(body)
 }
+
+// Authenticated by the instance's sync token, checked above.
+export const GET = tokenRoute(handleSync)

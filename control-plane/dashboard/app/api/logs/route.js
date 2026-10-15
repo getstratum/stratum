@@ -1,43 +1,31 @@
 export const dynamic = 'force-dynamic'
-import { NextResponse } from 'next/server'
-import { getDb } from '../../../lib/db'
+import { route, json, badRequest, isUuid } from '../../../lib/route.js'
+import { parseDateRange, logsScope } from '../../../lib/usage.js'
 
-export async function GET(req) {
-  const { searchParams } = new URL(req.url)
-
-  const teamId   = searchParams.get('team')
-  const provider = searchParams.get('provider')
-  const model    = searchParams.get('model')
-  const status   = searchParams.get('status')   // 'success' | 'error' | ''
-  const from     = searchParams.get('from')
-  const to       = searchParams.get('to')
-  const period   = searchParams.get('period')
-  const limit    = Math.min(parseInt(searchParams.get('limit') ?? '100'), 1000)
-
-  const conditions = []
+export const GET = route('logs.read', async (req, { session, db }) => {
+  const sp = new URL(req.url).searchParams
   const params = []
-  let i = 1
+  const conditions = [logsScope(session, 'r', params)]
+  const add = (sql, value) => { params.push(value); conditions.push(sql.replace('?', `$${params.length}`)) }
 
-  // Date range
-  if (from && to) {
-    conditions.push(`r.created_at >= $${i++} AND r.created_at <= $${i++}`)
-    params.push(new Date(from), new Date(to + 'T23:59:59Z'))
-  } else if (period) {
-    const [y, m] = period.split('-').map(Number)
-    conditions.push(`r.created_at >= $${i++} AND r.created_at <= $${i++}`)
-    params.push(new Date(y, m - 1, 1), new Date(y, m, 0, 23, 59, 59))
+  if ((sp.get('from') && sp.get('to')) || sp.get('period')) {
+    const { from, to } = parseDateRange(sp)
+    add('r.created_at >= ?', from)
+    add('r.created_at <= ?', to)
   }
+  const team = sp.get('team')
+  if (team) {
+    if (!isUuid(team)) throw badRequest('Equipo inválido.')
+    add('r.team_id = ?', team)
+  }
+  if (sp.get('provider')) add('r.provider = ?', sp.get('provider'))
+  if (sp.get('model')) add('r.model_id ILIKE ?', `%${sp.get('model').replace(/[\\%_]/g, '\\$&')}%`)
+  if (sp.get('status') === 'success') conditions.push('r.status_code < 400')
+  if (sp.get('status') === 'error') conditions.push('r.status_code >= 400')
 
-  if (teamId)                { conditions.push(`r.team_id = $${i++}`);              params.push(teamId) }
-  if (provider)              { conditions.push(`r.provider = $${i++}`);             params.push(provider) }
-  if (model)                 { conditions.push(`r.model_id ILIKE $${i++}`);         params.push(`%${model}%`) }
-  if (status === 'success')  { conditions.push('r.status_code < 400') }
-  if (status === 'error')    { conditions.push('r.status_code >= 400') }
-
-  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
+  const limit = Math.min(Math.max(parseInt(sp.get('limit') ?? '100', 10) || 100, 1), 1000)
   params.push(limit)
 
-  const db = getDb()
   const { rows } = await db.query(`
     SELECT r.id, r.created_at, r.provider, r.model_id,
            r.tokens_input, r.tokens_output, r.cost_usd,
@@ -46,14 +34,13 @@ export async function GET(req) {
            t.name  AS team_name,
            u.email AS user_email,
            a.name  AS agent_name
-    FROM request_logs r
-    LEFT JOIN teams  t ON t.id = r.team_id
-    LEFT JOIN users  u ON u.id = r.user_id
-    LEFT JOIN agents a ON a.id = r.agent_id
-    ${where}
-    ORDER BY r.created_at DESC
-    LIMIT $${i}
+      FROM request_logs r
+      LEFT JOIN teams  t ON t.id = r.team_id  AND t.org_id = r.org_id
+      LEFT JOIN users  u ON u.id = r.user_id  AND u.org_id = r.org_id
+      LEFT JOIN agents a ON a.id = r.agent_id AND a.org_id = r.org_id
+     WHERE ${conditions.join(' AND ')}
+     ORDER BY r.created_at DESC
+     LIMIT $${params.length}
   `, params)
-
-  return NextResponse.json(rows)
-}
+  return json(rows)
+})

@@ -1,21 +1,35 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname, useRouter } from 'next/navigation'
+import { useEffect, useState } from 'react'
+import { usePathname } from 'next/navigation'
 
+// Each entry shows only when the role has its permission (GET /api/session).
+// Hiding is a convenience: the API refuses what the role cannot do anyway.
 const NAV = [
-  { href: '/',          label: 'Overview'   },
-  { href: '/teams',     label: 'Teams'      },
-  { href: '/users',     label: 'Users'      },
-  { href: '/agents',    label: 'Agents'     },
-  { href: '/logs',      label: 'Requests'   },
-  { href: '/policy',    label: 'Policies'   },
-  { href: '/alerts',    label: 'Alerts'     },
-  { href: '/providers', label: 'Providers'  },
+  { href: '/',          label: 'Overview',  permission: 'usage.read' },
+  { href: '/teams',     label: 'Teams',     permission: 'teams.read' },
+  { href: '/users',     label: 'Users',     permission: 'users.read' },
+  { href: '/agents',    label: 'Agents',    permission: 'users.read' },
+  { href: '/logs',      label: 'Requests',  permission: 'logs.read' },
+  { href: '/policy',    label: 'Policies',  permission: 'policies.read' },
+  { href: '/alerts',    label: 'Alerts',    permission: 'alerts.read' },
+  { href: '/providers', label: 'Providers', permission: 'providers.read' },
 ]
+
+const ROLE_LABEL = {
+  owner: 'Owner', admin: 'Admin', team_manager: 'Gestor/a de equipo', auditor: 'Auditor/a',
+}
 
 export default function Sidebar() {
   const path = usePathname()
+  const [me, setMe] = useState(null)
+
+  useEffect(() => {
+    fetch('/api/session').then(r => (r.ok ? r.json() : null)).then(setMe).catch(() => {})
+  }, [])
+
+  const nav = me ? NAV.filter(n => me.permissions[n.permission]) : []
 
   return (
     <aside className="w-56 flex-shrink-0 flex flex-col bg-card border-r border-border shadow-sm">
@@ -32,7 +46,7 @@ export default function Sidebar() {
 
       {/* Nav */}
       <nav className="flex-1 px-3 py-3 space-y-0.5">
-        {NAV.map(({ href, label }) => {
+        {nav.map(({ href, label }) => {
           const active = path === href
           return (
             <Link
@@ -55,42 +69,24 @@ export default function Sidebar() {
         })}
       </nav>
 
-      {/* Playground */}
-      <div className="px-3 pb-2 border-t border-border pt-2">
-        <Link
-          href="/prompt"
-          className={`
-            flex items-center justify-between h-9 px-3 rounded-md text-sm font-medium transition-colors
-            ${path === '/prompt'
-              ? 'bg-accent-light text-accent-text'
-              : 'text-muted hover:bg-raised hover:text-default'}
-          `}
-        >
-          <span>Playground</span>
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="opacity-40">
-            <path d="M2 2h8v8M2 10L10 2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-          </svg>
-        </Link>
-      </div>
-
       {/* Logout + Status */}
       <div className="px-3 pb-3 border-t border-border pt-2 space-y-1">
+        {me && (
+          <div className="px-3 pb-1">
+            <div className="text-sm font-medium text-default truncate">{me.user.name ?? me.user.email}</div>
+            <div className="text-xs text-subtle truncate">{me.org.name} · {ROLE_LABEL[me.user.role] ?? me.user.role}</div>
+            <Link href="/account" className="text-xs text-accent hover:text-accent-hover">Mi cuenta</Link>
+          </div>
+        )}
         <button
           onClick={async () => {
             await fetch('/api/session', { method: 'DELETE' })
-            // Also clear Playground session
-            sessionStorage.removeItem('aig_token')
-            sessionStorage.removeItem('aig_user')
-            window.location.href = '/prompt'
+            window.location.href = '/login'
           }}
           className="w-full flex items-center h-8 px-3 rounded-md text-sm text-muted hover:bg-raised hover:text-err transition-colors"
         >
-          Sign out
+          Cerrar sesión
         </button>
-        <div className="flex items-center gap-2 text-xs text-subtle px-3">
-          <span className="w-1.5 h-1.5 rounded-full bg-ok flex-shrink-0" />
-          Gateway · :20128
-        </div>
       </div>
 
     </aside>

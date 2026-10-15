@@ -3,7 +3,10 @@
 import { useState, useEffect, useCallback } from 'react'
 import Modal, { Field, Input, Select, Btn } from '../../components/Modal'
 
-const ROLES = ['user', 'admin', 'org_admin']
+const ROLES = ['member', 'team_manager', 'auditor', 'admin', 'owner']
+const ROLE_LABEL = {
+  owner: 'Owner', admin: 'Admin', team_manager: 'Gestor/a de equipo', auditor: 'Auditor/a', member: 'Miembro',
+}
 
 // ── API key one-time reveal ───────────────────────────────────────────────────
 function ApiKeyReveal({ apiKey, onClose }) {
@@ -42,14 +45,14 @@ function ResetPasswordModal({ user, onClose }) {
   async function submit() {
     if (!password) return setError('Ingresá una contraseña')
     if (password !== confirm) return setError('Las contraseñas no coinciden')
-    if (password.length < 6) return setError('Mínimo 6 caracteres')
+    if (password.length < 12) return setError('Mínimo 12 caracteres')
     setSaving(true); setError('')
     try {
       const res = await fetch(`/api/users/${user.id}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ newPassword: password }),
       })
-      if (!res.ok) { const d = await res.json(); setError(d.error ?? 'Error'); return }
+      if (!res.ok) { const d = await res.json(); setError(d.message ?? d.error ?? 'Error'); return }
       setDone(true)
     } catch { setError('Error de conexión') }
     finally { setSaving(false) }
@@ -65,7 +68,7 @@ function ResetPasswordModal({ user, onClose }) {
       ) : (
         <div className="space-y-4">
           <Field label="Nueva contraseña">
-            <Input type="password" placeholder="Mínimo 6 caracteres" value={password}
+            <Input type="password" placeholder="Mínimo 12 caracteres" value={password}
               onChange={e => setPassword(e.target.value)} autoFocus />
           </Field>
           <Field label="Confirmar contraseña">
@@ -92,7 +95,7 @@ function UserModal({ user, teams, onSave, onClose }) {
     email:      user?.email   ?? '',
     name:       user?.name    ?? '',
     teamId:     user?.team_id ?? '',
-    role:       user?.role    ?? 'user',
+    role:       user?.role    ?? 'member',
     password:   '',
     giveApiKey: false,
   })
@@ -117,7 +120,7 @@ function UserModal({ user, teams, onSave, onClose }) {
 
       const res  = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
       const data = await res.json()
-      if (!res.ok) { setError(data.error ?? 'Error al guardar'); return }
+      if (!res.ok) { setError(data.message ?? data.error ?? 'Error al guardar'); return }
       onSave(data)
     } catch { setError('Error de conexión') }
     finally { setSaving(false) }
@@ -147,7 +150,7 @@ function UserModal({ user, teams, onSave, onClose }) {
           </Field>
           <Field label="Rol">
             <Select value={form.role} onChange={e => set('role', e.target.value)}>
-              {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+              {ROLES.map(r => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
             </Select>
           </Field>
         </div>
@@ -158,7 +161,7 @@ function UserModal({ user, teams, onSave, onClose }) {
 
             <div className="space-y-1">
               <label className="text-xs font-medium text-default block mb-1">
-                Contraseña (acceso Playground)
+                Contraseña (acceso a la consola)
               </label>
               <Input type="password" placeholder="Dejar vacío si solo usa API key"
                 value={form.password} onChange={e => set('password', e.target.value)} />
@@ -194,7 +197,7 @@ function AccessBadges({ user }) {
     <div className="flex gap-1.5 flex-wrap">
       {user.has_password && (
         <span className="text-xs bg-blue-50 text-blue-700 border border-blue-200 rounded-full px-2 py-0.5">
-          Playground
+          Consola
         </span>
       )}
       {user.has_api_key && (
@@ -245,10 +248,21 @@ export default function UsersPage() {
   })
 
   async function toggleActive(user) {
-    await fetch(`/api/users/${user.id}`, {
+    const res = await fetch(`/api/users/${user.id}`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ isActive: !user.is_active }),
     })
+    if (!res.ok) window.alert((await res.json()).message ?? 'No se pudo cambiar el estado.')
+    load()
+  }
+
+  async function revokeKey(user) {
+    if (!window.confirm(`¿Revocar la API key de ${user.email}? Deja de funcionar en todos los gateways en 30 s como máximo.`)) return
+    const res = await fetch(`/api/users/${user.id}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'remove-key' }),
+    })
+    if (!res.ok) window.alert((await res.json()).message ?? 'No se pudo revocar la key.')
     load()
   }
 
@@ -260,6 +274,7 @@ export default function UsersPage() {
     })
     const data = await res.json()
     setRotating(null)
+    if (!res.ok) window.alert(data.message ?? 'No se pudo rotar la key.')
     if (data.apiKey) setRevealKey(data.apiKey)
   }
 
@@ -335,7 +350,7 @@ export default function UsersPage() {
                   </td>
                   <td className="px-5 py-3.5">
                     <span className="text-xs bg-raised text-muted border border-border rounded-full px-2 py-0.5">
-                      {user.role}
+                      {ROLE_LABEL[user.role] ?? user.role}
                     </span>
                   </td>
                   <td className="px-5 py-3.5"><AccessBadges user={user} /></td>
@@ -361,6 +376,12 @@ export default function UsersPage() {
                           disabled={rotating === user.id || !user.is_active}
                           className="text-xs text-accent hover:text-accent-hover px-2 py-1 rounded hover:bg-raised transition-colors disabled:opacity-30">
                           {rotating === user.id ? '…' : 'Rotar key'}
+                        </button>
+                      )}
+                      {user.has_api_key && (
+                        <button onClick={() => revokeKey(user)}
+                          className="text-xs text-err hover:text-err px-2 py-1 rounded hover:bg-raised transition-colors">
+                          Revocar key
                         </button>
                       )}
                       <button onClick={() => toggleActive(user)}

@@ -22,3 +22,12 @@ export async function query(sql, params = []) {
   const { rows } = await db.query(sql, params)
   return rows
 }
+
+// Closes the pool (tests and scripts; the server keeps it for its lifetime).
+export async function closeDb() {
+  if (pool) {
+    const p = pool
+    pool = undefined
+    await p.end()
+  }
+}

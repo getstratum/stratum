@@ -28,7 +28,7 @@ function AddModelModal({ provider, onSave, onClose }) {
           }
         }),
       })
-      if (!res.ok) { const d = await res.json(); setError(d.error ?? 'Error'); return }
+      if (!res.ok) { const d = await res.json(); setError(d.message ?? d.error ?? 'Error'); return }
       onSave()
     } catch { setError('Error de conexión') }
     finally { setSaving(false) }
@@ -103,7 +103,7 @@ function ProviderModal({ provider, onSave, onClose }) {
 
       const res  = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
       const data = await res.json()
-      if (!res.ok) { setError(data.error ?? 'Error al guardar'); return }
+      if (!res.ok) { setError(data.message ?? data.error ?? 'Error al guardar'); return }
       onSave(data)
     } catch { setError('Error de conexión') }
     finally { setSaving(false) }

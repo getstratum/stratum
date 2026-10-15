@@ -20,9 +20,15 @@ Tracks what is done and what still blocks the first public release.
 
 - [x] Control plane on a supported Next.js: Next 16.3 + React 19, Node 24 LTS.
       `npm audit --omit=dev` is clean and now gates CI.
-- [ ] Control plane: replace the hard-coded `DEMO_ORG` with real multi-organisation scoping.
-- [ ] Control plane: the Playground still calls `/me` and `/auth/login` on the
-      gateway, which no longer exist. It should send a developer key directly.
+- [x] Control plane: real multi-organisation scoping instead of the hard-coded `DEMO_ORG`;
+      five roles checked on the server for every console API route; server-side
+      sessions; password sign-in; audit log (docs/console/access-control.md).
+- [x] Control plane: the Playground, which called gateway routes that no longer
+      exist, is removed until it uses the current gateway contract.
+- [ ] Control plane: TOTP second factor, required for Owner and Admin.
+- [ ] Control plane: the console's Providers page edits `provider_configs` (what gateways read).
+- [ ] Control plane: agent keys (`agents` table) reach gateways through the sync.
+- [ ] Control plane: `request_logs` partitions are created ahead of time (today they end in January 2027).
 - [x] Control plane: migrations runner (`control-plane/migrations/migrate.sh`) that
       applies each file once, tracked in `schema_migrations`, under an advisory lock.
 - [ ] Control plane: expand/contract discipline for schema changes (documented in CONTRIBUTING).

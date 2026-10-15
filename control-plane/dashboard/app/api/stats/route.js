@@ -1,76 +1,55 @@
 export const dynamic = 'force-dynamic'
-import { NextResponse } from 'next/server'
-import { query } from '../../../lib/db'
+import { route, json } from '../../../lib/route.js'
+import { parseDateRange, logsScope } from '../../../lib/usage.js'
 
-function parseDateRange(searchParams) {
-  const from = searchParams.get('from')
-  const to   = searchParams.get('to')
-  const period = searchParams.get('period') // e.g. '2026-08'
+export const GET = route('usage.read', async (req, { session, db }) => {
+  const { from, to } = parseDateRange(new URL(req.url).searchParams)
 
-  if (from && to) {
-    return { from: new Date(from), to: new Date(to + 'T23:59:59Z') }
-  }
-  if (period) {
-    const [year, month] = period.split('-').map(Number)
-    return {
-      from: new Date(year, month - 1, 1),
-      to:   new Date(year, month, 0, 23, 59, 59),
-    }
-  }
-  // Default: current month
-  const now = new Date()
-  return {
-    from: new Date(now.getFullYear(), now.getMonth(), 1),
-    to:   new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59),
-  }
-}
-
-export async function GET(req) {
-  const { searchParams } = new URL(req.url)
-  const { from, to } = parseDateRange(searchParams)
+  const p1 = [from, to]
+  const s1 = logsScope(session, 'r', p1)
+  const p2 = [from, to]
+  const s2 = logsScope(session, 'r', p2)
+  const p3 = [from, to, session.orgId]
+  const teamFilter = session.scope === 'team' ? (p3.push(session.teamId), `AND t.id = $${p3.length}`) : ''
 
   const [totals, daily, teams] = await Promise.all([
-    // Totals
-    query(`
-      SELECT COUNT(*)                                         AS total_requests,
-             COALESCE(SUM(tokens_input + tokens_output), 0)  AS total_tokens,
-             COALESCE(SUM(cost_usd), 0)                      AS total_cost,
-             COUNT(DISTINCT team_id)                         AS active_teams
-      FROM request_logs
-      WHERE created_at >= $1 AND created_at <= $2
-    `, [from, to]),
-
-    // Daily breakdown
-    query(`
+    db.query(`
+      SELECT COUNT(*)                                       AS total_requests,
+             COALESCE(SUM(tokens_input + tokens_output), 0) AS total_tokens,
+             COALESCE(SUM(cost_usd), 0)                     AS total_cost,
+             COUNT(DISTINCT team_id)                        AS active_teams
+        FROM request_logs r
+       WHERE r.created_at >= $1 AND r.created_at <= $2 AND ${s1}
+    `, p1),
+    db.query(`
       SELECT TO_CHAR(DATE(created_at), 'DD/MM') AS day,
              COUNT(*)                           AS requests,
              COALESCE(SUM(cost_usd), 0)         AS cost
-      FROM request_logs
-      WHERE created_at >= $1 AND created_at <= $2
-      GROUP BY DATE(created_at)
-      ORDER BY DATE(created_at)
-    `, [from, to]),
-
-    // Teams
-    query(`
+        FROM request_logs r
+       WHERE r.created_at >= $1 AND r.created_at <= $2 AND ${s2}
+       GROUP BY DATE(created_at)
+       ORDER BY DATE(created_at)
+    `, p2),
+    db.query(`
       SELECT t.id AS team_id, t.name AS team_name, t.monthly_budget_usd AS team_budget,
              p.id AS policy_id, p.name AS policy_name, p.monthly_budget_usd,
              COUNT(r.id) AS total_requests,
-             COALESCE(SUM(r.tokens_input + r.tokens_output),0) AS total_tokens,
+             COALESCE(SUM(r.tokens_input + r.tokens_output), 0) AS total_tokens,
              COALESCE(SUM(r.cost_usd), 0) AS total_cost,
              COUNT(DISTINCT r.user_id) AS active_users
-      FROM teams t
-      LEFT JOIN policies p     ON p.id = t.policy_id
-      LEFT JOIN request_logs r ON r.team_id = t.id
-                               AND r.created_at >= $1 AND r.created_at <= $2
-      GROUP BY t.id, t.name, t.monthly_budget_usd, p.id, p.name, p.monthly_budget_usd
-      ORDER BY total_cost DESC
-    `, [from, to]),
+        FROM teams t
+        LEFT JOIN policies p     ON p.id = t.policy_id AND p.org_id = t.org_id
+        LEFT JOIN request_logs r ON r.team_id = t.id AND r.org_id = t.org_id
+                                 AND r.created_at >= $1 AND r.created_at <= $2
+       WHERE t.org_id = $3 ${teamFilter}
+       GROUP BY t.id, t.name, t.monthly_budget_usd, p.id, p.name, p.monthly_budget_usd
+       ORDER BY total_cost DESC
+    `, p3),
   ])
 
-  return NextResponse.json({
-    totals: totals[0],
-    daily:  daily.map(d => ({ day: d.day, requests: parseInt(d.requests), cost: parseFloat(d.cost) })),
-    teams,
+  return json({
+    totals: totals.rows[0],
+    daily:  daily.rows.map(d => ({ day: d.day, requests: parseInt(d.requests), cost: parseFloat(d.cost) })),
+    teams:  teams.rows,
   })
-}
+})
