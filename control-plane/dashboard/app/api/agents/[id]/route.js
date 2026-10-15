@@ -26,7 +26,8 @@ export const PATCH = route('keys.manage', async (req, { session, db, params }) =
   }
   if (body.description !== undefined) set('description', body.description || null)
   if (body.teamId !== undefined) {
-    await assertTeamInScope(db, session, body.teamId || null)
+    if (!body.teamId) throw badRequest('El agente necesita un equipo.')
+    await assertTeamInScope(db, session, body.teamId)
     set('team_id', body.teamId || null)
   }
   if (body.isActive !== undefined) {
@@ -49,10 +50,17 @@ export const PATCH = route('keys.manage', async (req, { session, db, params }) =
   return json(rows[0])
 })
 
-// POST /api/agents/:id  { action: 'rotate-key' }
+// POST /api/agents/:id  { action: 'rotate-key' | 'remove-key' }
 export const POST = route('keys.manage', async (req, { session, db, params }) => {
   const agent = await loadAgent(db, session, params)
   const { action } = await readJson(req)
+  if (action === 'remove-key') {
+    await db.query(
+      'UPDATE agents SET api_key_hash = NULL, api_key_prefix = NULL WHERE id = $1 AND org_id = $2',
+      [agent.id, session.orgId])
+    await audit(db, { req, session, action: 'agent.key.revoke', targetType: 'agent', targetId: agent.id, details: { name: agent.name } })
+    return json({ ok: true })
+  }
   if (action !== 'rotate-key') throw badRequest('Acción desconocida.')
 
   const key = newApiKey('aig_agt_')

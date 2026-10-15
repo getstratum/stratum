@@ -3,9 +3,10 @@
  * api/sync/v2/sync-response.schema.json) for one organisation.
  *
  * Every change that affects what a gateway allows has a version from
- * stratum_version_seq (migrations 012-015), so a delta (since_version > 0)
+ * stratum_version_seq (migrations 012-017), so a delta (since_version > 0)
  * carries it within one sync interval:
- *   - api keys: rotated, revoked, removed, user deactivated or moved; a key
+ *   - api keys of users and of agents ("agent:<uuid>", migration 017):
+ *     rotated, revoked, removed, deactivated or moved; a key
  *     that no longer works is sent with revoked = true (removed keys with an
  *     empty key_hash), never left out;
  *   - policies, per team: the policy changed, or the team got another policy
@@ -89,7 +90,26 @@ export async function buildSyncResponse(client, { orgId, sinceVersion, syncInter
         AND (u.api_key_hash IS NOT NULL
              OR (u.key_revoked_at IS NOT NULL
                  AND ($1 > 0 OR u.key_revoked_at > now() - make_interval(days => $3))))
-      ORDER BY u.key_version ASC
+      UNION ALL
+      -- Agent keys (migration 017), under ids that cannot collide with users'.
+      SELECT
+        'agent:' || a.id::text                      AS id,
+        COALESCE(a.api_key_hash, '')                AS key_hash,
+        COALESCE(a.team_id::text, '')               AS team_id,
+        a.name                                      AS label,
+        a.key_version                               AS version,
+        a.created_at,
+        (a.api_key_hash IS NULL
+          OR NOT COALESCE(a.is_active, true)
+          OR a.team_id IS NULL)                     AS revoked,
+        a.key_revoked_at
+      FROM agents a
+      WHERE a.org_id = $2
+        AND a.key_version > $1
+        AND (a.api_key_hash IS NOT NULL
+             OR (a.key_revoked_at IS NOT NULL
+                 AND ($1 > 0 OR a.key_revoked_at > now() - make_interval(days => $3))))
+      ORDER BY version ASC
     `, [since, orgId, FULL_SYNC_TOMBSTONE_DAYS])
 
     providerConfigs = await q(`

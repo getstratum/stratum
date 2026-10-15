@@ -53,6 +53,7 @@ function AgentModal({ agent, teams, models, onSave, onClose }) {
 
   async function submit() {
     if (!form.name.trim()) { setError('Name is required'); return }
+    if (!form.teamId) { setError('Choose a team: the agent works under its policy'); return }
     setSaving(true); setError('')
     try {
       const res  = await fetch(
@@ -102,7 +103,7 @@ function AgentModal({ agent, teams, models, onSave, onClose }) {
               set('defaultProvider', '')
             }}
           >
-            <option value="">No team</option>
+            <option value="" disabled>Choose a team</option>
             {teams.map(t => (
               <option key={t.id} value={t.id}>
                 {t.name} {t.policy_name ? `· ${t.policy_name}` : ''}
@@ -213,6 +214,16 @@ export default function AgentsPage() {
     load()
   }
 
+  async function revokeKey(agent) {
+    if (!window.confirm(`Revoke the key of ${agent.name}? Gateways stop accepting it within 30 s.`)) return
+    const res = await fetch(`/api/agents/${agent.id}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'remove-key' }),
+    })
+    if (!res.ok) window.alert((await res.json()).message ?? 'Could not revoke the key.')
+    load()
+  }
+
   async function rotateKey(agent) {
     setRotating(agent.id)
     const res  = await fetch(`/api/agents/${agent.id}`, {
@@ -299,6 +310,14 @@ export default function AgentsPage() {
                   >
                     {rotating === agent.id ? '…' : 'Rotate key'}
                   </button>
+                  {agent.api_key_prefix && (
+                    <button
+                      onClick={() => revokeKey(agent)}
+                      className="text-2xs text-lo hover:text-err transition-colors"
+                    >
+                      Revoke key
+                    </button>
+                  )}
                   <button
                     onClick={() => toggleActive(agent)}
                     className={`text-2xs transition-colors ${agent.is_active ? 'text-lo hover:text-err' : 'text-lo hover:text-ok'}`}

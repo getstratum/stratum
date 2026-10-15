@@ -195,3 +195,60 @@ test('changes in another organisation do not move this one', { skip }, async () 
   assert.equal(d.current_version, v)
   assert.equal(d.api_keys.length + d.policies.length + d.provider_configs.length, 0)
 })
+
+test('agent keys travel like user keys, under agent: ids', { skip }, async () => {
+  const f = await fixture()
+  const hash = randomBytes(32).toString('hex')
+  const [agent] = await sql(
+    `INSERT INTO agents (org_id, team_id, name, api_key_hash, api_key_prefix) VALUES ($1, $2, 'bot', $3, 'aig_agt_x') RETURNING id`,
+    [f.org, f.team, hash])
+  const id = `agent:${agent.id}`
+
+  const full = await sync(f.org, 0)
+  assert.equal(key(full, id).key_hash, hash)
+  assert.equal(key(full, id).team_id, f.team)
+  assert.equal(key(full, id).revoked, false)
+  assert.ok(full.current_version >= key(full, id).version, 'the watermark covers agent keys')
+
+  // Rotation reaches gateways in a delta.
+  const rotated = randomBytes(32).toString('hex')
+  await sql('UPDATE agents SET api_key_hash = $2 WHERE id = $1', [agent.id, rotated])
+  const d1 = await sync(f.org, full.current_version)
+  assert.equal(key(d1, id).key_hash, rotated)
+
+  // Deactivated: revoked, hash kept.
+  await sql('UPDATE agents SET is_active = false WHERE id = $1', [agent.id])
+  const d2 = await sync(f.org, d1.current_version)
+  assert.equal(key(d2, id).revoked, true)
+  await sql('UPDATE agents SET is_active = true WHERE id = $1', [agent.id])
+  assert.equal(key(await sync(f.org, d2.current_version), id).revoked, false)
+
+  // Key removed: revoked with an empty hash, in deltas and full syncs.
+  const v3 = (await sync(f.org, 0)).current_version
+  await sql('UPDATE agents SET api_key_hash = NULL, api_key_prefix = NULL WHERE id = $1', [agent.id])
+  const d3 = await sync(f.org, v3)
+  assert.deepEqual([key(d3, id).revoked, key(d3, id).key_hash], [true, ''])
+  assert.equal(key(await sync(f.org, 0), id).revoked, true)
+
+  // Deleted: a tombstone, and the version does not go backwards.
+  await sql('UPDATE agents SET api_key_hash = $2 WHERE id = $1', [agent.id, hash])
+  const v4 = (await sync(f.org, 0)).current_version
+  await sql('DELETE FROM agents WHERE id = $1', [agent.id])
+  const d4 = await sync(f.org, v4)
+  assert.equal(key(d4, id).revoked, true)
+  assert.ok(d4.current_version > v4)
+})
+
+test('an agent without a team or another organization\'s agent never works here', { skip }, async () => {
+  const f = await fixture()
+  const g = await fixture()
+  const [noTeam] = await sql(
+    `INSERT INTO agents (org_id, name, api_key_hash) VALUES ($1, 'loose', $2) RETURNING id`,
+    [f.org, randomBytes(32).toString('hex')])
+  const [other] = await sql(
+    `INSERT INTO agents (org_id, team_id, name, api_key_hash) VALUES ($1, $2, 'other', $3) RETURNING id`,
+    [g.org, g.team, randomBytes(32).toString('hex')])
+  const body = await sync(f.org, 0)
+  assert.equal(key(body, `agent:${noTeam.id}`).revoked, true)
+  assert.equal(key(body, `agent:${other.id}`), undefined)
+})
