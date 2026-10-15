@@ -28,6 +28,8 @@ import { NextResponse } from 'next/server'
 import { createHash }   from 'crypto'
 import { query }        from '@/lib/db'
 
+import { tokenRoute } from '@/lib/route'
+
 export const dynamic = 'force-dynamic'
 
 // ---------------------------------------------------------------------------
@@ -87,7 +89,7 @@ function validateMetricsBody(body) {
 // Handler
 // ---------------------------------------------------------------------------
 
-export async function POST(request) {
+async function handleMetrics(request) {
   // 1. Auth
   const authHeader = request.headers.get('authorization')
   const instance = await authenticateInstance(authHeader)
@@ -191,3 +193,6 @@ export async function POST(request) {
     )
   }
 }
+
+// Authenticated by the instance's sync token, checked above.
+export const POST = tokenRoute(handleMetrics)

@@ -90,6 +90,10 @@ spec:
           env:
             - name: SECURE_COOKIES
               value: "true"
+            # The Google load balancer appends the client and its own address
+            # to X-Forwarded-For: the client is the second entry from the right.
+            - name: STRATUM_TRUSTED_PROXY_HOPS
+              value: "2"
             # Keep-alive longer than the load balancer's (600 s), so the
             # server never closes a connection the LB is about to reuse.
             - name: KEEP_ALIVE_TIMEOUT
@@ -98,7 +102,7 @@ spec:
               value: http://stratum-gateway.${NAMESPACE}.svc
           envFrom:
             - secretRef:
-                name: stratum-control-plane # DATABASE_URL, SESSION_SECRET, STRATUM_ENCRYPTION_KEY
+                name: stratum-control-plane # DATABASE_URL, STRATUM_ENCRYPTION_KEY
           readinessProbe:
             httpGet:
               path: /api/healthz

@@ -1,116 +1,124 @@
 export const dynamic = 'force-dynamic'
-import { NextResponse }        from 'next/server'
-import { SignJWT }             from 'jose'
-import { createHash }          from 'crypto'
-import { query }               from '@/lib/db'
-import { getSessionSecret } from '@/lib/secret'
+import { NextResponse } from 'next/server'
+import { getDb } from '../../../lib/db.js'
+import { route, publicRoute, readJson, json } from '../../../lib/route.js'
+import { COOKIE, createSession, revokeSession, cookieOptions } from '../../../lib/session.js'
+import { verifyPassword, needsRehash, hashPassword } from '../../../lib/password.js'
+import { CONSOLE_ROLES, PERMISSIONS, scopeFor } from '../../../lib/authz.js'
+import { audit, clientIp } from '../../../lib/audit.js'
 
-// Server-side gateway URL — used only for the Playground's Admin token-exchange flow
-const GATEWAY_INTERNAL = process.env.GATEWAY_INTERNAL_URL
-                      ?? process.env.NEXT_PUBLIC_GATEWAY_URL
-                      ?? 'http://gateway:20128'
+// After this many failed attempts in a row the account is locked for
+// LOCK_MINUTES. The counter resets on a successful sign-in.
+const MAX_FAILED = 10
+const LOCK_MINUTES = 15
 
-function getSecret() {
-  return getSessionSecret()
-}
+const INVALID = 'Email o contraseña incorrectos, o la cuenta está bloqueada por unos minutos.'
 
-function setCookie(response, session) {
-  response.cookies.set('stratum_session', session, {
-    httpOnly: true,
-    secure:   process.env.SECURE_COOKIES === 'true',
-    sameSite: 'lax',
-    maxAge:   60 * 60 * 24,
-    path:     '/',
-  })
-}
+// POST /api/session  { email, password }  → sign in
+//
+// Every refusal gets the same 401, so the response never tells whether an
+// email has an account, whether it is locked or deactivated, or whether a
+// password was right for an account that cannot sign in. The reason is in
+// the audit log.
+export const POST = publicRoute(async (req) => {
+  const db = getDb()
+  const body = await readJson(req)
+  const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : ''
+  const password = body.password
 
-async function buildSession(user, team) {
-  return new SignJWT({
-    email:    user.email,
-    name:     user.name,
-    role:     user.role,
-    teamName: team?.name ?? '',
-    teamId:   team?.id   ?? '',
-  })
-    .setProtectedHeader({ alg: 'HS256' })
-    .setExpirationTime('24h')
-    .sign(getSecret())
-}
-
-// POST /api/session
-// Accepts either:
-//   { email, password }  → email + API key login (password = raw API key)
-//   { token }            → token exchange: Playground API key → Dashboard session
-export async function POST(req) {
-  const body = await req.json()
-
-  // ── Token exchange (Admin button from Playground) ─────────────────────────
-  // The Playground passes the raw API key as `token`; we resolve it to a user
-  // directly from PostgreSQL (no gateway call needed).
-  if (body.token && !body.email) {
-    const hash = createHash('sha256').update(body.token).digest('hex')
-    const rows = await query(
-      `SELECT u.id, u.email, u.name, u.role,
-              t.id AS team_id, t.name AS team_name
-         FROM users u
-         JOIN teams t ON t.id = u.team_id
-        WHERE u.api_key_hash = $1
-          AND (u.key_revoked IS NULL OR u.key_revoked = false)
-        LIMIT 1`,
-      [hash]
-    ).catch(() => [])
-
-    if (!rows[0]) {
-      return NextResponse.json({ error: 'Invalid or expired token' }, { status: 401 })
-    }
-
-    const u    = rows[0]
-    const user = { email: u.email, name: u.name, role: u.role }
-    const team = { id: u.team_id, name: u.team_name }
-    const session  = await buildSession(user, team)
-    const response = NextResponse.json({ ok: true, teamName: team.name, role: user.role })
-    setCookie(response, session)
-    return response
-  }
-
-  // ── Email + API-key login ─────────────────────────────────────────────────
-  const { email, password } = body
-  if (!email || !password) {
-    return NextResponse.json({ error: 'Email and API key are required' }, { status: 400 })
-  }
-
-  const hash = createHash('sha256').update(password).digest('hex')
-  const rows = await query(
-    `SELECT u.id, u.email, u.name, u.role,
-            t.id AS team_id, t.name AS team_name
-       FROM users u
-       JOIN teams t ON t.id = u.team_id
-      WHERE u.email = $1
-        AND u.api_key_hash = $2
-        AND (u.key_revoked IS NULL OR u.key_revoked = false)
+  const { rows } = await db.query(
+    `SELECT u.id, u.org_id, u.email, u.role, COALESCE(u.is_active, true) AS is_active,
+            u.password_hash, o.status AS org_status
+       FROM users u JOIN organizations o ON o.id = u.org_id
+      WHERE lower(u.email) = $1
       LIMIT 1`,
-    [email, hash]
-  ).catch(err => {
-    console.error('[session] db error:', err.message)
-    return []
-  })
+    [email])
+  const u = rows[0]
 
-  if (!rows[0]) {
-    return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 })
+  // Reserve the attempt before checking the password, atomically: at most
+  // MAX_FAILED attempts can be in flight or counted until a success resets
+  // the counter, however many requests arrive at once. No row: locked.
+  let reserved = null
+  if (u) {
+    const r = await db.query(
+      `UPDATE users SET failed_logins = failed_logins + 1
+        WHERE id = $1 AND (locked_until IS NULL OR locked_until <= now()) AND failed_logins < $2
+        RETURNING failed_logins`,
+      [u.id, MAX_FAILED])
+    reserved = r.rows[0] ?? null
+    if (!reserved) {
+      // A counter left at the limit without a lock (a request that died
+      // after reserving) becomes a lock that expires, never a permanent one.
+      await db.query(
+        `UPDATE users SET failed_logins = 0, locked_until = now() + make_interval(mins => $3)
+          WHERE id = $1 AND (locked_until IS NULL OR locked_until <= now()) AND failed_logins >= $2`,
+        [u.id, MAX_FAILED, LOCK_MINUTES])
+    }
   }
 
-  const u    = rows[0]
-  const user = { email: u.email, name: u.name, role: u.role }
-  const team = { id: u.team_id, name: u.team_name }
-  const session  = await buildSession(user, team)
-  const response = NextResponse.json({ ok: true, teamName: team.name, role: user.role })
-  setCookie(response, session)
-  return response
-}
+  // Always run the password check, so timing does not tell which accounts exist.
+  const ok = await verifyPassword(password, u?.password_hash)
 
-// DELETE /api/session — logout
-export async function DELETE() {
-  const response = NextResponse.json({ ok: true })
-  response.cookies.delete('stratum_session')
-  return response
-}
+  const refuse = async (reason) => {
+    await audit(db, {
+      req, orgId: u?.org_id ?? null, actor: u?.email ?? (email.slice(0, 200) || null),
+      action: 'session.login', result: 'failed', details: { reason },
+    })
+    return json({ error: 'invalid_credentials', message: INVALID }, 401)
+  }
+
+  if (!u) return refuse('unknown_email')
+  if (!reserved) return refuse('locked')
+  if (!ok) {
+    if (reserved.failed_logins >= MAX_FAILED) {
+      await db.query(
+        `UPDATE users SET failed_logins = 0, locked_until = now() + make_interval(mins => $2) WHERE id = $1`,
+        [u.id, LOCK_MINUTES])
+    }
+    return refuse('bad_password')
+  }
+  if (!u.is_active) return refuse('inactive')
+  if (u.org_status !== 'active') return refuse('org_suspended')
+  if (!CONSOLE_ROLES.includes(u.role)) return refuse('role_without_console')
+
+  // Succeeds only if no concurrent failure locked the account meanwhile.
+  const done = await db.query(
+    `UPDATE users SET failed_logins = 0, locked_until = NULL, last_login_at = now(),
+                      password_hash = COALESCE($2, password_hash)
+      WHERE id = $1 AND (locked_until IS NULL OR locked_until <= now())
+      RETURNING id`,
+    [u.id, needsRehash(u.password_hash) ? await hashPassword(password) : null])
+  if (!done.rows[0]) return refuse('locked')
+
+  const token = await createSession(db, {
+    userId: u.id, orgId: u.org_id, ip: clientIp(req), userAgent: req.headers.get('user-agent'),
+  })
+  await audit(db, { req, session: { orgId: u.org_id, userId: u.id, email: u.email, role: u.role }, action: 'session.login' })
+
+  const res = NextResponse.json({ ok: true, role: u.role })
+  res.cookies.set(COOKIE, token, cookieOptions())
+  return res
+})
+
+// GET /api/session → who is signed in, and what they may do
+export const GET = route('org.read', async (req, { session }) => {
+  const permissions = {}
+  for (const p of Object.keys(PERMISSIONS)) {
+    const scope = scopeFor(session.role, p)
+    if (scope) permissions[p] = scope
+  }
+  return json({
+    user: { id: session.userId, email: session.email, name: session.name, role: session.role, teamId: session.teamId },
+    org:  { id: session.orgId, name: session.orgName },
+    permissions,
+  })
+})
+
+// DELETE /api/session → sign out
+export const DELETE = publicRoute(async (req) => {
+  const token = req.cookies.get(COOKIE)?.value
+  if (token) await revokeSession(getDb(), token)
+  const res = NextResponse.json({ ok: true })
+  res.cookies.set(COOKIE, '', { ...cookieOptions(), maxAge: 0 })
+  return res
+})

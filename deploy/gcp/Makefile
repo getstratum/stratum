@@ -33,4 +33,4 @@ keys:
 	@source $(S)/lib.sh && load_outputs && \
 	  echo "engineering: $$(sm_get key-engineering)" && \
 	  echo "marketing:   $$(sm_get key-marketing)" && \
-	  echo "console:     https://$$HOST  (dev@acme.com + engineering key)"
+	  echo "console:     https://$$HOST  (dev@acme.com / $$(sm_get console-password))"

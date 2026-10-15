@@ -1,74 +1,55 @@
 export const dynamic = 'force-dynamic'
-import { NextResponse } from 'next/server'
-import { query } from '../../../lib/db'
+import { route, json } from '../../../lib/route.js'
+import { parseDateRange, logsScope } from '../../../lib/usage.js'
 
-function parseDateRange(searchParams) {
-  const from = searchParams.get('from')
-  const to   = searchParams.get('to')
-  const period = searchParams.get('period')
-
-  if (from && to) return { from: new Date(from), to: new Date(to + 'T23:59:59Z') }
-  if (period) {
-    const [year, month] = period.split('-').map(Number)
-    return { from: new Date(year, month - 1, 1), to: new Date(year, month, 0, 23, 59, 59) }
+export const GET = route('usage.read', async (req, { session, db }) => {
+  const { from, to } = parseDateRange(new URL(req.url).searchParams)
+  const scoped = () => {
+    const params = [from, to]
+    return { params, where: `r.created_at >= $1 AND r.created_at <= $2 AND ${logsScope(session, 'r', params)}` }
   }
-  const now = new Date()
-  return {
-    from: new Date(now.getFullYear(), now.getMonth(), 1),
-    to:   new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59),
-  }
-}
-
-export async function GET(req) {
-  const { searchParams } = new URL(req.url)
-  const { from, to } = parseDateRange(searchParams)
+  const a = scoped(), b = scoped(), c = scoped()
 
   const [byProvider, byModel, byTeamProvider] = await Promise.all([
-
-    // By provider
-    query(`
+    db.query(`
       SELECT provider,
              COUNT(*)                                        AS requests,
              COALESCE(SUM(tokens_input + tokens_output), 0) AS tokens,
              COALESCE(SUM(cost_usd), 0)                     AS cost,
              COALESCE(AVG(latency_ms), 0)                   AS avg_latency,
              COUNT(CASE WHEN status_code >= 400 THEN 1 END) AS errors
-      FROM request_logs
-      WHERE created_at >= $1 AND created_at <= $2
-      GROUP BY provider
-      ORDER BY cost DESC
-    `, [from, to]),
-
-    // By model (top 10)
-    query(`
+        FROM request_logs r
+       WHERE ${a.where}
+       GROUP BY provider
+       ORDER BY cost DESC
+    `, a.params),
+    db.query(`
       SELECT provider, model_id,
-             COUNT(*)                                        AS requests,
-             COALESCE(SUM(tokens_input), 0)                 AS tokens_input,
-             COALESCE(SUM(tokens_output), 0)                AS tokens_output,
-             COALESCE(SUM(cost_usd), 0)                     AS cost,
-             COALESCE(AVG(latency_ms), 0)                   AS avg_latency
-      FROM request_logs
-      WHERE created_at >= $1 AND created_at <= $2
-      GROUP BY provider, model_id
-      ORDER BY cost DESC
-      LIMIT 10
-    `, [from, to]),
-
-    // Cost by team × provider (for stacked chart)
-    query(`
+             COUNT(*)                        AS requests,
+             COALESCE(SUM(tokens_input), 0)  AS tokens_input,
+             COALESCE(SUM(tokens_output), 0) AS tokens_output,
+             COALESCE(SUM(cost_usd), 0)      AS cost,
+             COALESCE(AVG(latency_ms), 0)    AS avg_latency
+        FROM request_logs r
+       WHERE ${b.where}
+       GROUP BY provider, model_id
+       ORDER BY cost DESC
+       LIMIT 10
+    `, b.params),
+    db.query(`
       SELECT t.name AS team, r.provider,
              COALESCE(SUM(r.cost_usd), 0) AS cost,
              COUNT(*) AS requests
-      FROM request_logs r
-      JOIN teams t ON t.id = r.team_id
-      WHERE r.created_at >= $1 AND r.created_at <= $2
-      GROUP BY t.name, r.provider
-      ORDER BY t.name, cost DESC
-    `, [from, to]),
+        FROM request_logs r
+        JOIN teams t ON t.id = r.team_id AND t.org_id = r.org_id
+       WHERE ${c.where}
+       GROUP BY t.name, r.provider
+       ORDER BY t.name, cost DESC
+    `, c.params),
   ])
 
-  return NextResponse.json({
-    byProvider: byProvider.map(r => ({
+  return json({
+    byProvider: byProvider.rows.map(r => ({
       provider:   r.provider,
       requests:   parseInt(r.requests),
       tokens:     parseInt(r.tokens),
@@ -76,7 +57,7 @@ export async function GET(req) {
       avgLatency: Math.round(parseFloat(r.avg_latency)),
       errors:     parseInt(r.errors),
     })),
-    byModel: byModel.map(r => ({
+    byModel: byModel.rows.map(r => ({
       provider:     r.provider,
       model:        r.model_id,
       requests:     parseInt(r.requests),
@@ -85,11 +66,11 @@ export async function GET(req) {
       cost:         parseFloat(r.cost),
       avgLatency:   Math.round(parseFloat(r.avg_latency)),
     })),
-    byTeamProvider: byTeamProvider.map(r => ({
+    byTeamProvider: byTeamProvider.rows.map(r => ({
       team:     r.team,
       provider: r.provider,
       cost:     parseFloat(r.cost),
       requests: parseInt(r.requests),
     })),
   })
-}
+})

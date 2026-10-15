@@ -112,7 +112,7 @@ jobs:
           # migrate.sh skips applied files; re-run the newest directly to
           # prove it is idempotent, as every migration must be.
           psql -X -q -v ON_ERROR_STOP=1 -f "$(ls migrations/*.sql | sort | tail -1)"
-      - name: sync endpoint against PostgreSQL
+      - name: tests against PostgreSQL (sync, console access control)
         env:
           DATABASE_URL: postgres://stratum:stratum@localhost:5432/stratum
           SYNC_EXAMPLES_DIR: ${{ runner.temp }}/sync-responses

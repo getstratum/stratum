@@ -1,67 +1,66 @@
 export const dynamic = 'force-dynamic'
-import { NextResponse } from 'next/server'
-import crypto from 'crypto'
-import { query, getDb } from '../../../lib/db'
+import { route, readJson, json, badRequest, forbidden, conflict, assertTeamInScope } from '../../../lib/route.js'
+import { assignableRoles } from '../../../lib/authz.js'
+import { hashPassword, passwordProblem } from '../../../lib/password.js'
+import { USER_COLUMNS, newApiKey, validEmail } from '../../../lib/users.js'
+import { audit } from '../../../lib/audit.js'
 
-const DEMO_ORG = '00000000-0000-0000-0000-000000000001'
+export const GET = route('users.read', async (req, { session, db }) => {
+  const team = session.scope === 'team'
+  const { rows } = await db.query(
+    `SELECT ${USER_COLUMNS}
+       FROM users u
+       LEFT JOIN teams t ON t.id = u.team_id
+      WHERE u.org_id = $1 ${team ? 'AND u.team_id = $2' : ''}
+      ORDER BY u.created_at DESC`,
+    team ? [session.orgId, session.teamId] : [session.orgId])
+  return json(rows)
+})
 
-export async function GET() {
-  const users = await query(`
-    SELECT u.id, u.email, u.name, u.role, u.is_active,
-           u.api_key_prefix, u.created_at,
-           (u.password_hash IS NOT NULL) AS has_password,
-           (u.api_key_hash  IS NOT NULL) AS has_api_key,
-           t.id   AS team_id,
-           t.name AS team_name
-    FROM users u
-    LEFT JOIN teams t ON t.id = u.team_id
-    WHERE u.org_id = $1
-    ORDER BY u.created_at DESC
-  `, [DEMO_ORG])
+export const POST = route('users.manage', async (req, { session, db }) => {
+  const body = await readJson(req)
+  const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : ''
+  const role = body.role ?? 'member'
+  const teamId = body.teamId || (session.scope === 'team' ? session.teamId : null)
 
-  return NextResponse.json(users)
-}
-
-export async function POST(req) {
-  const { email, name, teamId, role = 'user', password, giveApiKey = false } = await req.json()
-
-  if (!email) return NextResponse.json({ error: 'Email requerido' }, { status: 400 })
-  if (!password && !giveApiKey) {
-    return NextResponse.json({ error: 'El usuario necesita contraseña o API key (o ambas)' }, { status: 400 })
+  if (!validEmail(email)) throw badRequest('Email inválido.')
+  if (!assignableRoles(session.role).includes(role)) throw forbidden('Tu rol no puede asignar ese rol.')
+  await assertTeamInScope(db, session, teamId)
+  if (role === 'team_manager' && !teamId) throw badRequest('Un gestor de equipo necesita un equipo.')
+  if (body.password != null && session.role === 'team_manager') {
+    throw forbidden('Tu rol no puede definir contraseñas.')
+  }
+  if (body.password != null) {
+    const problem = passwordProblem(body.password)
+    if (problem) throw badRequest(problem)
+  }
+  if (body.password == null && !body.giveApiKey) {
+    throw badRequest('La persona necesita contraseña o API key (o ambas).')
   }
 
-  const db = getDb()
+  const key = body.giveApiKey ? newApiKey('aig_sk_') : null
+  const passwordHash = body.password != null ? await hashPassword(body.password) : null
+  const name = typeof body.name === 'string' && body.name.trim() ? body.name.trim().slice(0, 255) : email.split('@')[0]
 
-  let rawKey    = null
-  let keyHash   = null
-  let keyPrefix = null
-  if (giveApiKey) {
-    rawKey    = `aig_sk_${crypto.randomBytes(24).toString('hex')}`
-    keyHash   = crypto.createHash('sha256').update(rawKey).digest('hex')
-    keyPrefix = rawKey.slice(0, 14) + '...'
+  let created
+  try {
+    const { rows } = await db.query(
+      `INSERT INTO users (org_id, team_id, email, name, role, api_key_hash, api_key_prefix, password_hash)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       RETURNING id`,
+      [session.orgId, teamId, email, name, role, key?.hash ?? null, key?.prefix ?? null, passwordHash])
+    created = rows[0]
+  } catch (err) {
+    if (err.code === '23505') throw conflict('Ya existe una cuenta con ese email.')
+    throw err
   }
 
-  let passwordHash = null
-  if (password) {
-    const salt = crypto.randomBytes(16).toString('hex')
-    const hash = await new Promise((res, rej) =>
-      crypto.scrypt(password, salt, 64, (err, key) =>
-        err ? rej(err) : res(key.toString('hex'))
-      )
-    )
-    passwordHash = `${salt}:${hash}`
-  }
-
-  const { rows } = await db.query(`
-    INSERT INTO users
-      (org_id, team_id, email, name, role, api_key_hash, api_key_prefix, password_hash)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-    RETURNING id, email, name, role, is_active, api_key_prefix, created_at
-  `, [
-    DEMO_ORG, teamId || null,
-    email, name || email.split('@')[0], role,
-    keyHash, keyPrefix, passwordHash,
-  ])
-
-  return NextResponse.json({ user: rows[0], apiKey: rawKey }, { status: 201 })
-}
+  await audit(db, {
+    req, session, action: 'user.create', targetType: 'user', targetId: created.id,
+    details: { email, role, teamId, password: passwordHash != null, apiKey: key != null },
+  })
+  const { rows } = await db.query(
+    `SELECT ${USER_COLUMNS} FROM users u LEFT JOIN teams t ON t.id = u.team_id WHERE u.id = $1`,
+    [created.id])
+  return json({ user: rows[0], apiKey: key?.raw ?? null }, 201)
+})

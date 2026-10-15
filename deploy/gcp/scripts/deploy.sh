@@ -83,7 +83,7 @@ if gcloud sql users list --instance "$SQL_INSTANCE" --project "$PROJECT_ID" --fo
 else
   gcloud sql users create stratum --instance "$SQL_INSTANCE" --project "$PROJECT_ID" --password "$DB_PASSWORD" --quiet >/dev/null
 fi
-SESSION_SECRET="$(sm_ensure session-secret hex32)"
+CONSOLE_PASSWORD="$(sm_ensure console-password b64_24)"
 ENCRYPTION_KEY="$(sm_ensure encryption-key hex32)"
 SNAPSHOT_KEY="$(sm_ensure snapshot-key hex32)"
 ENG_KEY="$(sm_ensure key-engineering sh -c 'echo "sk-stratum-$(openssl rand -hex 24)"')"
@@ -92,7 +92,7 @@ MKT_KEY="$(sm_ensure key-marketing sh -c 'echo "sk-stratum-$(openssl rand -hex 2
 kube_secret stratum-db username=stratum "password=$DB_PASSWORD"
 kube_secret stratum-control-plane \
   "DATABASE_URL=postgres://stratum:${DB_PASSWORD}@127.0.0.1:5432/${SQL_DATABASE}" \
-  "SESSION_SECRET=$SESSION_SECRET" "STRATUM_ENCRYPTION_KEY=$ENCRYPTION_KEY"
+  "STRATUM_ENCRYPTION_KEY=$ENCRYPTION_KEY"
 kube_secret stratum-test-keys "engineering=$ENG_KEY" "marketing=$MKT_KEY"
 ok "Secret Manager: ${SECRET_PREFIX}-* ; Kubernetes: stratum-db, stratum-control-plane, stratum-test-keys"
 
@@ -120,11 +120,18 @@ k rollout status deployment/stratum-control-plane --timeout=15m
 k rollout status deployment/mock-llm --timeout=10m
 ok "control plane and mock-llm ready"
 
+# The console has no default account: make dev@acme.com the demo
+# organization's owner, with a password kept in Secret Manager.
+printf '%s' "$CONSOLE_PASSWORD" | k exec -i deploy/stratum-control-plane -c control-plane -- \
+  node scripts/stratum-admin.mjs create-owner --email dev@acme.com \
+  --org-id 00000000-0000-0000-0000-000000000001 --password-stdin >/dev/null
+ok "console owner: dev@acme.com"
+
 # ── 6. Register the gateway and providers through the control plane API ───
 step "Registering the gateway instance and providers"
 port_forward svc/stratum-cp-console 13000:80
 CP=http://127.0.0.1:13000
-COOKIE="$(jq -n --arg e dev@acme.com --arg p "$ENG_KEY" '{email:$e,password:$p}' |
+COOKIE="$(jq -n --arg e dev@acme.com --arg p "$CONSOLE_PASSWORD" '{email:$e,password:$p}' |
   curl -sS -D - -o /dev/null -H 'content-type: application/json' --data-binary @- "$CP/api/session" |
   tr -d '\r' | sed -n 's/^[Ss]et-[Cc]ookie: \(stratum_session=[^;]*\).*/\1/p')"
 [[ -n "$COOKIE" ]] || die "could not log in to the control plane"
@@ -195,7 +202,7 @@ step "Done"
 cat <<EOF
   API        https://$HOST/v1/chat/completions   (model "ollama/mock-1")
   Console    https://$HOST   (from ${c_yellow}your allowlisted IP only${c_off})
-             login: dev@acme.com  /  key below
+             login: dev@acme.com  /  password from 'make keys'
   Keys       make keys
   Tests      make test            (all scenarios, ~45 min)
              make test-smoke      (one scenario: smoke|quota|rollout|zone|valkey|cp-outage|sql-failover)

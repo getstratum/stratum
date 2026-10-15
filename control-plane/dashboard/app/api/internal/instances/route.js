@@ -1,128 +1,65 @@
 /**
- * Data Plane Instance management
+ * Data plane instances (gateways) of the session's organization.
  *
- * POST   /api/internal/instances         — registrar una nueva instancia del DP
- * GET    /api/internal/instances         — listar instancias de la org
- * DELETE /api/internal/instances?id=...  — revocar instancia
+ * POST   /api/internal/instances         — register one; returns its sync token once
+ * GET    /api/internal/instances         — list them
+ * DELETE /api/internal/instances?id=...  — disable one
  *
- * Autenticación: sesión JWT del dashboard (cookie stratum_session).
- * NO usa sync_token — el sync_token lo genera el CP aquí.
+ * Console session routes (lib/route.js). The sync token is generated here and
+ * only its SHA-256 is stored.
  */
 
-import { NextResponse }              from 'next/server'
-import { createHash, randomBytes }   from 'crypto'
-import { query }                     from '@/lib/db'
-import { requireAuth }               from '@/lib/auth'
+import { createHash, randomBytes } from 'crypto'
+import { route, readJson, json, badRequest, notFound } from '@/lib/route'
+import { audit } from '@/lib/audit'
 
 export const dynamic = 'force-dynamic'
 
-// ---------------------------------------------------------------------------
-// POST — registrar una instancia nueva
-// ---------------------------------------------------------------------------
+export const POST = route('gateways.manage', async (req, { session, db }) => {
+  const body = await readJson(req)
+  const name = body.label ?? body.name // 'label' and 'name' are both accepted
+  if (typeof name !== 'string' || !name.trim()) throw badRequest('label (o name) es obligatorio.')
 
-export async function POST(request) {
-  const user = await requireAuth(request)
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
-  let body
-  try {
-    body = await request.json()
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
-  }
-
-  const { label } = body
-  const name = label ?? body.name   // accept both 'label' and 'name'
-
-  if (!name || typeof name !== 'string' || name.trim().length === 0) {
-    return NextResponse.json({ error: 'label (or name) is required' }, { status: 400 })
-  }
-
-  // Generar sync token (256 bits de entropía — nunca almacenado en claro)
   const rawToken   = `dp_sync_${randomBytes(32).toString('hex')}`
   const tokenHash  = createHash('sha256').update(rawToken).digest('hex')
   const instanceId = `dp_${randomBytes(16).toString('hex')}`
 
-  await query(
-    `INSERT INTO data_plane_instances (id, org_id, name, sync_token_hash)
-     VALUES ($1, $2, $3, $4)`,
-    [instanceId, user.org_id, name.trim(), tokenHash]
-  )
+  await db.query(
+    `INSERT INTO data_plane_instances (id, org_id, name, sync_token_hash) VALUES ($1, $2, $3, $4)`,
+    [instanceId, session.orgId, name.trim().slice(0, 255), tokenHash])
+  await audit(db, { req, session, action: 'gateway.register', targetType: 'gateway', targetId: instanceId, details: { name: name.trim() } })
 
-  // Devolver el raw token SOLO en esta respuesta
-  return NextResponse.json(
-    {
-      id:         instanceId,
-      sync_token: rawToken,   // ← guardar ahora, no se puede ver después
-      warning:    'Store this token securely. It will NOT be shown again.',
-      name:       name.trim(),
-    },
-    { status: 201 }
-  )
-}
+  return json({
+    id:         instanceId,
+    sync_token: rawToken,
+    warning:    'Store this token securely. It will NOT be shown again.',
+    name:       name.trim(),
+  }, 201)
+})
 
-// ---------------------------------------------------------------------------
-// GET — listar instancias de la org
-// ---------------------------------------------------------------------------
+export const GET = route('gateways.read', async (req, { session, db }) => {
+  const { rows } = await db.query(
+    `SELECT id, name, created_at, last_seen_at, last_version, disabled,
+            EXTRACT(EPOCH FROM (now() - last_seen_at))::INT AS seconds_since_sync,
+            CASE
+              WHEN last_seen_at > now() - INTERVAL '2 minutes'  THEN 'online'
+              WHEN last_seen_at > now() - INTERVAL '10 minutes' THEN 'stale'
+              ELSE 'offline'
+            END AS status
+       FROM data_plane_instances
+      WHERE org_id = $1
+      ORDER BY created_at DESC`,
+    [session.orgId])
+  return json({ instances: rows })
+})
 
-export async function GET(request) {
-  const user = await requireAuth(request)
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
-  const instances = await query(
-    `SELECT
-       id,
-       name,
-       created_at,
-       last_seen_at,
-       last_version,
-       disabled,
-       EXTRACT(EPOCH FROM (now() - last_seen_at))::INT AS seconds_since_sync,
-       CASE
-         WHEN last_seen_at > now() - INTERVAL '2 minutes'  THEN 'online'
-         WHEN last_seen_at > now() - INTERVAL '10 minutes' THEN 'stale'
-         ELSE 'offline'
-       END AS status
-     FROM data_plane_instances
-     WHERE org_id = $1
-     ORDER BY created_at DESC`,
-    [user.org_id]
-  )
-
-  return NextResponse.json({ instances })
-}
-
-// ---------------------------------------------------------------------------
-// DELETE — revocar instancia
-// ---------------------------------------------------------------------------
-
-export async function DELETE(request) {
-  const user = await requireAuth(request)
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
-  const { searchParams } = new URL(request.url)
-  const instanceId = searchParams.get('id')
-  if (!instanceId) {
-    return NextResponse.json({ error: 'id is required' }, { status: 400 })
-  }
-
-  const result = await query(
-    `UPDATE data_plane_instances
-     SET disabled = true
-     WHERE id = $1 AND org_id = $2
-     RETURNING id`,
-    [instanceId, user.org_id]
-  )
-
-  if (result.length === 0) {
-    return NextResponse.json({ error: 'Instance not found' }, { status: 404 })
-  }
-
-  return NextResponse.json({ disabled: instanceId })
-}
+export const DELETE = route('gateways.manage', async (req, { session, db }) => {
+  const instanceId = new URL(req.url).searchParams.get('id')
+  if (!instanceId) throw badRequest('id es obligatorio.')
+  const { rows } = await db.query(
+    `UPDATE data_plane_instances SET disabled = true WHERE id = $1 AND org_id = $2 RETURNING id, name`,
+    [instanceId, session.orgId])
+  if (!rows[0]) throw notFound('Instancia no encontrada.')
+  await audit(db, { req, session, action: 'gateway.disable', targetType: 'gateway', targetId: instanceId, details: { name: rows[0].name } })
+  return json({ disabled: instanceId })
+})

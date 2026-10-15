@@ -3,16 +3,15 @@
  * POST   /api/internal/providers   — agregar/actualizar provider config
  * DELETE /api/internal/providers?id=pc_xxx — revocar provider config
  *
- * Autenticación: dashboard JWT (stratum_session cookie) via requireAuth.
+ * Console session routes (lib/route.js): providers.read / providers.manage.
  *
  * Las API keys se almacenan cifradas (AES-256-GCM).
  * NUNCA se devuelven en claro — solo un indicador de si están configuradas.
  */
 
-import { NextResponse } from 'next/server'
 import { createCipheriv, randomBytes } from 'crypto'
-import { query }       from '@/lib/db'
-import { requireAuth } from '@/lib/auth'
+import { route, readJson, json, badRequest, notFound, HttpError } from '@/lib/route'
+import { audit } from '@/lib/audit'
 
 export const dynamic = 'force-dynamic'
 
@@ -47,11 +46,8 @@ function encryptApiKey(plaintext) {
 // GET — list providers for the org (no api_keys in plaintext)
 // ---------------------------------------------------------------------------
 
-export async function GET(request) {
-  const user = await requireAuth(request)
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const providers = await query(`
+export const GET = route('providers.read', async (req, { session, db }) => {
+  const { rows: providers } = await db.query(`
     SELECT
       id,
       provider,
@@ -67,67 +63,50 @@ export async function GET(request) {
     WHERE org_id = $1
       AND revoked = false
     ORDER BY provider, display_name
-  `, [user.org_id])
+  `, [session.orgId])
 
-  return NextResponse.json({ providers })
-}
+  return json({ providers })
+})
 
 // ---------------------------------------------------------------------------
 // POST — create or update provider config
 // ---------------------------------------------------------------------------
 
-export async function POST(request) {
-  const user = await requireAuth(request)
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  let body
-  try {
-    body = await request.json()
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
-  }
+export const POST = route('providers.manage', async (req, { session, db }) => {
+  const body = await readJson(req)
 
   const { provider, display_name, api_key, base_url, extra_config } = body
 
-  if (!provider || typeof provider !== 'string') {
-    return NextResponse.json({ error: 'provider is required' }, { status: 400 })
-  }
+  if (!provider || typeof provider !== 'string') throw badRequest('provider is required')
   if (!VALID_PROVIDERS.has(provider)) {
-    return NextResponse.json(
-      { error: `Unknown provider. Valid: ${[...VALID_PROVIDERS].join(', ')}` },
-      { status: 400 }
-    )
+    throw badRequest(`Unknown provider. Valid: ${[...VALID_PROVIDERS].join(', ')}`)
   }
-  if (!api_key || typeof api_key !== 'string' || api_key.trim().length === 0) {
-    return NextResponse.json({ error: 'api_key is required' }, { status: 400 })
-  }
-  if (!display_name || typeof display_name !== 'string') {
-    return NextResponse.json({ error: 'display_name is required' }, { status: 400 })
+  if (!api_key || typeof api_key !== 'string' || api_key.trim().length === 0) throw badRequest('api_key is required')
+  if (!display_name || typeof display_name !== 'string' || !display_name.trim()) throw badRequest('display_name is required')
+  if (base_url != null && (typeof base_url !== 'string' || !/^https?:\/\//.test(base_url))) {
+    throw badRequest('base_url must be an http(s) URL')
   }
 
   let encryptedKey
   try {
     encryptedKey = encryptApiKey(api_key.trim())
   } catch {
-    return NextResponse.json(
-      { error: 'Encryption failed. Check STRATUM_ENCRYPTION_KEY.' },
-      { status: 500 }
-    )
+    throw new HttpError(500, 'encryption_failed', 'Encryption failed. Check STRATUM_ENCRYPTION_KEY.')
   }
 
   const id = `pc_${randomBytes(16).toString('hex')}`
 
   // UPSERT: if non-revoked config for this org+provider exists, update it
-  const existing = await query(`
+  const { rows: existing } = await db.query(`
     SELECT id FROM provider_configs
     WHERE org_id = $1 AND provider = $2 AND revoked = false
     LIMIT 1
-  `, [user.org_id, provider])
+  `, [session.orgId, provider])
 
   let result
   if (existing.length > 0) {
     // Update (trigger bumps version)
-    result = await query(`
+    ;({ rows: result } = await db.query(`
       UPDATE provider_configs
       SET
         display_name      = $3,
@@ -138,56 +117,52 @@ export async function POST(request) {
       WHERE id = $1 AND org_id = $2
       RETURNING id, provider, display_name, enabled, version
     `, [
-      existing[0].id, user.org_id,
+      existing[0].id, session.orgId,
       display_name.trim(),
       encryptedKey,
       base_url ?? null,
       JSON.stringify(extra_config ?? {}),
-    ])
+    ]))
   } else {
     // Insert new
-    result = await query(`
+    ;({ rows: result } = await db.query(`
       INSERT INTO provider_configs
         (id, org_id, provider, display_name, api_key_encrypted, base_url, extra_config)
       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
       RETURNING id, provider, display_name, enabled, version
     `, [
-      id, user.org_id,
+      id, session.orgId,
       provider, display_name.trim(),
       encryptedKey,
       base_url ?? null,
       JSON.stringify(extra_config ?? {}),
-    ])
+    ]))
   }
 
-  return NextResponse.json(result[0], { status: existing.length > 0 ? 200 : 201 })
-}
+  await audit(db, {
+    req, session, action: existing.length > 0 ? 'provider.update' : 'provider.create',
+    targetType: 'provider_config', targetId: result[0].id,
+    details: { provider, displayName: display_name.trim(), baseUrl: base_url ?? null, credentialReplaced: true },
+  })
+  return json(result[0], existing.length > 0 ? 200 : 201)
+})
 
 // ---------------------------------------------------------------------------
 // DELETE — revoke provider config (soft-delete, bumps version for sync)
 // ---------------------------------------------------------------------------
 
-export async function DELETE(request) {
-  const user = await requireAuth(request)
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+export const DELETE = route('providers.manage', async (req, { session, db }) => {
+  const id = new URL(req.url).searchParams.get('id')
+  if (!id) throw badRequest('id is required')
 
-  const { searchParams } = new URL(request.url)
-  const id = searchParams.get('id')
-
-  if (!id) {
-    return NextResponse.json({ error: 'id is required' }, { status: 400 })
-  }
-
-  const rows = await query(`
+  const { rows } = await db.query(`
     UPDATE provider_configs
     SET revoked = true
     WHERE id = $1 AND org_id = $2 AND revoked = false
     RETURNING id, provider
-  `, [id, user.org_id])
+  `, [id, session.orgId])
+  if (rows.length === 0) throw notFound('Provider config not found')
 
-  if (rows.length === 0) {
-    return NextResponse.json({ error: 'Provider config not found' }, { status: 404 })
-  }
-
-  return NextResponse.json({ revoked: id, provider: rows[0].provider })
-}
+  await audit(db, { req, session, action: 'provider.revoke', targetType: 'provider_config', targetId: id, details: { provider: rows[0].provider } })
+  return json({ revoked: id, provider: rows[0].provider })
+})
