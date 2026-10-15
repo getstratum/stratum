@@ -77,7 +77,14 @@ A new pod tries the control plane first. If it has not synced within
 `STRATUM_SNAPSHOT_BOOTSTRAP_TIMEOUT`, it serves the copy in Valkey when that
 copy is newer than its own (ADR-0008).
 
-The contract is `api/sync/v2/sync-response.schema.json` (ADR-0003).
+The contract is `api/sync/v2/sync-response.schema.json` (ADR-0003). Every
+change that affects what a gateway allows raises the version, so it travels
+in the next delta: a key that is revoked, removed, or whose user is
+deactivated or left without a team arrives as a revoked key; a team moved to
+another policy, or left without one, arrives as that team's new entry; and
+deletions come from tombstones. The full resync remains the safety net for
+the rare change a delta can still miss: one whose version was taken before a
+higher one but committed after it.
 
 ## Reference topology
 
