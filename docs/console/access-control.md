@@ -105,7 +105,12 @@ console, and every request refused by a permission check, with who, when, from
 which address and on what. It never holds passwords, keys or credentials.
 Rows cannot be updated or deleted (a trigger refuses it); retention is done by
 an operator with `TRUNCATE` or partition drops. `GET /api/audit` reads an
-organization's log (Owner, Admin, Auditor).
+organization's log (Owner, Admin, Auditor); the console's **Audit log** page
+shows it, newest first, with a filter for refusals and failures.
+
+Pages hide the buttons for changes the signed-in person may not make (they
+ask `GET /api/session` for the permissions). That is only for clarity: every
+request is checked again on the server.
 
 ## Upgrading from a version before migration 016
 

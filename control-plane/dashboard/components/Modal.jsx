@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect } from 'react'
+import { Children, cloneElement, isValidElement, useEffect, useId } from 'react'
 
 export default function Modal({ title, onClose, children, width = 'max-w-lg' }) {
   useEffect(() => {
@@ -12,11 +12,12 @@ export default function Modal({ title, onClose, children, width = 'max-w-lg' }) 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/30" onClick={onClose} />
-      <div className={`relative w-full ${width} bg-card border border-border rounded-2xl shadow-dropdown`}>
+      <div role="dialog" aria-modal="true" aria-label={title} className={`relative w-full ${width} bg-card border border-border rounded-2xl shadow-dropdown`}>
         <div className="flex items-center justify-between px-6 py-4 border-b border-border">
           <h2 className="text-base font-semibold text-strong">{title}</h2>
           <button
             onClick={onClose}
+            aria-label="Cerrar"
             className="text-muted hover:text-default transition-colors text-lg leading-none"
           >
             ✕
@@ -28,12 +29,33 @@ export default function Modal({ title, onClose, children, width = 'max-w-lg' }) 
   )
 }
 
+const LABEL = 'block text-xs font-semibold text-muted uppercase tracking-wide'
+const CONTROLS = new Set(['input', 'select', 'textarea'])
+
+// A field whose content is one control (Input, Select or a native one) gets a
+// real <label for>, and its hint is the control's description: screen readers
+// announce both, and tests find the control by its label alone. Anything else
+// (a group of checkboxes, a control plus a note) keeps a plain heading.
 export function Field({ label, hint, children }) {
+  const id = useId()
+  const hintId = hint ? `${id}-hint` : undefined
+  const control = Children.count(children) === 1 && isValidElement(children) &&
+    (children.type === Input || children.type === Select || CONTROLS.has(children.type))
+  if (!control) {
+    return (
+      <div className="block space-y-1.5">
+        <span className={LABEL}>{label}</span>
+        {children}
+        {hint && <span className="block text-xs text-subtle">{hint}</span>}
+      </div>
+    )
+  }
+  const controlId = children.props.id ?? id
   return (
-    <div className="space-y-1.5">
-      <label className="block text-xs font-semibold text-muted uppercase tracking-wide">{label}</label>
-      {children}
-      {hint && <p className="text-xs text-subtle">{hint}</p>}
+    <div className="block space-y-1.5">
+      <label htmlFor={controlId} className={LABEL}>{label}</label>
+      {cloneElement(children, { id: controlId, 'aria-describedby': hintId })}
+      {hint && <span id={hintId} className="block text-xs text-subtle">{hint}</span>}
     </div>
   )
 }

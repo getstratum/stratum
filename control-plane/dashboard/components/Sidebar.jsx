@@ -16,6 +16,7 @@ const NAV = [
   { href: '/alerts',    label: 'Alerts',    permission: 'alerts.read' },
   { href: '/providers', label: 'Providers', permission: 'providers.read' },
   { href: '/gateways',  label: 'Gateways',  permission: 'gateways.read' },
+  { href: '/audit',     label: 'Audit log', permission: 'audit.read' },
 ]
 
 const ROLE_LABEL = {
