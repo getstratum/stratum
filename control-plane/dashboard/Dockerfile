@@ -26,10 +26,10 @@ ENV NODE_ENV=production \
 COPY --from=builder --chown=node:node /app/.next/standalone ./
 COPY --from=builder --chown=node:node /app/.next/static ./.next/static
 COPY --from=builder --chown=node:node /app/public ./public
-# The account CLI (scripts/stratum-admin.mjs) and the one module it imports;
+# The account CLI (scripts/stratum-admin.mjs) and the modules it imports;
 # pg is already in the standalone output.
 COPY --from=builder --chown=node:node /app/scripts ./scripts
-COPY --from=builder --chown=node:node /app/lib/password.js ./lib/password.js
+COPY --from=builder --chown=node:node /app/lib/password.js /app/lib/totp.js /app/lib/secrets.js ./lib/
 USER node
 EXPOSE 3000
 HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=3 \

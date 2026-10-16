@@ -7,7 +7,8 @@ import Sidebar from './Sidebar'
 const NO_SIDEBAR_PATHS = ['/login']
 
 // Any console API answer of 401 means the session is gone (expired, revoked,
-// signed out elsewhere): send the browser to the sign-in page.
+// signed out elsewhere): send the browser to the sign-in page. A 403 that
+// asks for the second factor first sends it to the account page.
 function useSessionWatch(enabled) {
   useEffect(() => {
     if (!enabled || window.__stratumFetchWrapped) return
@@ -18,6 +19,9 @@ function useSessionWatch(enabled) {
       const url = typeof args[0] === 'string' ? args[0] : args[0]?.url ?? ''
       if (res.status === 401 && url.startsWith('/api/') && !url.startsWith('/api/session')) {
         window.location.replace('/login?reason=session_expired')
+      } else if (res.status === 403 && url.startsWith('/api/') && window.location.pathname !== '/account') {
+        const body = await res.clone().json().catch(() => null)
+        if (body?.error === 'mfa_enrollment_required') window.location.replace('/account?mfa=required')
       }
       return res
     }

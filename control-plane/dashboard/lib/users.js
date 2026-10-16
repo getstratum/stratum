@@ -12,6 +12,7 @@ export const USER_COLUMNS = `
   u.api_key_prefix, u.created_at, u.last_login_at,
   (u.password_hash IS NOT NULL) AS has_password,
   (u.api_key_hash  IS NOT NULL) AS has_api_key,
+  (u.totp_enabled_at IS NOT NULL) AS has_mfa,
   t.id AS team_id, t.name AS team_name`
 
 export function newApiKey(prefix) {

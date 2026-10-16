@@ -5,9 +5,11 @@
 // and is revoked or disabled at the end, even when a step fails.
 //
 // Environment (README.md): STRATUM_E2E_CONSOLE_URL, STRATUM_E2E_EMAIL,
-// STRATUM_E2E_PASSWORD; optionally STRATUM_E2E_GATEWAY_URL, STRATUM_E2E_MODEL,
-// STRATUM_E2E_TEAM, STRATUM_E2E_SYNC_TIMEOUT_S.
+// STRATUM_E2E_PASSWORD, STRATUM_E2E_TOTP_SECRET (the owner's second factor);
+// optionally STRATUM_E2E_GATEWAY_URL, STRATUM_E2E_MODEL, STRATUM_E2E_TEAM,
+// STRATUM_E2E_SYNC_TIMEOUT_S.
 
+import { createHmac } from 'node:crypto'
 import { test, expect } from '@playwright/test'
 
 const env = (name, fallback) => {
@@ -16,7 +18,9 @@ const env = (name, fallback) => {
   return v
 }
 
-const OWNER = { email: env('STRATUM_E2E_EMAIL'), password: env('STRATUM_E2E_PASSWORD') }
+const OWNER = {
+  email: env('STRATUM_E2E_EMAIL'), password: env('STRATUM_E2E_PASSWORD'), totp: env('STRATUM_E2E_TOTP_SECRET', ''),
+}
 const GATEWAY = process.env.STRATUM_E2E_GATEWAY_URL?.replace(/\/+$/, '')
 const MODEL = env('STRATUM_E2E_MODEL', 'ollama/mock-1')
 const TEAM = env('STRATUM_E2E_TEAM', 'Engineering')
@@ -52,12 +56,53 @@ test.afterAll(async () => {
 
 // --- helpers -------------------------------------------------------------------
 
-async function signIn(email, password) {
+// TOTP (RFC 6238), as an authenticator app computes it.
+const stepNow = () => Math.floor(Date.now() / 30_000)
+function totpCode(secret, step) {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'
+  let bits = 0, value = 0
+  const key = []
+  for (const ch of secret.toUpperCase().replace(/[\s=]/g, '')) {
+    value = (value << 5) | alphabet.indexOf(ch)
+    bits += 5
+    if (bits >= 8) { key.push((value >>> (bits - 8)) & 255); bits -= 8 }
+  }
+  const counter = Buffer.alloc(8)
+  counter.writeBigUInt64BE(BigInt(step))
+  const mac = createHmac('sha1', Buffer.from(key)).update(counter).digest()
+  const o = mac[mac.length - 1] & 15
+  return String((mac.readUInt32BE(o) & 0x7fffffff) % 1_000_000).padStart(6, '0')
+}
+// The console accepts each code once, and the current step and the next
+// one. The first code uses the next step (the installer may have just used
+// the current one); later ones wait for their step when they have to.
+const lastStep = new Map()
+async function nextCode(secret) {
+  const step = Math.max(stepNow() + 1, (lastStep.get(secret) ?? 0) + 1)
+  while (stepNow() + 1 < step) await new Promise((r) => setTimeout(r, 1000))
+  lastStep.set(secret, step)
+  return totpCode(secret, step)
+}
+
+/**
+ * Signs in. When the account asks for a second factor, answers with a code
+ * from `secret` (the owner's by default), or stops there with stopAtCode.
+ * `landing` is the page expected afterwards.
+ */
+async function signIn(email, password, { secret = email === OWNER.email ? OWNER.totp : '', landing = '/', stopAtCode = false } = {}) {
   await page.goto('/login')
   await page.locator('input[type=email]').fill(email)
   await page.locator('input[type=password]').fill(password)
   await page.locator('button[type=submit]').click()
-  await page.waitForURL((u) => new URL(u).pathname === '/', { timeout: 30_000 })
+  const codeStep = page.getByRole('heading', { level: 1, name: 'Verificación en dos pasos' })
+  await expect(codeStep.or(page.getByRole('navigation'))).toBeVisible({ timeout: 30_000 })
+  if (await codeStep.isVisible()) {
+    if (stopAtCode) return
+    if (!secret) throw new Error(`${email} has a second factor: set STRATUM_E2E_TOTP_SECRET (see README.md)`)
+    await page.getByLabel('Código').fill(await nextCode(secret))
+    await page.getByRole('button', { name: 'Ingresar' }).click()
+  }
+  await page.waitForURL((u) => new URL(u).pathname === landing, { timeout: 30_000 })
 }
 
 async function signOut() {
@@ -340,12 +385,93 @@ test('users: deactivating the auditor ends their session at once', async () => {
   await page.context().addCookies(ownerCookies)
 })
 
+// --- second factor ------------------------------------------------------------------
+
+const admin = { email: `${RUN}-admin@example.com`, password: `${RUN}-admin-password` }
+
+test('two-step: a new admin has to set it up before using the console', async () => {
+  created.userEmails.push(admin.email)
+  await page.goto('/users')
+  await page.getByRole('button', { name: '+ Nuevo usuario' }).click()
+  const d = dialog('Nuevo usuario')
+  await d.getByLabel('Email').fill(admin.email)
+  await d.getByLabel('Nombre').fill(`${RUN} admin`)
+  await d.getByLabel('Rol', { exact: true }).selectOption({ label: 'Admin' })
+  await d.getByPlaceholder('Dejar vacío si solo usa API key').fill(admin.password)
+  await d.getByRole('button', { name: 'Crear usuario' }).click()
+  await expect(page.locator('tr', { hasText: admin.email })).toBeVisible()
+  await signOut()
+
+  // Signed in with the password only: the account page, and nothing else.
+  await signIn(admin.email, admin.password, { landing: '/account' })
+  await expect(page.getByText('Tu rol requiere la verificación en dos pasos')).toBeVisible()
+  expect((await api('GET', '/api/users')).body?.error).toBe('mfa_enrollment_required')
+  await expect(nav().getByRole('link', { name: 'Users' })).toHaveCount(0)
+
+  await page.getByRole('button', { name: 'Configurar' }).click()
+  await page.getByLabel('Tu contraseña, para confirmar').fill(admin.password)
+  await page.getByRole('button', { name: 'Continuar' }).click()
+  admin.totp = (await page.getByTestId('mfa-secret').textContent()).replace(/\s/g, '')
+  expect(admin.totp).toMatch(/^[A-Z2-7]{32}$/)
+  await expect(page.getByRole('img', { name: 'Código QR para la aplicación de autenticación' })).toBeVisible()
+  await page.getByLabel('2. Ingresá el código que muestra').fill('000000')
+  await page.getByRole('button', { name: 'Activar' }).click()
+  await expect(page.getByText('El código no coincide')).toBeVisible()
+  await page.getByLabel('2. Ingresá el código que muestra').fill(await nextCode(admin.totp))
+  await page.getByRole('button', { name: 'Activar' }).click()
+  const codes = page.getByTestId('recovery-codes').locator('li')
+  await expect(codes).toHaveCount(10)
+  admin.recovery = await codes.allTextContents()
+  await page.getByRole('button', { name: 'Ya los guardé' }).click()
+  await page.waitForURL((u) => new URL(u).pathname === '/')
+  await expect(nav().getByRole('link', { name: 'Users' })).toBeVisible()
+})
+
+test('two-step: the next sign-in asks for a code; a recovery code works once', async () => {
+  await signOut()
+  // A wrong code first.
+  await signIn(admin.email, admin.password, { stopAtCode: true })
+  await page.getByLabel('Código').fill('000000')
+  await page.getByRole('button', { name: 'Ingresar' }).click()
+  await expect(page.getByText('Código incorrecto o vencido')).toBeVisible()
+  await page.getByLabel('Código').fill(await nextCode(admin.totp))
+  await page.getByRole('button', { name: 'Ingresar' }).click()
+  await page.waitForURL((u) => new URL(u).pathname === '/')
+
+  await signOut()
+  await signIn(admin.email, admin.password, { stopAtCode: true })
+  await page.getByLabel('Código').fill(admin.recovery[0])
+  await page.getByRole('button', { name: 'Ingresar' }).click()
+  await page.waitForURL((u) => new URL(u).pathname === '/account')
+  await expect(page.getByText('te quedan 9')).toBeVisible()
+})
+
+test('two-step: the owner resets the admin\'s second factor', async () => {
+  const adminCookies = await page.context().cookies()
+  await signOut()
+  await signIn(OWNER.email, OWNER.password)
+  const ownerCookies = await page.context().cookies()
+  await page.goto('/users')
+  const row = page.locator('tr', { hasText: admin.email })
+  await expect(row).toContainText('2 pasos')
+  await row.getByRole('button', { name: 'Reset 2 pasos' }).click()
+  await expect(row).not.toContainText('2 pasos')
+
+  // The admin's session ended.
+  await page.context().clearCookies()
+  await page.context().addCookies(adminCookies.filter((c) => c.name === 'stratum_session'))
+  expect((await api('GET', '/api/session')).status).toBe(401)
+  await page.context().clearCookies()
+  await page.context().addCookies(ownerCookies)
+})
+
 // --- audit log -------------------------------------------------------------------------
 
 test('audit log: everything above is recorded, refusals included', async () => {
   await page.goto('/audit')
   for (const text of ['Agregó un proveedor', 'Revocó un proveedor', 'Registró un gateway', 'Rotó el token de un gateway',
-    'Dio de baja un gateway', 'Creó una persona', 'Intento sin permiso', 'Cambió su contraseña']) {
+    'Dio de baja un gateway', 'Creó una persona', 'Intento sin permiso', 'Cambió su contraseña',
+    'Activó la verificación en dos pasos', 'Reinició la verificación en dos pasos de una persona']) {
     await expect(page.getByText(text).first(), text).toBeVisible()
   }
   if (GATEWAY) await expect(page.getByText('Revocó la key de un agente').first()).toBeVisible()

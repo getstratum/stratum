@@ -198,7 +198,7 @@ function AccessBadges({ user }) {
     <div className="flex gap-1.5 flex-wrap">
       {user.has_password && (
         <span className="text-xs bg-blue-50 text-blue-700 border border-blue-200 rounded-full px-2 py-0.5">
-          Consola
+          Consola{user.has_mfa ? ' · 2 pasos' : ''}
         </span>
       )}
       {user.has_api_key && (
@@ -257,6 +257,13 @@ export default function UsersPage() {
       body: JSON.stringify({ isActive: !user.is_active }),
     })
     if (!res.ok) window.alert((await res.json()).message ?? 'No se pudo cambiar el estado.')
+    load()
+  }
+
+  async function resetMfa(user) {
+    if (!window.confirm(`¿Reiniciar la verificación en dos pasos de ${user.email}? Sus sesiones terminan; al volver a entrar la configura de nuevo.`)) return
+    const res = await fetch(`/api/users/${user.id}/mfa`, { method: 'DELETE' })
+    if (!res.ok) window.alert((await res.json()).message ?? 'No se pudo reiniciar.')
     load()
   }
 
@@ -375,6 +382,12 @@ export default function UsersPage() {
                         <button onClick={() => setModal({ reset: user })}
                           className="text-xs text-muted hover:text-default px-2 py-1 rounded hover:bg-raised transition-colors">
                           Reset pwd
+                        </button>
+                      )}
+                      {canManage && user.has_mfa && (
+                        <button onClick={() => resetMfa(user)}
+                          className="text-xs text-muted hover:text-default px-2 py-1 rounded hover:bg-raised transition-colors">
+                          Reset 2 pasos
                         </button>
                       )}
                       {canKeys && user.has_api_key && (

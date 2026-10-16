@@ -101,8 +101,10 @@ function failure(err) {
 /**
  * @param {string} permission  a key of PERMISSIONS in lib/authz.js
  * @param {(req, ctx: {session, db, params}) => Promise<Response>} handler
+ * @param {{duringEnrollment?: boolean}} options  duringEnrollment: also open
+ *   to a session that must set up the second factor first (lib/mfa.js)
  */
-export function route(permission, handler) {
+export function route(permission, handler, { duringEnrollment = false } = {}) {
   scopeFor('owner', permission) // throws at import time on an unknown permission
   const wrapped = async (req, ctx) => {
     try {
@@ -113,6 +115,10 @@ export function route(permission, handler) {
       const session = await loadSession(db, req.cookies?.get(COOKIE)?.value)
       if (!session) {
         return json({ error: 'unauthorized', message: 'Iniciá sesión.' }, 401)
+      }
+      if (session.enrollmentOnly && !duringEnrollment) {
+        return json({ error: 'mfa_enrollment_required',
+          message: 'Configurá la verificación en dos pasos para seguir: es obligatoria para tu rol.' }, 403)
       }
       const scope = scopeFor(session.role, permission)
       if (!scope) {
@@ -137,7 +143,7 @@ export function route(permission, handler) {
       return failure(err)
     }
   }
-  wrapped[GUARD] = { kind: 'session', permission }
+  wrapped[GUARD] = { kind: 'session', permission, duringEnrollment }
   return wrapped
 }
 

@@ -54,6 +54,10 @@ async function org() {
       [id, team?.id ?? null, email, role, hash])
     const r = await call('session', 'POST', { body: { email, password: PASSWORD } })
     cookies[role] = r.res.cookies.get('stratum_session').value
+    // Owners must set up a second factor first (test/mfa.test.mjs); here
+    // their session counts as if they had.
+    await sql('UPDATE console_sessions SET enrollment_only = false WHERE token_hash = $1',
+      [createHash('sha256').update(cookies[role]).digest('hex')])
   }
   return { id, ...cookies }
 }

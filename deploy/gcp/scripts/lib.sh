@@ -104,6 +104,21 @@ sm_ensure() {
 
 hex32() { openssl rand -hex 32; }
 b64_24() { openssl rand -base64 24 | tr -d '/+=' ; }
+b32_20() { openssl rand 20 | base32 | tr -d '=\n'; } # authenticator secret (160 bits)
+
+# totp_code SECRET [STEP_OFFSET]: the current 6-digit code (RFC 6238), as an
+# authenticator app shows it. The console accepts each code once, so a
+# second sign-in within 30 s passes 1 to use the next step's code.
+totp_code() {
+  python3 - "$1" "${2:-0}" <<'PY'
+import base64, hashlib, hmac, struct, sys, time
+secret, offset = sys.argv[1], int(sys.argv[2])
+key = base64.b32decode(secret + "=" * (-len(secret) % 8))
+mac = hmac.new(key, struct.pack(">Q", int(time.time()) // 30 + offset), hashlib.sha1).digest()
+o = mac[-1] & 15
+print("%06d" % ((struct.unpack(">I", mac[o:o + 4])[0] & 0x7FFFFFFF) % 1000000))
+PY
+}
 
 # Creates or updates a Kubernetes secret from KEY=VALUE pairs. Values go
 # through a private temp file, not through command-line arguments.

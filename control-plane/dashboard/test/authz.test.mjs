@@ -8,7 +8,7 @@
 
 import { test, before, after } from 'node:test'
 import assert from 'node:assert/strict'
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { NextRequest } from 'next/server.js'
 import pg from 'pg'
 import { hashPassword } from '../lib/password.js'
@@ -45,9 +45,18 @@ async function call(path, method, { as, params = {}, body, query = '', headers =
   return { status: res.status, body: text ? JSON.parse(text) : null, res }
 }
 
+// Owners and Admins must set up a second factor before anything else
+// (test/mfa.test.mjs covers that); here their sessions count as if they had.
 async function login(email, password = PASSWORD) {
   const r = await call('session', 'POST', { body: { email, password } })
-  return { ...r, cookie: r.res.cookies.get('stratum_session')?.value }
+  const cookie = r.res.cookies.get('stratum_session')?.value
+  if (cookie && r.body?.mfa_enrollment_required) await skipEnrollment(cookie)
+  return { ...r, cookie }
+}
+
+async function skipEnrollment(cookie) {
+  await db.query('UPDATE console_sessions SET enrollment_only = false WHERE token_hash = $1',
+    [createHash('sha256').update(cookie).digest('hex')])
 }
 
 // --- fixture -------------------------------------------------------------------
