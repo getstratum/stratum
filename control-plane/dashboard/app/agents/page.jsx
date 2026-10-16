@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import Modal, { Field, Input, Select, Btn } from '../../components/Modal'
+import { usePermissions } from '../../components/usePermissions'
 import { formatCost, formatTokens } from '../../lib/format'
 
 // ─── One-time key reveal ──────────────────────────────────────────────────────
@@ -14,7 +15,7 @@ function KeyReveal({ apiKey, onClose }) {
           This is the only time this key will be shown. Copy it now and store it securely.
         </p>
         <div className="flex gap-2">
-          <code className="flex-1 bg-canvas border border-line rounded px-3 py-2 text-xs text-ok font-mono break-all">
+          <code data-testid="revealed-key" className="flex-1 bg-canvas border border-line rounded px-3 py-2 text-xs text-ok font-mono break-all">
             {apiKey}
           </code>
           <button
@@ -185,6 +186,8 @@ function AgentModal({ agent, teams, models, onSave, onClose }) {
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function AgentsPage() {
+  const { can } = usePermissions()
+  const canManage = can('keys.manage')
   const [agents,    setAgents]    = useState([])
   const [teams,     setTeams]     = useState([])
   const [loading,   setLoading]   = useState(true)
@@ -251,7 +254,7 @@ export default function AgentsPage() {
             Automated processes with dedicated keys and separate metrics
           </p>
         </div>
-        <Btn onClick={() => setModal('create')}>+ New agent</Btn>
+        {canManage && <Btn onClick={() => setModal('create')}>+ New agent</Btn>}
       </div>
 
       {/* Empty state */}
@@ -271,6 +274,7 @@ export default function AgentsPage() {
           {agents.map(agent => (
             <div
               key={agent.id}
+              data-testid="agent-row"
               className={`bg-raised border border-line rounded-lg overflow-hidden ${!agent.is_active ? 'opacity-50' : ''}`}
             >
               <div className="px-5 py-3.5 flex items-center justify-between">
@@ -296,35 +300,37 @@ export default function AgentsPage() {
                     <span className="text-2xs text-lo opacity-40">no model configured</span>
                   )}
                 </div>
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => setModal({ agent })}
-                    className="text-2xs text-lo hover:text-mid transition-colors"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    onClick={() => rotateKey(agent)}
-                    disabled={rotating === agent.id}
-                    className="text-2xs text-lo hover:text-mid transition-colors disabled:opacity-30"
-                  >
-                    {rotating === agent.id ? '…' : 'Rotate key'}
-                  </button>
-                  {agent.api_key_prefix && (
+                {canManage && (
+                  <div className="flex items-center gap-3">
                     <button
-                      onClick={() => revokeKey(agent)}
-                      className="text-2xs text-lo hover:text-err transition-colors"
+                      onClick={() => setModal({ agent })}
+                      className="text-2xs text-lo hover:text-mid transition-colors"
                     >
-                      Revoke key
+                      Edit
                     </button>
-                  )}
-                  <button
-                    onClick={() => toggleActive(agent)}
-                    className={`text-2xs transition-colors ${agent.is_active ? 'text-lo hover:text-err' : 'text-lo hover:text-ok'}`}
-                  >
-                    {agent.is_active ? 'Deactivate' : 'Activate'}
-                  </button>
-                </div>
+                    <button
+                      onClick={() => rotateKey(agent)}
+                      disabled={rotating === agent.id}
+                      className="text-2xs text-lo hover:text-mid transition-colors disabled:opacity-30"
+                    >
+                      {rotating === agent.id ? '…' : 'Rotate key'}
+                    </button>
+                    {agent.api_key_prefix && (
+                      <button
+                        onClick={() => revokeKey(agent)}
+                        className="text-2xs text-lo hover:text-err transition-colors"
+                      >
+                        Revoke key
+                      </button>
+                    )}
+                    <button
+                      onClick={() => toggleActive(agent)}
+                      className={`text-2xs transition-colors ${agent.is_active ? 'text-lo hover:text-err' : 'text-lo hover:text-ok'}`}
+                    >
+                      {agent.is_active ? 'Deactivate' : 'Activate'}
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* Metrics row */}

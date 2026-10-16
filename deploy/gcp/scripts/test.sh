@@ -3,7 +3,10 @@
 # to deploy/gcp/.results/<date>.md.
 #
 #   ./test.sh all | smoke | quota | quota-reset | rollout | zone [--hard]
-#             | valkey | cp-outage | sql-failover
+#             | valkey | cp-outage | sql-failover | console
+#
+# console is not part of all: it needs Node.js and installs Playwright with
+# Chromium (control-plane/e2e).
 #
 # Load comes from k6 inside the cluster through the public hostname, so the
 # load balancer, TLS and Cloud Armor are part of every measurement.
@@ -322,6 +325,33 @@ t_sql_failover() {
   [[ "$c" == 200 ]] && pass "database failover: control plane serving again" || fail "database failover: sync endpoint returned $c"
 }
 
+# Functional test of the console in a real browser (control-plane/e2e):
+# sign-in, roles, providers, gateways, agents (a new key through the public
+# gateway, then revoked), people, my account, audit log. It reaches the console
+# through a port-forward, so it runs from any IP; the gateway through the edge.
+t_console() {
+  step "console: functional test in a browser"
+  require node npm
+  local dir; dir="$(cd "$GCP_DIR/../../control-plane/e2e" && pwd)"
+  (cd "$dir" && npm ci --no-audit --no-fund >/dev/null) || { fail "console: npm ci failed in $dir"; return; }
+  # --with-deps installs the system libraries Chromium needs (sudo; fine in
+  # Cloud Shell). Elsewhere they may already be there.
+  (cd "$dir" && { npx playwright install --with-deps chromium >/dev/null 2>&1 || npx playwright install chromium >/dev/null; }) ||
+    { fail "console: could not install Chromium for Playwright"; return; }
+  port_forward svc/stratum-cp-console 13000:80
+  if (cd "$dir" &&
+      STRATUM_E2E_CONSOLE_URL=http://localhost:13000 \
+      STRATUM_E2E_GATEWAY_URL="https://$HOST" \
+      STRATUM_E2E_EMAIL=dev@acme.com \
+      STRATUM_E2E_PASSWORD="$(sm_get console-password)" \
+      npx playwright test); then
+    pass "console: functional test (report: control-plane/e2e/report/index.html)"
+  else
+    fail "console: functional test, see control-plane/e2e/report/index.html"
+  fi
+  cleanup_pf
+}
+
 case "${1:-all}" in
   smoke) t_smoke ;;
   quota) t_quota ;;
@@ -331,6 +361,7 @@ case "${1:-all}" in
   valkey) t_valkey ;;
   cp-outage) t_cp_outage ;;
   sql-failover) t_sql_failover ;;
+  console) t_console ;;
   all)
     record "## Run $(date -u +%Y-%m-%dT%H:%MZ) — $HOST"
     t_smoke; t_quota_reset; t_quota; t_rollout; t_zone; t_valkey; t_cp_outage; t_sql_failover

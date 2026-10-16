@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import Modal, { Field, Input, Select, Btn } from '../../components/Modal'
+import { usePermissions } from '../../components/usePermissions'
 
 const ROLES = ['member', 'team_manager', 'auditor', 'admin', 'owner']
 const ROLE_LABEL = {
@@ -18,7 +19,7 @@ function ApiKeyReveal({ apiKey, onClose }) {
           ⚠ Esta es la única vez que se muestra esta key. Copiala ahora.
         </p>
         <div className="flex gap-2 items-center">
-          <code className="flex-1 bg-raised border border-border rounded-lg px-3 py-2.5 text-xs text-accent font-mono break-all">
+          <code data-testid="revealed-key" className="flex-1 bg-raised border border-border rounded-lg px-3 py-2.5 text-xs text-accent font-mono break-all">
             {apiKey}
           </code>
           <button
@@ -222,6 +223,9 @@ export default function UsersPage() {
   const [rotating,  setRotating]  = useState(null)
   const [search,    setSearch]    = useState('')
   const [filter,    setFilter]    = useState('all')  // all | active | inactive
+  const { can } = usePermissions()
+  const canManage = can('users.manage')
+  const canKeys   = can('keys.manage')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -294,7 +298,7 @@ export default function UsersPage() {
             {users.length} usuarios · {teams.length} equipos
           </p>
         </div>
-        <Btn onClick={() => setModal('create')}>+ Nuevo usuario</Btn>
+        {canManage && <Btn onClick={() => setModal('create')}>+ Nuevo usuario</Btn>}
       </div>
 
       {/* Filters */}
@@ -361,34 +365,38 @@ export default function UsersPage() {
                   </td>
                   <td className="px-5 py-3.5">
                     <div className="flex justify-end gap-1">
-                      <button onClick={() => setModal({ user })}
-                        className="text-xs text-muted hover:text-default px-2 py-1 rounded hover:bg-raised transition-colors">
-                        Editar
-                      </button>
-                      {user.has_password && (
+                      {canManage && (
+                        <button onClick={() => setModal({ user })}
+                          className="text-xs text-muted hover:text-default px-2 py-1 rounded hover:bg-raised transition-colors">
+                          Editar
+                        </button>
+                      )}
+                      {canManage && user.has_password && (
                         <button onClick={() => setModal({ reset: user })}
                           className="text-xs text-muted hover:text-default px-2 py-1 rounded hover:bg-raised transition-colors">
                           Reset pwd
                         </button>
                       )}
-                      {user.has_api_key && (
+                      {canKeys && user.has_api_key && (
                         <button onClick={() => rotateKey(user)}
                           disabled={rotating === user.id || !user.is_active}
                           className="text-xs text-accent hover:text-accent-hover px-2 py-1 rounded hover:bg-raised transition-colors disabled:opacity-30">
                           {rotating === user.id ? '…' : 'Rotar key'}
                         </button>
                       )}
-                      {user.has_api_key && (
+                      {canKeys && user.has_api_key && (
                         <button onClick={() => revokeKey(user)}
                           className="text-xs text-err hover:text-err px-2 py-1 rounded hover:bg-raised transition-colors">
                           Revocar key
                         </button>
                       )}
-                      <button onClick={() => toggleActive(user)}
-                        className={`text-xs px-2 py-1 rounded hover:bg-raised transition-colors
-                          ${user.is_active ? 'text-err hover:text-err' : 'text-ok hover:text-ok'}`}>
-                        {user.is_active ? 'Desactivar' : 'Activar'}
-                      </button>
+                      {canManage && (
+                        <button onClick={() => toggleActive(user)}
+                          className={`text-xs px-2 py-1 rounded hover:bg-raised transition-colors
+                            ${user.is_active ? 'text-err hover:text-err' : 'text-ok hover:text-ok'}`}>
+                          {user.is_active ? 'Desactivar' : 'Activar'}
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>

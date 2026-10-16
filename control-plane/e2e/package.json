@@ -1,0 +1,13 @@
+{
+  "name": "@stratum/console-e2e",
+  "version": "0.0.0",
+  "private": true,
+  "description": "End-to-end functional tests of the Stratum console and a gateway behind it.",
+  "type": "module",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0"
+  }
+}

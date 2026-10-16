@@ -36,6 +36,16 @@ function Copy({ text }) {
   )
 }
 
+// A labelled read-only value (not a form field: it holds a copy button).
+function Value({ label, children }) {
+  return (
+    <div className="space-y-1.5">
+      <div className="text-xs font-semibold text-muted uppercase tracking-wide">{label}</div>
+      {children}
+    </div>
+  )
+}
+
 // Shown once, after registering or rotating: the token is not stored anywhere readable.
 function TokenModal({ result, cpUrl, onClose }) {
   const env = `STRATUM_CP_URL=${cpUrl}\nSTRATUM_INSTANCE_ID=${result.id}\nSTRATUM_SYNC_TOKEN=${result.sync_token}`
@@ -45,18 +55,18 @@ function TokenModal({ result, cpUrl, onClose }) {
         <p className="text-xs text-warn bg-warn-light rounded-lg px-3 py-2">
           El sync token se muestra una sola vez. Guardalo ahora en el gestor de secretos del gateway.
         </p>
-        <Field label="Instance ID">
-          <div className="flex items-center gap-3"><code className="text-sm break-all">{result.id}</code><Copy text={result.id} /></div>
-        </Field>
-        <Field label="Sync token">
-          <div className="flex items-center gap-3"><code className="text-sm break-all">{result.sync_token}</code><Copy text={result.sync_token} /></div>
-        </Field>
-        <Field label="Variables de entorno del gateway">
+        <Value label="Instance ID">
+          <div className="flex items-center gap-3"><code data-testid="instance-id" className="text-sm break-all">{result.id}</code><Copy text={result.id} /></div>
+        </Value>
+        <Value label="Sync token">
+          <div className="flex items-center gap-3"><code data-testid="sync-token" className="text-sm break-all">{result.sync_token}</code><Copy text={result.sync_token} /></div>
+        </Value>
+        <Value label="Variables de entorno del gateway">
           <div className="relative">
             <pre className="text-xs bg-raised border border-border rounded-lg p-3 overflow-x-auto">{env}</pre>
             <div className="absolute top-2 right-3"><Copy text={env} /></div>
           </div>
-        </Field>
+        </Value>
         <div className="flex justify-end"><Btn onClick={onClose}>Ya lo guardé</Btn></div>
       </div>
     </Modal>

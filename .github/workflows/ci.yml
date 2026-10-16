@@ -127,6 +127,53 @@ jobs:
       - name: npm audit (production dependencies)
         run: npm audit --omit=dev --audit-level=high
 
+  console-e2e:
+    name: console functional test (browser)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: stratum
+          POSTGRES_PASSWORD: stratum
+          POSTGRES_DB: stratum
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U stratum" --health-interval 2s --health-timeout 2s --health-retries 15
+    env:
+      DATABASE_URL: postgres://stratum:stratum@localhost:5432/stratum
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: gateway/go.mod
+          cache-dependency-path: gateway/go.sum
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            control-plane/dashboard/package-lock.json
+            control-plane/e2e/package-lock.json
+      - run: npm ci --no-audit --no-fund
+        working-directory: control-plane/dashboard
+      - run: npm ci --no-audit --no-fund && npx playwright install --with-deps chromium
+        working-directory: control-plane/e2e
+      - name: migrations
+        working-directory: control-plane
+        env:
+          PGHOST: localhost
+          PGUSER: stratum
+          PGPASSWORD: stratum
+          PGDATABASE: stratum
+        run: sh migrations/migrate.sh migrations
+      - name: console, gateway and mock LLM; then the browser test
+        run: control-plane/e2e/run-local.sh
+
   images:
     name: container images
     runs-on: ubuntu-latest

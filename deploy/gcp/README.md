@@ -124,6 +124,7 @@ make deploy                 # OPENAI_API_KEY=... make deploy  also registers a r
 make up                     # about a minute
 
 make test                   # or make test-smoke, test-quota, test-rollout, ...
+make test-console           # the console in a browser (needs Node.js; not part of make test)
 make keys                   # API keys and console login
 make down
 ```
@@ -140,6 +141,7 @@ make down
 | `valkey` | NetworkPolicy cuts gateways off from Valkey for 90 s under load | 0 failed requests; outage detected in metrics; 0 pending tokens after recovery |
 | `cp-outage` | Control plane scaled to 0 under load; one gateway pod restarted meanwhile | 0 failed requests; the replacement pod starts from the snapshot copy in Valkey and becomes ready during the outage (ADR-0008) |
 | `sql-failover` | `gcloud sql instances failover` under load | 0 failed gateway requests; control plane serving again afterwards |
+| `console` | The console in Chromium (Playwright) through a port-forward: sign-in, roles, providers, gateways, an agent key used through the public gateway and revoked, people, password change, audit log ([control-plane/e2e](../../control-plane/e2e/README.md)). Not part of `make test` | Every step passes; what it created is revoked or disabled at the end |
 
 Results are appended to `deploy/gcp/.results/<date>.md`. Load comes from k6
 inside the cluster but goes through the public hostname, so DNS, TLS, the

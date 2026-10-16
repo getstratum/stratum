@@ -31,7 +31,10 @@ Tracks what is done and what still blocks the first public release.
       rotated and disabled from the console.
 - [x] Control plane: agent keys (`agents` table) reach gateways through the sync (migration 017).
 - [ ] Gateway: enforce an agent's default model (the console stores it; the sync does not send it yet).
-- [ ] Control plane: `request_logs` partitions are created ahead of time (today they end in January 2027).
+- [x] Control plane: `request_logs` partitions are created ahead of time: 24 months by migration 019, kept
+      ahead by the control plane once a day, and a default partition so an insert never fails.
+- [x] Control plane: functional test of the console in a browser (`control-plane/e2e`), run in CI
+      against a console, a gateway and a mock provider, and on GCP with `make test-console`.
 - [x] Control plane: migrations runner (`control-plane/migrations/migrate.sh`) that
       applies each file once, tracked in `schema_migrations`, under an advisory lock.
 - [ ] Control plane: expand/contract discipline for schema changes (documented in CONTRIBUTING).
