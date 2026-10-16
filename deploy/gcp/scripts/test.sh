@@ -2,7 +2,7 @@
 # Test plan for the HA claims. Each scenario prints a verdict and appends it
 # to deploy/gcp/.results/<date>.md.
 #
-#   ./test.sh all | smoke | quota | quota-reset | rollout | zone [--hard]
+#   ./test.sh all | smoke | warmup | quota | quota-reset | rollout | zone [--hard]
 #             | valkey | cp-outage | sql-failover | console
 #
 # console is not part of all: it needs Node.js and installs Playwright with
@@ -36,15 +36,30 @@ call() { # key [stream] -> http code
 gateway_pods() { k get pods -l app.kubernetes.io/name=stratum-gateway -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}'; }
 ready_gateways() { k get pods -l app.kubernetes.io/name=stratum-gateway -o json | jq '[.items[] | select(.status.conditions[]? | select(.type=="Ready" and .status=="True"))] | length'; }
 
-# metric NAME: value of a gauge/counter summed over every gateway pod.
+# metric NAME: value of a gauge/counter summed over every running gateway
+# pod (pods being deleted are skipped). Each pod is read through its own
+# port-forward, on a port not used before in this run, with retries. If any
+# pod cannot be read it prints nothing and returns 1: a read that failed must
+# never count as 0 (the 2026-10-16 run reported two false failures that way).
 metric() {
-  local total=0 port=19090 v
-  for p in $(gateway_pods); do
-    port=$((port + 1))
-    port_forward "pod/$p" "$port:9090"
-    v="$(curl -s "http://127.0.0.1:$port/metrics" | awk -v m="$1" '$1==m {print $2}')"
-    total=$((total + ${v:-0}))
-    cleanup_pf
+  local total=0 p port v pf
+  for p in $(k get pods -l app.kubernetes.io/name=stratum-gateway -o json |
+             jq -r '.items[] | select(.metadata.deletionTimestamp == null and .status.phase == "Running") | .metadata.name'); do
+    port=$((20000 + RANDOM % 20000))
+    k port-forward "pod/$p" "$port:9090" >/dev/null 2>&1 &
+    pf=$!
+    v=""
+    for _ in $(seq 1 15); do
+      v="$(curl -sf -m 3 "http://127.0.0.1:$port/metrics" 2>/dev/null | awk -v m="$1" '$1==m {print $2}')"
+      [[ -n "$v" ]] && break
+      sleep 1
+    done
+    kill "$pf" 2>/dev/null; wait "$pf" 2>/dev/null
+    if [[ ! "$v" =~ ^[0-9]+$ ]]; then
+      warn "could not read $1 from $p"
+      return 1
+    fi
+    total=$((total + v))
   done
   echo "$total"
 }
@@ -73,7 +88,10 @@ load_result() { # name -> prints K6_RESULT json
     [[ "${s:-0}" -ge 1 || "${f:-0}" -ge 1 ]] && break
     sleep 10; t=$((t + 10))
   done
-  k logs "job/$name" | sed -n 's/^K6_RESULT //p' | tail -1
+  # Keep the whole log with the results: the job is gone after 'make down'.
+  mkdir -p "$RESULTS_DIR"
+  k logs "job/$name" >"$RESULTS_DIR/$(date -u +%Y-%m-%d)-$name.log" 2>&1 || true
+  sed -n 's/^K6_RESULT //p' "$RESULTS_DIR/$(date -u +%Y-%m-%d)-$name.log" | tail -1
 }
 
 # Share of requests the path to Stratum (Cloud NAT, load balancer) may fail
@@ -108,7 +126,7 @@ judge_load() {
   [[ -n "$max_path" ]] || max_path="$(awk -v n="$reqs" -v f="$PATH_MAX_RATE" 'BEGIN { m = n * f; printf "%d", (m == int(m)) ? m : int(m) + 1 }')"
   jq -r '"    requests=\(.requests) 2xx=\(.status_2xx) | gateway: 5xx=\(.gateway_5xx) other=\(.gateway_other) broken_streams=\(.broken_streams) | edge=\(.edge_errors) network=\(.network_errors) | p50=\(.p50_ms|floor)ms p95=\(.p95_ms|floor)ms p99=\(.p99_ms|floor)ms"' <<<"$r"
   if ((stratum + path > 0)); then
-    echo "    failures (first 100, UTC): kubectl -n $NAMESPACE logs job/$JOB_NAME | grep K6_FAILURE"
+    echo "    failures (first 100, UTC, with the response body): grep K6_FAILURE $RESULTS_DIR/$(date -u +%Y-%m-%d)-$JOB_NAME.log"
     echo "    load balancer, /v1/ errors since $LOAD_START:"
     edge_breakdown
   fi
@@ -172,7 +190,7 @@ t_quota() {
   else
     fail "quota: $passed accepted, first 429 at $first429 (run 'make test-quota-reset' first if the quota was already used this month)"
   fi
-  echo "    pending tokens (all replicas): $(metric stratum_quota_pending_tokens)  flush failures: $(metric stratum_quota_store_flush_failure_total)"
+  echo "    pending tokens (all replicas): $(metric stratum_quota_pending_tokens || echo '?')  flush failures: $(metric stratum_quota_store_flush_failure_total || echo '?')"
 }
 
 t_quota_reset() {
@@ -191,6 +209,33 @@ t_quota_reset() {
   k run valkey-cli --rm -i --restart=Never --image "$VALKEY_CLI_IMAGE" --overrides "$overrides" ||
     warn "valkey-cli pod failed"
   ok "counters deleted; gateways pick it up within a second (reported as a counter regression)"
+}
+
+# A new load balancer can answer a share of requests with 500 for several
+# minutes after it first serves: 500s of 66 bytes, about 3 ms, no
+# statusDetails, never seen by a gateway. In both real runs the first load
+# after the deploy had them (27 on 2026-10-14, 79 on 2026-10-16) and later
+# loads had none or one. Warm-up loads the edge in 2-minute rounds until one
+# is clean, so the scenarios after it measure Stratum and not the edge
+# settling; each round is recorded, which also measures how long that takes.
+t_warmup() {
+  step "warmup: load the new edge until a round has no path errors"
+  local round r reqs path
+  for round in 1 2 3 4 5 6; do
+    start_load "warmup-$round" 20 2m
+    r="$(load_result "warmup-$round")"
+    if [[ -z "$r" ]]; then warn "warmup round $round: no k6 result"; continue; fi
+    reqs="$(jq -r .requests <<<"$r")"
+    path="$(jq -r '.edge_errors + .network_errors' <<<"$r")"
+    echo "    round $round (from $LOAD_START): $path path errors of $reqs"
+    record "- note $(date -u +%H:%M) warmup round $round (from $LOAD_START): path errors $path of $reqs"
+    if ((path == 0)); then
+      pass "warmup: edge answered cleanly in round $round"
+      return
+    fi
+    edge_breakdown
+  done
+  fail "warmup: edge still failing after 6 rounds (12 min); path results below are not about Stratum"
 }
 
 t_rollout() {
@@ -258,23 +303,38 @@ spec:
             except: ["$VALKEY_IP/32"]
 EOF
 )"
-  local before; before="$(metric stratum_quota_store_flush_failure_total)"
+  local before failures pending blocked
+  before="$(metric stratum_quota_store_flush_failure_total)" || before=""
   start_load valkey 20 4m
   sleep 30
   kubectl apply -f - <<<"$np" >/dev/null
+  blocked=$(date +%s)
   echo "    Valkey blocked at $(date -u +%H:%M:%S)"
-  sleep 90
-  local failures pending
-  failures="$(metric stratum_quota_store_flush_failure_total)"
-  pending="$(metric stratum_quota_pending_tokens)"
-  echo "    during outage: flush failures +$((failures - before)), pending tokens $pending"
+  sleep 75
+  failures="$(metric stratum_quota_store_flush_failure_total)" || failures=""
+  pending="$(metric stratum_quota_pending_tokens)" || pending=""
   k delete networkpolicy chaos-block-valkey >/dev/null
-  echo "    Valkey restored at $(date -u +%H:%M:%S)"
+  echo "    Valkey restored at $(date -u +%H:%M:%S) ($(( $(date +%s) - blocked )) s blocked)"
+  if [[ -n "$before" && -n "$failures" ]]; then
+    echo "    during outage: flush failures +$((failures - before)), pending tokens ${pending:-?}"
+  fi
   judge_load "valkey outage: requests unaffected" "$(load_result valkey)" 0
   sleep 10
-  pending="$(metric stratum_quota_pending_tokens)"
-  ((failures > before)) && pass "valkey outage: detected (flush failures increased)" || fail "valkey outage: no flush failures recorded"
-  ((pending == 0)) && pass "valkey outage: backlog reconciled (0 pending tokens)" || fail "valkey outage: $pending tokens still pending"
+  if [[ -z "$before" || -z "$failures" ]]; then
+    fail "valkey outage: could not read the gateways' metrics, outage detection not measured"
+  elif ((failures > before)); then
+    pass "valkey outage: detected (flush failures increased)"
+  else
+    fail "valkey outage: no flush failures recorded"
+  fi
+  pending="$(metric stratum_quota_pending_tokens)" || pending=""
+  if [[ -z "$pending" ]]; then
+    fail "valkey outage: could not read the gateways' metrics, backlog not measured"
+  elif ((pending == 0)); then
+    pass "valkey outage: backlog reconciled (0 pending tokens)"
+  else
+    fail "valkey outage: $pending tokens still pending"
+  fi
 }
 
 t_cp_outage() {
@@ -293,9 +353,11 @@ t_cp_outage() {
   local ready total bootstraps
   ready="$(ready_gateways)"
   total="$(k get pods -l app.kubernetes.io/name=stratum-gateway -o json | jq '[.items[] | select(.metadata.deletionTimestamp == null)] | length')"
-  bootstraps="$(metric stratum_snapshot_shared_bootstraps_total)"
-  echo "    ready gateways during outage: $ready of $total; started from the snapshot in Valkey: $bootstraps"
-  if ((ready == total && bootstraps >= 1)); then
+  bootstraps="$(metric stratum_snapshot_shared_bootstraps_total)" || bootstraps=""
+  echo "    ready gateways during outage: $ready of $total; started from the snapshot in Valkey: ${bootstraps:-could not read}"
+  if [[ -z "$bootstraps" ]]; then
+    fail "control plane outage: $ready of $total gateways ready; could not read the gateways' metrics to confirm the start from Valkey"
+  elif ((ready == total && bootstraps >= 1)); then
     pass "control plane outage: the replacement pod started from the snapshot in Valkey and is serving"
   else
     fail "control plane outage: $ready of $total gateways ready, $bootstraps started from Valkey (expected all ready, at least 1)"
@@ -354,6 +416,7 @@ t_console() {
 
 case "${1:-all}" in
   smoke) t_smoke ;;
+  warmup) t_warmup ;;
   quota) t_quota ;;
   quota-reset) t_quota_reset ;;
   rollout) t_rollout ;;
@@ -364,7 +427,7 @@ case "${1:-all}" in
   console) t_console ;;
   all)
     record "## Run $(date -u +%Y-%m-%dT%H:%MZ) — $HOST"
-    t_smoke; t_quota_reset; t_quota; t_rollout; t_zone; t_valkey; t_cp_outage; t_sql_failover
+    t_smoke; t_warmup; t_quota_reset; t_quota; t_rollout; t_zone; t_valkey; t_cp_outage; t_sql_failover
     ;;
   *) die "unknown scenario $1" ;;
 esac

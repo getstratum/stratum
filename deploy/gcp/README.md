@@ -134,6 +134,7 @@ make down
 | Scenario | What happens | Pass criterion (failures caused by Stratum; see below) |
 |---|---|---|
 | `smoke` | Unary and streamed completions through the edge; unknown key; published demo key; http→https; console from a non-allowlisted IP | 200 / stream completes / 401 / 401 / 301 / 403 |
+| `warmup` | 2-minute rounds of 20 req/s until one has no errors on the path. A new load balancer answers a share of requests with 500 for several minutes; both real runs saw it in the first load after the deploy | A clean round within 6 (12 min). Each round is recorded |
 | `quota` | 80 requests with a team limited to 3000 tokens (30 × 100) across all replicas | 28–40 accepted (per-replica counters would accept up to 30 × replicas) |
 | `rollout` | `kubectl rollout restart` of every gateway pod under 40 req/s (30% streams) | **0 failed requests**, 0 broken streams |
 | `zone` | Delete every gateway pod in one zone under load (graceful) | 0 failed requests |
@@ -143,7 +144,9 @@ make down
 | `sql-failover` | `gcloud sql instances failover` under load | 0 failed gateway requests; control plane serving again afterwards |
 | `console` | The console in Chromium (Playwright) through a port-forward: sign-in, roles, providers, gateways, an agent key used through the public gateway and revoked, people, password change, audit log ([control-plane/e2e](../../control-plane/e2e/README.md)). Not part of `make test` | Every step passes; what it created is revoked or disabled at the end |
 
-Results are appended to `deploy/gcp/.results/<date>.md`. Load comes from k6
+Results are appended to `deploy/gcp/.results/<date>.md`, with each k6 run's
+full log next to it (`<date>-k6-<scenario>.log`; failures are the
+`K6_FAILURE` lines, with the start of the response body). Load comes from k6
 inside the cluster but goes through the public hostname, so DNS, TLS, the
 load balancer and Cloud Armor are part of every measurement.
 
@@ -173,6 +176,12 @@ The same run showed that a gateway pod replaced during a control plane outage
 could not start (2 of 3 ready). ADR-0008 closes that gap, and `cp-outage` now
 checks it.
 
+The second run ([report](../../docs/testing/gcp-2026-10-16.md); 50,400
+requests) again had 0 errors from Stratum, and the replacement pod started
+from the snapshot in Valkey 10 s into the control plane outage. The load
+balancer produced 79 errors, again in the first load after the deploy, which
+is why `make test` now starts with a warm-up.
+
 That is why end-to-end availability at 99.99% also needs **clients that
 retry** connection errors and 5xx before the first byte. The official OpenAI
 SDKs do by default (two retries with backoff); a custom client should too.
@@ -192,6 +201,9 @@ Enterprise design).
 | Pods stuck in `ImagePullBackOff` on the Auth Proxy | Set `PROXY_IMAGE` to a current `gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.x` tag and re-run `make deploy`. |
 | Console returns 403 | Your IP changed; update `console_allowed_cidrs` and `make up`. |
 | `make down` fails on the network | Leftover NEGs from the Gateway controller; the script removes them and retries. If it still fails, delete the project. |
+| `make deploy` waits on "load balancer to route to the gateways", or a test right after it gets 500 on everything | The load balancer is still being programmed (minutes after the first deploy). The deploy waits up to `EDGE_WAIT_MINUTES` (20); `make test` starts with a warm-up for the residual errors. |
+| `make up` fails with `connection refused` or `cannot assign requested address` on `*.googleapis.com` | Cloud Shell's network, not the kit. Re-run `make up` (Terraform resumes); if it keeps failing, restart Cloud Shell and run `TF_CLI_ARGS_apply=-parallelism=3 make up`. |
+| `make up` fails with `The following PromQL metric(s) are invalid` | `metric_alerts = true` before the gateway has exported that metric in this project (often a `terraform.tfvars` kept from an earlier run). Set it to `false`, run `make up` and `make deploy`, then set it back to `true` and run `make up`. |
 | Uptime alert fires right after `make up` | Expected: the check exists before the load balancer and certificate do. It clears once `make deploy` finishes and the certificate is active. |
 | Cloud Build fails with "buildx component is missing" | Build in Cloud Shell instead: `BUILD_WITH=docker make deploy`. |
 | Quota test fails at the first request | The month's quota was already used: `make test-quota-reset`. |

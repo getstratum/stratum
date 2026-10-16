@@ -198,6 +198,27 @@ helm upgrade --install stratum-gateway "$REPO_ROOT/deploy/helm/stratum-gateway" 
   --wait --timeout 20m
 ok "gateway ready"
 
+# ── 9. Edge: the load balancer routes to the gateways ──────────────────────
+# Right after the first deploy the load balancer answers 500 until its
+# backends are programmed (minutes). Wait for 30 consecutive 200s on /readyz
+# through it, so "Done" means the API answers.
+step "Waiting for the load balancer to route to the gateways"
+deadline=$(( $(date +%s) + ${EDGE_WAIT_MINUTES:-20} * 60 ))
+streak=0
+while (( streak < 30 && $(date +%s) < deadline )); do
+  c="$(curl -sS -o /dev/null -m 5 -w '%{http_code}' "https://$HOST/readyz" 2>/dev/null || echo 000)"
+  if [[ "$c" == 200 ]]; then streak=$((streak + 1)); else
+    ((streak > 0)) && printf '  %s  %s after %s good answers\n' "$(date -u +%H:%M:%S)" "$c" "$streak"
+    streak=0
+  fi
+  sleep 2
+done
+if ((streak >= 30)); then
+  ok "https://$HOST/readyz answered 200 thirty times in a row"
+else
+  warn "the load balancer is not routing reliably yet; wait a few minutes before testing"
+fi
+
 step "Done"
 cat <<EOF
   API        https://$HOST/v1/chat/completions   (model "ollama/mock-1")
@@ -205,7 +226,8 @@ cat <<EOF
              login: dev@acme.com  /  password from 'make keys'
   Keys       make keys
   Tests      make test            (all scenarios, ~45 min)
-             make test-smoke      (one scenario: smoke|quota|rollout|zone|valkey|cp-outage|sql-failover)
+             make test-smoke      (one scenario: smoke|warmup|quota|rollout|zone|valkey|cp-outage|sql-failover)
+             make test-console    (the console in a browser; needs Node.js)
   Teardown   make down            ${c_yellow}(do not forget: ~US\$0.5/hour while it runs)${c_off}
 EOF
 if ! grep -q '^metric_alerts *= *true' "$TF_DIR/terraform.tfvars" 2>/dev/null; then
