@@ -86,6 +86,23 @@ deletions come from tombstones. The full resync remains the safety net for
 the rare change a delta can still miss: one whose version was taken before a
 higher one but committed after it.
 
+## Usage flow
+
+```
+request ──► proxy ──► buffer (memory) ──(every 10 s, ≤500 records)──► POST /api/internal/usage
+                                                                     │
+                                                                     ▼
+                                             request_logs (one row per request, id = record UUID)
+```
+
+Every request made with a valid key leaves one record: key, team, provider,
+model, status, durations, tokens, and the kinds of sensitive data found.
+The buffer is never on the request path; a control plane outage only makes
+it grow, up to a bound. Records carry their own ID, so a retried batch is
+stored once. The control plane sets the organization from the reporting
+gateway and computes the cost from the model catalog (ADR-0009, contract in
+`api/usage/v1`).
+
 ## Reference topology
 
 - At least three gateway replicas spread over three zones, behind a regional L7

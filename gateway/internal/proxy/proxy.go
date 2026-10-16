@@ -24,7 +24,14 @@ import (
 	"github.com/getstratum/stratum/gateway/internal/provider"
 	"github.com/getstratum/stratum/gateway/internal/quota"
 	"github.com/getstratum/stratum/gateway/internal/snapshot"
+	"github.com/getstratum/stratum/gateway/internal/usage"
 )
+
+// UsageSink receives one record per authenticated request. Add must not
+// block (usage.Pusher only appends to a buffer).
+type UsageSink interface {
+	Add(usage.Record)
+}
 
 type Handler struct {
 	Holder            *snapshot.Holder
@@ -37,6 +44,7 @@ type Handler struct {
 	PIIEnabled        bool
 	UserAgent         string
 	RequestID         func(context.Context) string
+	Usage             UsageSink // optional
 }
 
 // NewTransport returns the upstream transport. There is deliberately no
@@ -70,6 +78,7 @@ type record struct {
 	upstreamMs int64
 	usage      Usage
 	piiTypes   []string
+	providerOK bool // rec.provider is a configured provider
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -150,6 +159,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	prov, ok := snap.Provider(slug)
+	rec.providerOK = ok
 	if !ok {
 		h.fail(w, rec, &policy.Violation{Status: http.StatusBadRequest, Code: "provider_not_configured",
 			Message: "provider " + slug + " is not configured for this organization"})
@@ -367,16 +377,39 @@ func (h *Handler) fail(w http.ResponseWriter, rec *record, v *policy.Violation) 
 }
 
 func (h *Handler) finish(r *http.Request, rec *record) {
-	h.Metrics.Request(rec.status, rec.provider, rec.reason)
+	// The provider label only for configured providers: the name in
+	// /proxy/{provider}/ is the client's, and labels must stay few.
+	label := rec.provider
+	if !rec.providerOK {
+		label = ""
+	}
+	h.Metrics.Request(rec.status, label, rec.reason)
+	duration := time.Since(rec.start).Milliseconds()
+	var requestID string
+	if h.RequestID != nil {
+		requestID = h.RequestID(r.Context())
+	}
+	// Usage is reported for every request made with a valid key, refused
+	// ones included: the console shows denials too. Requests without a
+	// valid key belong to no organization and are only logged and counted.
+	if h.Usage != nil && rec.keyID != "" {
+		h.Usage.Add(usage.Record{
+			ID: usage.NewID(), Time: rec.start.UTC(), RequestID: usage.Clip(requestID, 128),
+			KeyID: rec.keyID, TeamID: rec.teamID, Provider: usage.Clip(rec.provider, 50), Model: usage.Clip(rec.model, 100),
+			Status: rec.status, Reason: rec.reason, Stream: rec.stream,
+			DurationMs: duration, UpstreamMs: rec.upstreamMs,
+			TokensIn: rec.usage.Input, TokensOut: rec.usage.Output, ContentFlags: rec.piiTypes,
+		})
+	}
 	attrs := []any{
 		"status", rec.status, "reason", rec.reason,
 		"team_id", rec.teamID, "key_id", rec.keyID,
-		"provider", rec.provider, "model", rec.model, "stream", rec.stream,
-		"duration_ms", time.Since(rec.start).Milliseconds(), "upstream_ms", rec.upstreamMs,
+		"provider", usage.Clip(rec.provider, 50), "model", usage.Clip(rec.model, 100), "stream", rec.stream,
+		"duration_ms", duration, "upstream_ms", rec.upstreamMs,
 		"tokens_in", rec.usage.Input, "tokens_out", rec.usage.Output,
 	}
-	if h.RequestID != nil {
-		attrs = append(attrs, "request_id", h.RequestID(r.Context()))
+	if requestID != "" {
+		attrs = append(attrs, "request_id", requestID)
 	}
 	if len(rec.piiTypes) > 0 {
 		attrs = append(attrs, "content_flags", rec.piiTypes)

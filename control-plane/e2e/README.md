@@ -9,7 +9,7 @@ administrator would, and checks the effect on a gateway synced with it:
 | Security | The session cookie is `HttpOnly` (and `Secure` over https); a request from another site gets 403. |
 | Providers | A custom endpoint can be added, disabled and revoked, and its credential is never returned. A preset refuses a plain `http://` address. |
 | Gateways | Registering shows the sync token once; rotating gives a new one; disabling works. At least one gateway of the installation is online. |
-| Agents | A new agent key is refused before the sync and accepted after it through the gateway; once revoked it is refused again. |
+| Agents | A new agent key is refused before the sync and accepted after it through the gateway; the request then shows up in the console's usage for the agent (the gateway reports it); once revoked the key is refused again. |
 | People and roles | The owner creates an auditor, who can read but not change anything: the buttons that would change something are hidden, and the API answers 403. |
 | My account | Changing the password works and the old one stops working. |
 | Deactivation | Deactivating a person ends their session at once. |

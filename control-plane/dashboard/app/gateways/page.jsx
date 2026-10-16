@@ -171,6 +171,7 @@ export default function GatewaysPage() {
                 <th className="px-4 py-3 font-semibold">Estado</th>
                 <th className="px-4 py-3 font-semibold">Última sincronización</th>
                 <th className="px-4 py-3 font-semibold">Configuración</th>
+                <th className="px-4 py-3 font-semibold">Último uso reportado</th>
                 <th className="px-5 py-3"><span className="sr-only">Acciones</span></th>
               </tr>
             </thead>
@@ -189,6 +190,7 @@ export default function GatewaysPage() {
                     <td className="px-4 py-3.5 text-muted">
                       {gw.last_version == null || gw.status === 'never' ? '—' : <>v{gw.last_version} {current ? <span className="text-ok">(actual)</span> : <span className="text-warn">(actual: v{data.current_version})</span>}</>}
                     </td>
+                    <td className="px-4 py-3.5 text-muted">{ago(gw.seconds_since_usage)}</td>
                     <td className="px-5 py-3.5">
                       {canManage && !gw.disabled && (
                         <div className="flex justify-end gap-1">

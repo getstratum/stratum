@@ -13,10 +13,10 @@
  */
 
 import { NextResponse } from 'next/server'
-import { createHash } from 'crypto'
 import { query, getDb } from '@/lib/db'
 import { buildSyncResponse } from '@/lib/sync'
 import { decryptSecret } from '@/lib/secrets'
+import { authenticateInstance } from '@/lib/instance-auth'
 
 import { tokenRoute } from '@/lib/route'
 
@@ -24,33 +24,8 @@ export const dynamic = 'force-dynamic'
 
 const SYNC_INTERVAL_S = parseInt(process.env.STRATUM_SYNC_INTERVAL_S ?? '30', 10)
 
-// ---------------------------------------------------------------------------
-// Auth helpers
-// ---------------------------------------------------------------------------
-
-function hashSyncToken(rawToken) {
-  return createHash('sha256').update(rawToken).digest('hex')
-}
-
-async function authenticateInstance(authHeader) {
-  if (!authHeader?.startsWith('Bearer ')) return null
-  const rawToken = authHeader.slice(7)
-  if (!rawToken) return null
-  const tokenHash = hashSyncToken(rawToken)
-
-  const rows = await query(
-    `SELECT id, org_id, disabled
-     FROM data_plane_instances
-     WHERE sync_token_hash = $1 AND disabled = false
-     LIMIT 1`,
-    [tokenHash]
-  )
-  return rows[0] ?? null
-}
-
 async function handleSync(request) {
-  const authHeader = request.headers.get('authorization')
-  const instance   = await authenticateInstance(authHeader)
+  const instance = await authenticateInstance(getDb(), request.headers.get('authorization'))
 
   if (!instance) {
     return NextResponse.json(
