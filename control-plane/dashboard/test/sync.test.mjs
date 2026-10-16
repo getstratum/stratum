@@ -239,6 +239,26 @@ test('agent keys travel like user keys, under agent: ids', { skip }, async () =>
   assert.ok(d4.current_version > v4)
 })
 
+test('an agent\'s fixed model travels with its key, and changing it is a delta', { skip }, async () => {
+  const f = await fixture()
+  const [agent] = await sql(
+    `INSERT INTO agents (org_id, team_id, name, api_key_hash, default_provider, default_model)
+     VALUES ($1, $2, 'bot', $3, 'openai', 'gpt-4o-mini') RETURNING id`,
+    [f.org, f.team, randomBytes(32).toString('hex')])
+  const id = `agent:${agent.id}`
+  const full = await sync(f.org, 0)
+  assert.deepEqual([key(full, id).default_provider, key(full, id).default_model], ['openai', 'gpt-4o-mini'])
+  assert.ok(full.api_keys.filter(k => !k.id.startsWith('agent:')).every(k => k.default_model == null), 'people have none')
+
+  await sql(`UPDATE agents SET default_provider = 'anthropic', default_model = 'claude-haiku-4-5' WHERE id = $1`, [agent.id])
+  const d1 = await sync(f.org, full.current_version)
+  assert.deepEqual([key(d1, id).default_provider, key(d1, id).default_model], ['anthropic', 'claude-haiku-4-5'])
+
+  await sql(`UPDATE agents SET default_provider = NULL, default_model = '' WHERE id = $1`, [agent.id])
+  const d2 = await sync(f.org, d1.current_version)
+  assert.deepEqual([key(d2, id).default_provider, key(d2, id).default_model], [null, null])
+})
+
 test('an agent without a team or another organization\'s agent never works here', { skip }, async () => {
   const f = await fixture()
   const g = await fixture()

@@ -12,6 +12,10 @@ type Key struct {
 	ID     string
 	TeamID string
 	Label  string
+	// Fixed model of an agent key: every request goes there, whatever model
+	// it asks for. Empty Model means the caller chooses (within the policy).
+	Provider string
+	Model    string
 }
 
 // Policy is a team policy, pre-indexed for O(1) checks.
@@ -65,7 +69,8 @@ func Build(st *State, syncedAt time.Time) *Snapshot {
 		if k.Revoked || k.KeyHash == "" {
 			continue
 		}
-		s.keysByHash[strings.ToLower(k.KeyHash)] = Key{ID: k.ID, TeamID: k.TeamID, Label: k.Label}
+		s.keysByHash[strings.ToLower(k.KeyHash)] = Key{ID: k.ID, TeamID: k.TeamID, Label: k.Label,
+			Provider: strings.ToLower(strings.TrimSpace(k.DefaultProvider)), Model: strings.TrimSpace(k.DefaultModel)}
 	}
 	s.activeKeys = len(s.keysByHash)
 

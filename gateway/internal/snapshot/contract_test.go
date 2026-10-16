@@ -61,6 +61,10 @@ func TestRevocationsDelta(t *testing.T) {
 	if _, ok := before.KeyByHash("3ba6ea2bd037fee129f1115ad2361d4692aa55d0c3e530fa5b82622792943d1f"); !ok {
 		t.Fatal("fixture: user_dev should be active before the delta")
 	}
+	if k, ok := before.KeyByHash("5f2b3c6a1d4e8f90a7b6c5d4e3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4"); !ok ||
+		k.Provider != "openai" || k.Model != "gpt-4o-mini" {
+		t.Fatalf("an agent key carries its fixed model: %+v %v", k, ok)
+	}
 
 	st, err := full.Apply(load("delta-revocations.json"), false)
 	if err != nil {

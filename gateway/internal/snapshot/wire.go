@@ -91,6 +91,9 @@ type WireAPIKey struct {
 	Label   string `json:"label,omitempty"`
 	Version Int64  `json:"version"`
 	Revoked bool   `json:"revoked"`
+	// Agent keys only: every request of the key goes to this model.
+	DefaultProvider string `json:"default_provider,omitempty"`
+	DefaultModel    string `json:"default_model,omitempty"`
 }
 
 // WireProviderConfig carries the customer's own provider credentials.

@@ -51,13 +51,29 @@ once, on registration or rotation.
 
 Roles: Owner and Admin manage gateways; Auditor reads them.
 
+## Agents: fixed model
+
+An agent's **Fixed model** (Agents → Edit) is sent to the gateways with its
+key (migration 021) and applied to every request of that key: the gateways
+send it to that provider and model whatever model it asks for, so an
+administrator can move all of an agent's traffic to another model from the
+console. It still has to be allowed by the team's policy, and a request in
+the other API format is refused (`agent_model_mismatch`). Empty: the agent
+chooses, within the policy. A change reaches the gateways in the next sync.
+
+Azure OpenAI runs the deployment named in the URL
+(`/proxy/azure/deployments/<name>/...`), not the model in the body. So for
+Azure the gateways treat that name as the model: the policy checks it, and
+an agent's fixed model replaces it in the URL.
+
 ## Upgrading
 
 - **Agent keys start working** on gateways after migration 017: until then
   gateways refused every agent key, because the sync never sent them. Before
   upgrading, review the agents of each organization and revoke the keys
   nobody should be using.
-- An agent's "default model" is for reference only: gateways do not enforce
-  it yet. The team's policy decides which models the agent may use.
+- From migration 021 an agent's model, if set, is enforced by the gateways
+  (see "Agents: fixed model"). Agents that had one set for reference start
+  using it on upgrade: review them first.
 - Provider configurations saved before migration 018 show their credential
   as "configured" (no last-four preview) until it is replaced.
