@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/getstratum/stratum/api/usage/v1/usage-batch.schema.json",
+  "title": "Stratum usage batch v1",
+  "description": "Body of POST /api/internal/usage: what each request through a gateway consumed (ADR-0009). Metadata only: never prompts, completions or credentials. Same compatibility rule as the sync contract: adding optional fields is compatible; removing or retyping one is not. The control plane skips records it cannot store and refuses a batch only when the batch itself is malformed.",
+  "type": "object",
+  "required": ["records"],
+  "properties": {
+    "instance_id": {
+      "description": "The reporting gateway's instance ID. Must match the sync token when present.",
+      "type": "string"
+    },
+    "records": {
+      "type": "array",
+      "maxItems": 500,
+      "items": { "$ref": "#/$defs/record" }
+    }
+  },
+  "$defs": {
+    "record": {
+      "type": "object",
+      "required": ["id", "ts", "key_id", "status", "stream", "duration_ms", "upstream_ms", "tokens_in", "tokens_out"],
+      "properties": {
+        "id": {
+          "description": "UUID chosen by the gateway; the idempotency key. A record sent again with the same id and ts is stored once.",
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "ts": {
+          "description": "When the request arrived (RFC 3339). Records older than 35 days or more than 5 minutes ahead of the control plane's clock are skipped.",
+          "type": "string",
+          "format": "date-time"
+        },
+        "request_id": { "description": "The X-Request-Id the gateway returned to the client.", "type": "string", "maxLength": 128 },
+        "key_id": { "description": "ID of the API key as the sync sent it: a user ID, or agent:<agent id>.", "type": "string", "minLength": 1, "maxLength": 200 },
+        "team_id": { "description": "Team of the key. Ignored unless it belongs to the gateway's organization.", "type": "string" },
+        "provider": { "type": "string", "maxLength": 50 },
+        "model": { "description": "Model as sent to the provider (without the provider prefix).", "type": "string", "maxLength": 100 },
+        "status": { "description": "HTTP status returned to the client (499: the client went away).", "type": "integer", "minimum": 100, "maximum": 599 },
+        "reason": { "description": "Short code: ok, or why the request failed or was refused.", "type": "string", "pattern": "^[a-z0-9_]{1,64}$" },
+        "stream": { "type": "boolean" },
+        "duration_ms": { "type": "integer", "minimum": 0 },
+        "upstream_ms": { "description": "Time until the provider's response headers.", "type": "integer", "minimum": 0 },
+        "tokens_in": { "type": "integer", "minimum": 0 },
+        "tokens_out": { "type": "integer", "minimum": 0 },
+        "content_flags": {
+          "description": "Kinds of sensitive data the policy's PII/DLP rules found (never the data).",
+          "type": "array",
+          "maxItems": 20,
+          "items": { "type": "string", "pattern": "^[a-z0-9_]{1,40}$" }
+        }
+      }
+    }
+  }
+}

@@ -23,7 +23,7 @@ const PUBLIC = {
 }
 const SYNC_TOKEN = {
   'internal/sync/route.js:GET':     'gateways fetch their configuration',
-  'internal/metrics/route.js:POST': 'gateways report metrics',
+  'internal/usage/route.js:POST':   'gateways report what each request consumed (ADR-0009)',
 }
 
 function routeFiles(dir) {

@@ -38,6 +38,10 @@ type Config struct {
 	InstanceID         string
 	SyncInterval       time.Duration
 	FullResyncInterval time.Duration
+	// Per-request usage reported to the control plane (ADR-0009).
+	UsagePush     bool
+	UsageInterval time.Duration
+	UsageBuffer   int // records kept while the control plane is unreachable
 
 	// Static mode
 	ConfigFile string
@@ -90,6 +94,9 @@ func Load(getenv func(string) string) (*Config, error) {
 		InstanceID:         e.str("STRATUM_INSTANCE_ID", ""),
 		SyncInterval:       e.dur("STRATUM_SYNC_INTERVAL", 30*time.Second),
 		FullResyncInterval: e.dur("STRATUM_FULL_RESYNC_INTERVAL", 10*time.Minute),
+		UsagePush:          e.bool("STRATUM_USAGE_PUSH", true),
+		UsageInterval:      e.dur("STRATUM_USAGE_INTERVAL", 10*time.Second),
+		UsageBuffer:        e.int("STRATUM_USAGE_BUFFER", 100000),
 
 		ConfigFile: e.str("STRATUM_CONFIG_FILE", ""),
 
@@ -204,7 +211,17 @@ func (c *Config) validateControlPlane(e *env) {
 	if c.SyncInterval < time.Second {
 		e.fail("STRATUM_SYNC_INTERVAL must be >= 1s")
 	}
+	if c.UsageInterval < time.Second || c.UsageInterval > 5*time.Minute {
+		e.fail("STRATUM_USAGE_INTERVAL must be between 1s and 5m")
+	}
+	if c.UsageBuffer < 1000 {
+		e.fail("STRATUM_USAGE_BUFFER must be at least 1000")
+	}
 }
+
+// UsagePushEnabled reports whether per-request usage is sent to the control
+// plane (ADR-0009). Static mode has no control plane to send it to.
+func (c *Config) UsagePushEnabled() bool { return c.Mode == ModeControlPlane && c.UsagePush }
 
 // PersistenceEnabled reports whether snapshots are written to disk.
 func (c *Config) PersistenceEnabled() bool { return c.SnapshotKey != nil && c.SnapshotPath != "" }

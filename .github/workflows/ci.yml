@@ -46,7 +46,12 @@ jobs:
       - name: test (race)
         env:
           STRATUM_TEST_VALKEY_URL: redis://localhost:6379/15
-        run: go test -race -count=1 -coverprofile=coverage.out ./...
+          USAGE_EXAMPLES_DIR: ${{ runner.temp }}/usage-batches
+        run: mkdir -p "$USAGE_EXAMPLES_DIR" && go test -race -count=1 -coverprofile=coverage.out ./...
+      - name: usage batches the gateway sends match the contract
+        run: >-
+          pipx run --spec check-jsonschema==0.33.0 check-jsonschema
+          --schemafile ../api/usage/v1/usage-batch.schema.json "$RUNNER_TEMP"/usage-batches/*.json
       - name: govulncheck
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
       - name: reproducible build
@@ -72,6 +77,8 @@ jobs:
       - run: pip install check-jsonschema==0.33.0
       - run: check-jsonschema --check-metaschema api/sync/v2/sync-response.schema.json
       - run: check-jsonschema --schemafile api/sync/v2/sync-response.schema.json api/sync/v2/examples/*.json
+      - run: check-jsonschema --check-metaschema api/usage/v1/usage-batch.schema.json
+      - run: check-jsonschema --schemafile api/usage/v1/usage-batch.schema.json api/usage/v1/examples/*.json
 
   control-plane:
     name: control plane (Next.js)
@@ -151,7 +158,7 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: gateway/go.mod
-          cache-dependency-path: gateway/go.sum
+          cache-dependency-path: gateway/go.mod
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24

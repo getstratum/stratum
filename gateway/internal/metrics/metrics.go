@@ -41,6 +41,13 @@ type Metrics struct {
 	SnapshotSharedWrites        atomic.Int64 // copies the store accepted (newer version)
 	SnapshotSharedWriteFailures atomic.Int64
 	SnapshotSharedBootstraps    atomic.Int64 // starts served from the shared copy
+
+	// Usage reported to the control plane (ADR-0009).
+	UsageEnabled      atomic.Int64
+	UsageSent         atomic.Int64 // records the control plane accepted
+	UsageDropped      atomic.Int64 // records lost: buffer full, or a batch the control plane refused
+	UsageBuffered     atomic.Int64 // records waiting to be sent
+	UsagePushFailures atomic.Int64 // sends that failed and will be retried
 }
 
 type reqKey struct {
@@ -124,6 +131,14 @@ func (m *Metrics) WriteTo(w io.Writer, now time.Time) {
 		counter(&b, "stratum_snapshot_shared_writes_total", "Snapshot versions this gateway stored in Valkey.", m.SnapshotSharedWrites.Load())
 		counter(&b, "stratum_snapshot_shared_write_failures_total", "Failed writes of the snapshot to Valkey.", m.SnapshotSharedWriteFailures.Load())
 		counter(&b, "stratum_snapshot_shared_bootstraps_total", "Starts served from the copy in Valkey because the control plane did not answer in time.", m.SnapshotSharedBootstraps.Load())
+	}
+
+	gauge(&b, "stratum_usage_enabled", "1 if this gateway reports per-request usage to the control plane (ADR-0009).", m.UsageEnabled.Load())
+	if m.UsageEnabled.Load() == 1 {
+		counter(&b, "stratum_usage_records_sent_total", "Usage records the control plane accepted.", m.UsageSent.Load())
+		counter(&b, "stratum_usage_records_dropped_total", "Usage records lost: buffer full, or a batch the control plane refused.", m.UsageDropped.Load())
+		gauge(&b, "stratum_usage_records_buffered", "Usage records waiting to be sent to the control plane.", m.UsageBuffered.Load())
+		counter(&b, "stratum_usage_push_failures_total", "Usage sends that failed and will be retried.", m.UsagePushFailures.Load())
 	}
 
 	io.WriteString(w, b.String())

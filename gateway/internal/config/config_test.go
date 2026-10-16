@@ -30,6 +30,38 @@ func TestControlPlaneMode(t *testing.T) {
 	if !c.PersistenceEnabled() {
 		t.Fatal("persistence should be on with a key")
 	}
+	if !c.UsagePushEnabled() || c.UsageInterval != 10*time.Second || c.UsageBuffer != 100000 {
+		t.Fatalf("usage defaults: push=%v interval=%v buffer=%d", c.UsagePushEnabled(), c.UsageInterval, c.UsageBuffer)
+	}
+}
+
+func TestUsageSettings(t *testing.T) {
+	cp := func(extra map[string]string) map[string]string {
+		m := map[string]string{
+			"STRATUM_CP_URL": "https://cp.example.com", "STRATUM_SYNC_TOKEN": "dp_sync_x", "STRATUM_INSTANCE_ID": "dp_1",
+		}
+		for k, v := range extra {
+			m[k] = v
+		}
+		return m
+	}
+	c, err := Load(envOf(cp(map[string]string{"STRATUM_USAGE_PUSH": "false"})))
+	if err != nil || c.UsagePushEnabled() {
+		t.Fatalf("STRATUM_USAGE_PUSH=false: err=%v enabled=%v", err, c != nil && c.UsagePushEnabled())
+	}
+	c, err = Load(envOf(map[string]string{"STRATUM_CONFIG_FILE": "/etc/stratum/stratum.json"}))
+	if err != nil || c.UsagePushEnabled() {
+		t.Fatalf("static mode has no control plane to report to: err=%v", err)
+	}
+	for name, env := range map[string]map[string]string{
+		"interval too short": {"STRATUM_USAGE_INTERVAL": "100ms"},
+		"interval too long":  {"STRATUM_USAGE_INTERVAL": "10m"},
+		"buffer too small":   {"STRATUM_USAGE_BUFFER": "10"},
+	} {
+		if _, err := Load(envOf(cp(env))); err == nil {
+			t.Errorf("%s: expected an error", name)
+		}
+	}
 }
 
 func TestPlainHTTPControlPlaneNeedsOptIn(t *testing.T) {

@@ -1,7 +1,7 @@
 # Global external Application Load Balancer, declared with the Gateway API.
 # Rendered by scripts/deploy.sh (envsubst). One hostname:
 #   /v1/*, /proxy/*, /readyz      -> gateway (data plane)
-#   /api/internal/sync            -> control plane, sync endpoint (gateway egress IPs only)
+#   /api/internal/sync, /usage    -> control plane, gateway endpoints (gateway egress IPs only)
 #   everything else               -> control plane console (operator IPs only)
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
@@ -101,6 +101,9 @@ spec:
         - path:
             type: PathPrefix
             value: /api/internal/sync
+        - path:
+            type: PathPrefix
+            value: /api/internal/usage
       backendRefs:
         - name: stratum-cp-sync
           port: 80

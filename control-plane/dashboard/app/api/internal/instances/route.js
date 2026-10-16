@@ -43,6 +43,7 @@ export const GET = route('gateways.read', async (req, { session, db }) => {
     db.query(
       `SELECT id, name, created_at, last_seen_at, last_version, disabled,
               EXTRACT(EPOCH FROM (now() - last_seen_at))::INT AS seconds_since_sync,
+              EXTRACT(EPOCH FROM (now() - last_usage_at))::INT AS seconds_since_usage,
               CASE
                 WHEN disabled                                     THEN 'disabled'
                 WHEN last_seen_at IS NULL                         THEN 'never'

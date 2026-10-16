@@ -1,0 +1,37 @@
+{
+  "instance_id": "dp_313d2555edd4bf4e7d8d35c8f2cfe882",
+  "records": [
+    {
+      "id": "6f1c2a8e-3b4d-4f5a-9c6b-7d8e9f0a1b2c",
+      "ts": "2026-10-16T16:05:52.588Z",
+      "request_id": "ebb567db364e336e",
+      "key_id": "10000000-0000-0000-0000-000000000001",
+      "team_id": "20000000-0000-0000-0000-000000000001",
+      "provider": "openai",
+      "model": "gpt-4o",
+      "status": 200,
+      "reason": "ok",
+      "stream": true,
+      "duration_ms": 2241,
+      "upstream_ms": 310,
+      "tokens_in": 60,
+      "tokens_out": 40,
+      "content_flags": ["email"]
+    },
+    {
+      "id": "0b9a8c7d-6e5f-4a3b-8c2d-1e0f9a8b7c6d",
+      "ts": "2026-10-16T16:05:53.101Z",
+      "key_id": "agent:8de79132-c319-46c9-80a1-4f7fb6642890",
+      "team_id": "20000000-0000-0000-0000-000000000001",
+      "provider": "anthropic",
+      "model": "claude-sonnet-4-6",
+      "status": 429,
+      "reason": "quota_exceeded",
+      "stream": false,
+      "duration_ms": 1,
+      "upstream_ms": 0,
+      "tokens_in": 0,
+      "tokens_out": 0
+    }
+  ]
+}

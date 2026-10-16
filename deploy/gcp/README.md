@@ -36,7 +36,7 @@ flowchart LR
   end
   lb -->|/v1 /proxy /readyz| gw
   lb -->|/ console| cp
-  lb -->|/api/internal/sync| cp
+  lb -->|/api/internal/sync, /usage| cp
   gw -. config sync over HTTPS .-> nat -.-> lb
   gw -->|quota counters, async| valkey
   gw --> mock

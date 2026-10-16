@@ -245,6 +245,15 @@ test('agents: a new key works through the gateway, and stops working when revoke
   await eventually(() => callGateway(key), 200, SYNC_MS, 'the new key through the gateway')
   console.log(`  key accepted ${((Date.now() - t0) / 1000).toFixed(1)} s after creation`)
 
+  // The gateway reports the request to the control plane (ADR-0009) and the
+  // console counts it for the agent.
+  const t2 = Date.now()
+  await eventually(async () => {
+    const agent = ((await api('GET', '/api/agents')).body ?? []).find((a) => a.name === name)
+    return Number(agent?.requests_month ?? 0) > 0 ? 'counted' : 'not yet'
+  }, 'counted', SYNC_MS, "the agent's request in the console's usage")
+  console.log(`  usage reported ${((Date.now() - t2) / 1000).toFixed(1)} s after the request`)
+
   const row = page.getByTestId('agent-row').filter({ hasText: name })
   await row.getByRole('button', { name: 'Revoke key' }).click()
   const t1 = Date.now()

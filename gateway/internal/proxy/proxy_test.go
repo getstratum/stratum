@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -16,7 +18,35 @@ import (
 	"github.com/getstratum/stratum/gateway/internal/metrics"
 	"github.com/getstratum/stratum/gateway/internal/quota"
 	"github.com/getstratum/stratum/gateway/internal/snapshot"
+	"github.com/getstratum/stratum/gateway/internal/usage"
 )
+
+type usageRecorder struct {
+	mu      sync.Mutex
+	records []usage.Record
+}
+
+func (u *usageRecorder) Add(r usage.Record) {
+	u.mu.Lock()
+	u.records = append(u.records, r)
+	u.mu.Unlock()
+}
+
+// wait returns the records once there are n (finish runs after the
+// response is written, so the client can see the answer first).
+func (u *usageRecorder) wait(t *testing.T, n int) []usage.Record {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		u.mu.Lock()
+		got := append([]usage.Record(nil), u.records...)
+		u.mu.Unlock()
+		if len(got) >= n || time.Now().After(deadline) {
+			return got
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
 
 const devKey = "aig_sk_eng_test1234567890"
 
@@ -46,6 +76,7 @@ type env struct {
 	up    *upstream
 	quota *quota.Local
 	m     *metrics.Metrics
+	usage *usageRecorder
 }
 
 func newEnv(t *testing.T, policyJSON string, idle time.Duration) *env {
@@ -77,7 +108,7 @@ func newEnv(t *testing.T, policyJSON string, idle time.Duration) *env {
 	holder := &snapshot.Holder{}
 	holder.Store(st, snapshot.Build(st, time.Now()))
 
-	e := &env{t: t, up: up, quota: quota.NewLocal(), m: metrics.New()}
+	e := &env{t: t, up: up, quota: quota.NewLocal(), m: metrics.New(), usage: &usageRecorder{}}
 	h := &Handler{
 		Holder: holder, Quota: e.quota, Metrics: e.m,
 		Log:               slog.New(slog.NewTextHandler(io.Discard, nil)),
@@ -86,6 +117,7 @@ func newEnv(t *testing.T, policyJSON string, idle time.Duration) *env {
 		StreamIdleTimeout: idle,
 		PIIEnabled:        true,
 		UserAgent:         "stratum-gateway/test",
+		Usage:             e.usage,
 	}
 	e.gw = httptest.NewServer(h)
 	t.Cleanup(e.gw.Close)
@@ -122,6 +154,47 @@ func TestAuth(t *testing.T) {
 	}
 	if res := e.post("/v1/chat/completions", "nope", `{}`); res.StatusCode != 401 || errCode(t, res) != "invalid_api_key" {
 		t.Fatalf("bad key: %d", res.StatusCode)
+	}
+}
+
+func TestUsageRecordedForAuthenticatedRequests(t *testing.T) {
+	e := newEnv(t, allowAll, time.Minute)
+	if res := e.post("/v1/chat/completions", "nope", `{}`); res.StatusCode != 401 {
+		t.Fatalf("bad key: %d", res.StatusCode)
+	}
+	res := e.post("/v1/chat/completions", devKey, `{"model":"openai/gpt-4o","messages":[{"role":"user","content":"mail ana@example.com"}]}`)
+	if res.StatusCode != 200 {
+		t.Fatalf("status %d", res.StatusCode)
+	}
+	if res := e.post("/v1/chat/completions", devKey, `{"model":"mistral/large","messages":[]}`); res.StatusCode != 400 {
+		t.Fatalf("unknown provider: %d", res.StatusCode)
+	}
+
+	got := e.usage.wait(t, 2)
+	if len(got) != 2 {
+		t.Fatalf("%d usage records, want 2 (the request without a valid key is not reported)", len(got))
+	}
+	ok := got[0]
+	if ok.KeyID != "u1" || ok.TeamID != "t1" || ok.Provider != "openai" || ok.Model != "gpt-4o" ||
+		ok.Status != 200 || ok.Reason != "ok" || ok.TokensIn != 11 || ok.TokensOut != 7 {
+		t.Errorf("record = %+v", ok)
+	}
+	if len(ok.ContentFlags) == 0 || ok.ID == "" || ok.ID == got[1].ID || ok.Time.IsZero() {
+		t.Errorf("flags=%v id=%q time=%v", ok.ContentFlags, ok.ID, ok.Time)
+	}
+	if got[1].Status != 400 || got[1].TokensIn != 0 {
+		t.Errorf("refused request record = %+v", got[1])
+	}
+
+	// CI checks what the gateway really sends against api/usage/v1.
+	if dir := os.Getenv("USAGE_EXAMPLES_DIR"); dir != "" {
+		b, err := json.MarshalIndent(usage.Batch{InstanceID: "dp_test", Records: got}, "", "  ")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "proxy-records.json"), b, 0o644); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 

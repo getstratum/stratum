@@ -41,6 +41,10 @@ once, on registration or rotation.
   conectó*, *Dado de baja*. The control plane never connects to the gateway.
 - **Configuración** compares the version the gateway last fetched with the
   organization's current one.
+- **Último uso reportado** is when the gateway last sent its usage records
+  (ADR-0009). A gateway that syncs but has not reported usage for a while
+  is either idle or cannot reach `/api/internal/usage`: check its
+  `stratum_usage_records_buffered` and `stratum_usage_push_failures_total`.
 - **Rotar token** replaces the token at once: the gateway keeps serving its
   last configuration until it is given the new one.
 - **Dar de baja** disables the token for good.

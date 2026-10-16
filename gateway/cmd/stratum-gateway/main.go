@@ -35,6 +35,7 @@ import (
 	"github.com/getstratum/stratum/gateway/internal/snapshot"
 	"github.com/getstratum/stratum/gateway/internal/snapstore"
 	"github.com/getstratum/stratum/gateway/internal/syncer"
+	"github.com/getstratum/stratum/gateway/internal/usage"
 	"github.com/getstratum/stratum/gateway/internal/valkey"
 )
 
@@ -155,7 +156,22 @@ func serve() int {
 		log.Info("quotas use local counters (set STRATUM_VALKEY_URL to share them across replicas)")
 	}
 
-	// 4. Servers.
+	// 4. Usage reported to the control plane, off the request path (ADR-0009).
+	var pusher *usage.Pusher
+	usageDone := make(chan struct{})
+	if cfg.UsagePushEnabled() {
+		pusher = &usage.Pusher{
+			URL: cfg.CPURL, Token: cfg.SyncToken, InstanceID: cfg.InstanceID, UserAgent: userAgent(),
+			Client: &http.Client{Timeout: 30 * time.Second}, Interval: cfg.UsageInterval,
+			MaxBuffer: cfg.UsageBuffer, Metrics: m, Log: log.With("component", "usage"),
+		}
+		m.UsageEnabled.Store(1)
+		go func() { defer close(usageDone); pusher.Run(ctx) }()
+	} else {
+		close(usageDone)
+	}
+
+	// 5. Servers.
 	px := &proxy.Handler{
 		Holder: holder, Quota: enforcer, Metrics: m, Log: log.With("component", "proxy"),
 		Client:            &http.Client{Transport: proxy.NewTransport(cfg.UpstreamHeaderTimeout)},
@@ -164,6 +180,9 @@ func serve() int {
 		PIIEnabled:        cfg.PIIEnabled,
 		UserAgent:         userAgent(),
 		RequestID:         server.RequestID,
+	}
+	if pusher != nil {
+		px.Usage = pusher
 	}
 	opts := server.Options{Proxy: px, Health: hc, Metrics: m, Log: log,
 		MaxInflight: cfg.MaxInflight, AllowedOrigins: cfg.CORSAllowedOrigins}
@@ -182,7 +201,7 @@ func serve() int {
 		}
 	}
 
-	// 5. Graceful shutdown: fail readiness, give the load balancer time to
+	// 6. Graceful shutdown: fail readiness, give the load balancer time to
 	//    notice, stop accepting, then wait for in-flight streams to finish.
 	sigs := make(chan os.Signal, 2)
 	signal.Notify(sigs, syscall.SIGTERM, syscall.SIGINT)
@@ -218,6 +237,13 @@ func serve() int {
 	}
 	stopBackground()
 	<-quotaDone // last flush of token usage, bounded
+	<-usageDone
+	if pusher != nil {
+		// Every request has finished: send what they recorded.
+		flushCtx, c := context.WithTimeout(context.Background(), 15*time.Second)
+		pusher.Flush(flushCtx)
+		c()
+	}
 	log.Info("stopped")
 	return code
 }
