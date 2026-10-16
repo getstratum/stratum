@@ -31,6 +31,7 @@ import (
 	"github.com/getstratum/stratum/gateway/internal/metrics"
 	"github.com/getstratum/stratum/gateway/internal/proxy"
 	"github.com/getstratum/stratum/gateway/internal/quota"
+	"github.com/getstratum/stratum/gateway/internal/resilience"
 	"github.com/getstratum/stratum/gateway/internal/server"
 	"github.com/getstratum/stratum/gateway/internal/snapshot"
 	"github.com/getstratum/stratum/gateway/internal/snapstore"
@@ -183,6 +184,16 @@ func serve() int {
 	}
 	if pusher != nil {
 		px.Usage = pusher
+	}
+	// Provider failures (ADR-0010).
+	px.Retry = proxy.RetryOptions{Max: cfg.UpstreamRetries, MaxWait: cfg.UpstreamRetryMaxWait}
+	px.Budget = resilience.NewBudget(cfg.RetryBudgetRatio, 1, 100)
+	if cfg.BreakerThreshold > 0 {
+		px.Breakers = resilience.NewBreakers(resilience.BreakerOptions{Threshold: cfg.BreakerThreshold, Cooldown: cfg.BreakerCooldown})
+		px.Breakers.OnTrip = func(id string) {
+			m.BreakerTrips.Add(1)
+			log.Warn("provider failing; pausing requests to it", "provider_config", id, "cooldown", cfg.BreakerCooldown)
+		}
 	}
 	opts := server.Options{Proxy: px, Health: hc, Metrics: m, Log: log,
 		MaxInflight: cfg.MaxInflight, AllowedOrigins: cfg.CORSAllowedOrigins}

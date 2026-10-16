@@ -5,18 +5,21 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/getstratum/stratum/gateway/internal/auth"
 	"github.com/getstratum/stratum/gateway/internal/metrics"
 	"github.com/getstratum/stratum/gateway/internal/quota"
+	"github.com/getstratum/stratum/gateway/internal/resilience"
 	"github.com/getstratum/stratum/gateway/internal/snapshot"
 	"github.com/getstratum/stratum/gateway/internal/usage"
 )
@@ -83,7 +86,7 @@ type env struct {
 	usage *usageRecorder
 }
 
-func newEnv(t *testing.T, policyJSON string, idle time.Duration) *env {
+func newEnv(t *testing.T, policyJSON string, idle time.Duration, configure ...func(*Handler)) *env {
 	t.Helper()
 	up := &upstream{handler: func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -127,6 +130,9 @@ func newEnv(t *testing.T, policyJSON string, idle time.Duration) *env {
 		PIIEnabled:        true,
 		UserAgent:         "stratum-gateway/test",
 		Usage:             e.usage,
+	}
+	for _, f := range configure {
+		f(h)
 	}
 	e.gw = httptest.NewServer(h)
 	t.Cleanup(e.gw.Close)
@@ -436,6 +442,189 @@ func TestUpstreamDown(t *testing.T) {
 	res := e.post("/v1/chat/completions", devKey, `{"model":"openai/gpt-4o"}`)
 	if res.StatusCode != 502 || errCode(t, res) != "upstream_unreachable" {
 		t.Fatalf("got %d", res.StatusCode)
+	}
+}
+
+// resilient turns on retries (2, short waits) and a breaker that opens after
+// three failures in a row.
+func resilient(h *Handler) {
+	h.Retry = RetryOptions{Max: 2, MaxWait: 5 * time.Second}
+	h.Budget = resilience.NewBudget(1, 100, 100)
+	h.Breakers = resilience.NewBreakers(resilience.BreakerOptions{Threshold: 3, Cooldown: 200 * time.Millisecond})
+}
+
+// flaky answers with the given statuses in order, then 200.
+func flaky(statuses ...int) (func(w http.ResponseWriter, r *http.Request), *atomic.Int32) {
+	var calls atomic.Int32
+	return func(w http.ResponseWriter, r *http.Request) {
+		n := int(calls.Add(1))
+		if n <= len(statuses) {
+			w.WriteHeader(statuses[n-1])
+			io.WriteString(w, `{"error":{"message":"busy"}}`)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, `{"id":"x","choices":[],"usage":{"prompt_tokens":11,"completion_tokens":7}}`)
+	}, &calls
+}
+
+func TestRetriesBeforeTheFirstByte(t *testing.T) {
+	e := newEnv(t, allowAll, time.Minute, resilient)
+	var calls *atomic.Int32
+	e.up.handler, calls = flaky(503, 502)
+	res := e.post("/v1/chat/completions", devKey, `{"model":"openai/gpt-4o"}`)
+	if res.StatusCode != 200 || calls.Load() != 3 {
+		t.Fatalf("status %d after %d calls, want 200 after 3", res.StatusCode, calls.Load())
+	}
+	if e.m.UpstreamRetries.Load() != 2 {
+		t.Errorf("retries metric = %d", e.m.UpstreamRetries.Load())
+	}
+	// The usage of the answer that worked is counted, once.
+	if got := e.usage.wait(t, 1); len(got) != 1 || got[0].TokensIn != 11 || got[0].Status != 200 {
+		t.Errorf("usage = %+v", got)
+	}
+}
+
+func TestRetriesGiveUpAndAnswerWhatTheProviderSaid(t *testing.T) {
+	e := newEnv(t, allowAll, time.Minute, resilient)
+	var calls *atomic.Int32
+	e.up.handler, calls = flaky(503, 503, 503, 503)
+	if res := e.post("/v1/chat/completions", devKey, `{"model":"openai/gpt-4o"}`); res.StatusCode != 503 || calls.Load() != 3 {
+		t.Fatalf("status %d after %d calls, want the provider's 503 after 1 + 2 retries", res.StatusCode, calls.Load())
+	}
+}
+
+func TestNotRetried(t *testing.T) {
+	for name, handler := range map[string]func(w http.ResponseWriter, r *http.Request){
+		"400 (the request)":        func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(400) },
+		"500 (may be the request)": func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(500) },
+		"429 asking for a long wait": func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Retry-After", "60")
+			w.WriteHeader(429)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			e := newEnv(t, allowAll, time.Minute, resilient)
+			var calls atomic.Int32
+			e.up.handler = func(w http.ResponseWriter, r *http.Request) { calls.Add(1); handler(w, r) }
+			res := e.post("/v1/chat/completions", devKey, `{"model":"openai/gpt-4o"}`)
+			if calls.Load() != 1 || res.StatusCode < 400 {
+				t.Fatalf("status %d after %d calls, want the answer as is after 1", res.StatusCode, calls.Load())
+			}
+			if name == "429 asking for a long wait" && res.Header.Get("Retry-After") != "60" {
+				t.Error("the provider's Retry-After must reach the client")
+			}
+		})
+	}
+}
+
+func TestBrokenConnectionAfterTheRequestIsNotRetried(t *testing.T) {
+	// The provider read the request and may be running it: sending it again
+	// could run (and bill) it twice.
+	e := newEnv(t, allowAll, time.Minute, resilient)
+	var calls atomic.Int32
+	e.up.handler = func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		c, _, _ := w.(http.Hijacker).Hijack()
+		c.Close()
+	}
+	res := e.post("/v1/chat/completions", devKey, `{"model":"openai/gpt-4o"}`)
+	if res.StatusCode != 502 || errCode(t, res) != "upstream_unreachable" || calls.Load() != 1 {
+		t.Fatalf("status %d after %d calls, want 502 after 1", res.StatusCode, calls.Load())
+	}
+}
+
+func TestOnlyConnectErrorsAreRetried(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := ln.Addr().String()
+	ln.Close() // nothing listens there now
+	_, dialErr := http.Post("http://"+addr+"/", "application/json", strings.NewReader("{}"))
+	if dialErr == nil {
+		t.Skip("something answered on a closed port")
+	}
+	if failed, retryable, _ := classify(nil, dialErr); !failed || !retryable {
+		t.Errorf("refused connection: failed=%v retryable=%v, want both", failed, retryable)
+	}
+	if failed, retryable, _ := classify(nil, io.ErrUnexpectedEOF); !failed || retryable {
+		t.Errorf("broken connection: failed=%v retryable=%v, want failed and not retried", failed, retryable)
+	}
+}
+
+func TestStreamsThatBreakAfterTheHeadersOpenTheBreaker(t *testing.T) {
+	e := newEnv(t, allowAll, time.Minute, resilient)
+	var calls atomic.Int32
+	e.up.handler = func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		w.Header().Set("Content-Type", "text/event-stream")
+		io.WriteString(w, "data: {\"choices\":[]}\n\n")
+		w.(http.Flusher).Flush()
+		c, _, _ := w.(http.Hijacker).Hijack()
+		c.Close() // the stream breaks
+	}
+	for range 3 {
+		res := e.post("/v1/chat/completions", devKey, `{"model":"openai/gpt-4o","stream":true}`)
+		io.Copy(io.Discard, res.Body)
+	}
+	res := e.post("/v1/chat/completions", devKey, `{"model":"openai/gpt-4o","stream":true}`)
+	if res.StatusCode != 503 || errCode(t, res) != "provider_unavailable" || calls.Load() != 3 {
+		t.Fatalf("status %d after %d calls: three broken streams must open the breaker", res.StatusCode, calls.Load())
+	}
+}
+
+func TestBreakerFailsFastWhileTheProviderIsDown(t *testing.T) {
+	e := newEnv(t, allowAll, time.Minute, func(h *Handler) {
+		resilient(h)
+		h.Retry.Max = 0 // one call per request, to count them
+	})
+	var calls atomic.Int32
+	down := atomic.Bool{}
+	down.Store(true)
+	e.up.handler = func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		if down.Load() {
+			w.WriteHeader(502)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, `{"id":"x","choices":[]}`)
+	}
+	for range 3 {
+		e.post("/v1/chat/completions", devKey, `{"model":"openai/gpt-4o"}`)
+	}
+	res := e.post("/v1/chat/completions", devKey, `{"model":"openai/gpt-4o"}`)
+	if res.StatusCode != 503 || errCode(t, res) != "provider_unavailable" || res.Header.Get("Retry-After") == "" {
+		t.Fatalf("open breaker: status %d", res.StatusCode)
+	}
+	if calls.Load() != 3 {
+		t.Fatalf("the open breaker must not call the provider: %d calls", calls.Load())
+	}
+	if e.m.BreakerRejections.Load() != 1 {
+		t.Errorf("rejections metric = %d", e.m.BreakerRejections.Load())
+	}
+
+	down.Store(false)
+	time.Sleep(250 * time.Millisecond) // the cooldown
+	if res := e.post("/v1/chat/completions", devKey, `{"model":"openai/gpt-4o"}`); res.StatusCode != 200 {
+		t.Fatalf("probe after the cooldown: %d", res.StatusCode)
+	}
+	if res := e.post("/v1/chat/completions", devKey, `{"model":"openai/gpt-4o"}`); res.StatusCode != 200 {
+		t.Fatalf("closed again: %d", res.StatusCode)
+	}
+}
+
+func TestRateLimitsDoNotOpenTheBreaker(t *testing.T) {
+	e := newEnv(t, allowAll, time.Minute, func(h *Handler) {
+		resilient(h)
+		h.Retry.Max = 0
+	})
+	e.up.handler = func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(429) }
+	for range 5 {
+		if res := e.post("/v1/chat/completions", devKey, `{"model":"openai/gpt-4o"}`); res.StatusCode != 429 {
+			t.Fatalf("status %d: a rate limit must not open the breaker", res.StatusCode)
+		}
 	}
 }
 

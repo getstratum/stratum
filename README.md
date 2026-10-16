@@ -111,6 +111,9 @@ around) is refused with `agent_model_mismatch`.
 | `STRATUM_MAX_INFLIGHT` | `1024` | Concurrent requests before shedding load with 503 + `Retry-After`. |
 | `STRATUM_UPSTREAM_HEADER_TIMEOUT` | `120s` | Max wait for the provider's first response byte. |
 | `STRATUM_STREAM_IDLE_TIMEOUT` | `60s` | Max silence between streamed chunks. |
+| `STRATUM_UPSTREAM_RETRIES` / `STRATUM_UPSTREAM_RETRY_MAX_WAIT` | `2` / `5s` | Retries before the first byte reaches the client, after an error connecting to the provider or a 429/502/503/504 from it, and the most time spent waiting between them (ADR-0010). `0` turns retries off. |
+| `STRATUM_RETRY_BUDGET_RATIO` | `0.2` | Retries allowed per request on average, so a provider that is down does not get the traffic multiplied. |
+| `STRATUM_BREAKER_THRESHOLD` / `STRATUM_BREAKER_COOLDOWN` | `5` / `30s` | Provider failures in a row after which requests to it are answered at once with 503 `provider_unavailable`, and for how long before a probe. `0` turns the breaker off. |
 | `STRATUM_DRAIN_DELAY` / `STRATUM_SHUTDOWN_TIMEOUT` | `5s` / `10m` | Graceful shutdown: readiness fails first, then in-flight streams get up to the timeout to finish. |
 | `STRATUM_PII_ENABLED` | `true` | Global switch for PII/DLP scanning (actions are set per policy). |
 | `STRATUM_CORS_ALLOWED_ORIGINS` | | Comma-separated origins allowed to call the gateway from a browser. |

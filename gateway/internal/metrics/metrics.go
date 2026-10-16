@@ -42,6 +42,12 @@ type Metrics struct {
 	SnapshotSharedWriteFailures atomic.Int64
 	SnapshotSharedBootstraps    atomic.Int64 // starts served from the shared copy
 
+	// Provider failures (ADR-0010).
+	UpstreamRetries      atomic.Int64 // retries sent before the first byte
+	RetryBudgetExhausted atomic.Int64 // retries not sent: budget empty
+	BreakerTrips         atomic.Int64 // breakers that opened
+	BreakerRejections    atomic.Int64 // requests refused at once by an open breaker
+
 	// Usage reported to the control plane (ADR-0009).
 	UsageEnabled      atomic.Int64
 	UsageSent         atomic.Int64 // records the control plane accepted
@@ -132,6 +138,11 @@ func (m *Metrics) WriteTo(w io.Writer, now time.Time) {
 		counter(&b, "stratum_snapshot_shared_write_failures_total", "Failed writes of the snapshot to Valkey.", m.SnapshotSharedWriteFailures.Load())
 		counter(&b, "stratum_snapshot_shared_bootstraps_total", "Starts served from the copy in Valkey because the control plane did not answer in time.", m.SnapshotSharedBootstraps.Load())
 	}
+
+	counter(&b, "stratum_upstream_retries_total", "Requests to a provider sent again before the first byte reached the client.", m.UpstreamRetries.Load())
+	counter(&b, "stratum_upstream_retry_budget_exhausted_total", "Retries not sent because the retry budget was empty.", m.RetryBudgetExhausted.Load())
+	counter(&b, "stratum_provider_breaker_trips_total", "Times a provider's circuit breaker opened.", m.BreakerTrips.Load())
+	counter(&b, "stratum_provider_breaker_rejections_total", "Requests refused at once (503) because their provider's breaker was open.", m.BreakerRejections.Load())
 
 	gauge(&b, "stratum_usage_enabled", "1 if this gateway reports per-request usage to the control plane (ADR-0009).", m.UsageEnabled.Load())
 	if m.UsageEnabled.Load() == 1 {

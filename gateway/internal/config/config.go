@@ -64,6 +64,13 @@ type Config struct {
 	PIIEnabled            bool
 	CORSAllowedOrigins    []string
 
+	// Provider failures (ADR-0010)
+	UpstreamRetries      int           // retries before the first byte; 0 = off
+	UpstreamRetryMaxWait time.Duration // total wait between tries of one request
+	RetryBudgetRatio     float64       // retries allowed per request, on average
+	BreakerThreshold     int           // failures in a row that open a provider's breaker; 0 = off
+	BreakerCooldown      time.Duration // how long it stays open before a probe
+
 	// Shared quota store (optional). Empty ValkeyURL means local counters.
 	ValkeyURL         string
 	ValkeyPassword    string // overrides the password in ValkeyURL
@@ -112,6 +119,11 @@ func Load(getenv func(string) string) (*Config, error) {
 		StreamIdleTimeout:     e.dur("STRATUM_STREAM_IDLE_TIMEOUT", 60*time.Second),
 		PIIEnabled:            e.bool("STRATUM_PII_ENABLED", true),
 		CORSAllowedOrigins:    e.list("STRATUM_CORS_ALLOWED_ORIGINS"),
+		UpstreamRetries:       e.int("STRATUM_UPSTREAM_RETRIES", 2),
+		UpstreamRetryMaxWait:  e.dur("STRATUM_UPSTREAM_RETRY_MAX_WAIT", 5*time.Second),
+		RetryBudgetRatio:      e.float("STRATUM_RETRY_BUDGET_RATIO", 0.2),
+		BreakerThreshold:      e.int("STRATUM_BREAKER_THRESHOLD", 5),
+		BreakerCooldown:       e.dur("STRATUM_BREAKER_COOLDOWN", 30*time.Second),
 
 		ValkeyURL:         e.str("STRATUM_VALKEY_URL", ""),
 		ValkeyPassword:    e.str("STRATUM_VALKEY_PASSWORD", ""),
@@ -123,6 +135,19 @@ func Load(getenv func(string) string) (*Config, error) {
 		ShutdownTimeout: e.dur("STRATUM_SHUTDOWN_TIMEOUT", 10*time.Minute),
 
 		LogLevel: strings.ToLower(e.str("STRATUM_LOG_LEVEL", "info")),
+	}
+
+	if c.UpstreamRetries < 0 || c.UpstreamRetries > 5 {
+		e.fail("STRATUM_UPSTREAM_RETRIES must be between 0 and 5")
+	}
+	if c.RetryBudgetRatio < 0 || c.RetryBudgetRatio > 1 {
+		e.fail("STRATUM_RETRY_BUDGET_RATIO must be between 0 and 1")
+	}
+	if c.BreakerThreshold < 0 {
+		e.fail("STRATUM_BREAKER_THRESHOLD must not be negative (0 turns the breaker off)")
+	}
+	if c.BreakerCooldown < time.Second {
+		e.fail("STRATUM_BREAKER_COOLDOWN must be at least 1s")
 	}
 
 	if k := e.str("STRATUM_SNAPSHOT_KEY", ""); k != "" {
