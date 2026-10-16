@@ -21,6 +21,12 @@ updates:
     groups:
       minor-and-patch:
         update-types: [minor, patch]
+  - package-ecosystem: npm
+    directory: /control-plane/e2e
+    schedule: { interval: weekly }
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
   # Actions are pinned by commit SHA (with the version in a comment, which
   # Dependabot keeps updated). A release must be two weeks old before it is
   # proposed, so a compromised or broken release has time to be noticed.
