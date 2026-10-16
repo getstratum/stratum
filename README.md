@@ -86,6 +86,13 @@ tests against it, see [deploy/gcp](deploy/gcp/README.md).
 
 Developers authenticate with `Authorization: Bearer <key>` or `x-api-key: <key>`.
 
+An agent can have a **fixed model**, set in the console: every request of
+its key goes to that provider and model, whatever model it asks for (it
+need not send one), still within the team's policy. The response carries
+`X-Stratum-Routed-To: provider/model`. A request in the other API format
+(Anthropic Messages against an OpenAI-compatible model, or the other way
+around) is refused with `agent_model_mismatch`.
+
 ## Gateway configuration
 
 | Variable | Default | Purpose |

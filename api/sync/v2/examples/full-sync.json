@@ -45,6 +45,16 @@
       "label": "former@acme.com",
       "version": 40,
       "revoked": true
+    },
+    {
+      "id": "agent:8de79132-c319-46c9-80a1-4f7fb6642890",
+      "key_hash": "5f2b3c6a1d4e8f90a7b6c5d4e3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4",
+      "team_id": "team_engineering",
+      "label": "invoice-bot",
+      "version": 41,
+      "revoked": false,
+      "default_provider": "openai",
+      "default_model": "gpt-4o-mini"
     }
   ],
   "provider_configs": [

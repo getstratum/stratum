@@ -14,6 +14,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -133,15 +134,53 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	model, _ := body["model"].(string)
 	pol, polFound := snap.PolicyForTeam(key.TeamID)
 
-	if explicit {
+	// The request's API format: Anthropic Messages or OpenAI-compatible.
+	anthropicFormat := strings.HasPrefix(upstreamPath, "v1/messages")
+	switch {
+	case explicit:
 		slug = strings.ToLower(slug)
+		anthropicFormat = provider.KindOf(slug) == provider.KindAnthropic
 		if pfx, rest, cut := strings.Cut(model, "/"); cut && strings.EqualFold(pfx, slug) {
 			model = rest
 		}
-	} else if slug, model, ok = pickProvider(snap, pol, polFound, model); !ok {
-		h.fail(w, rec, &policy.Violation{Status: http.StatusBadRequest, Code: "ambiguous_provider",
-			Message: `cannot infer the provider; send "model": "provider/model" or call /proxy/{provider}/...`})
-		return
+	case key.Provider != "" && key.Model != "":
+		// An agent with a fixed model need not name one.
+		slug = key.Provider
+	default:
+		if slug, model, ok = pickProvider(snap, pol, polFound, model); !ok {
+			h.fail(w, rec, &policy.Violation{Status: http.StatusBadRequest, Code: "ambiguous_provider",
+				Message: `cannot infer the provider; send "model": "provider/model" or call /proxy/{provider}/...`})
+			return
+		}
+	}
+
+	// ── Agent's fixed model ─────────────────────────────────────────────
+	// Set in the console: every request of the key goes to that model,
+	// whatever it asked for, so an administrator can change it centrally.
+	// It still has to pass the team's policy below.
+	if key.Model != "" {
+		to := key.Provider
+		if to == "" {
+			to = slug // only the model is fixed
+		}
+		if (provider.KindOf(to) == provider.KindAnthropic) != anthropicFormat {
+			h.fail(w, rec, &policy.Violation{Status: http.StatusBadRequest, Code: "agent_model_mismatch",
+				Message: "this agent is set to use " + to + "/" + key.Model + ", which takes a different API format than this request"})
+			return
+		}
+		slug, model = to, key.Model
+		w.Header().Set("X-Stratum-Routed-To", slug+"/"+model)
+	}
+	// Azure picks the model by the deployment in the URL, not the body: the
+	// policy checks that name, and an agent's fixed model replaces it.
+	if provider.KindOf(slug) == provider.KindAzure {
+		if before, dep, after, found := cutDeployment(upstreamPath); found {
+			if key.Model != "" {
+				upstreamPath = before + url.PathEscape(key.Model) + after
+			} else {
+				model = dep
+			}
+		}
 	}
 	rec.provider, rec.model = slug, model
 	if model != "" {
@@ -374,6 +413,27 @@ func (h *Handler) fail(w http.ResponseWriter, rec *record, v *policy.Violation) 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(v.Status)
 	json.NewEncoder(w).Encode(b)
+}
+
+// cutDeployment splits an Azure path around its deployment name:
+// "openai/deployments/{name}/chat/completions".
+func cutDeployment(p string) (before, name, after string, ok bool) {
+	i := strings.Index("/"+p, "/deployments/")
+	if i < 0 {
+		return "", "", "", false
+	}
+	before = p[:i+len("deployments/")]
+	name, rest, slash := strings.Cut(p[len(before):], "/")
+	if slash {
+		after = "/" + rest
+	}
+	if unescaped, err := url.PathUnescape(name); err == nil {
+		name = unescaped
+	}
+	if name == "" {
+		return "", "", "", false
+	}
+	return before, name, after, true
 }
 
 func (h *Handler) finish(r *http.Request, rec *record) {

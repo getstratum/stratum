@@ -114,35 +114,34 @@ function AgentModal({ agent, teams, models, onSave, onClose }) {
         </Field>
 
         <Field
-          label="Model"
-          hint="For reference only: gateways do not enforce it yet. The team's policy decides which models the agent may use."
+          label="Fixed model"
+          hint="Gateways send every request of this agent to this model, whatever model it asks for, so you can change it here for all its calls. It still has to be allowed by the team's policy. Leave it empty to let the agent choose."
         >
           {(() => {
-            // Filter models to only those allowed by the selected team's policy
-            const selectedTeam   = teams.find(t => t.id === form.teamId)
-            const allowedIds     = selectedTeam?.allowed_models ?? []
+            // Only the models the selected team's policy allows.
+            const selectedTeam    = teams.find(t => t.id === form.teamId)
+            const allowedIds      = selectedTeam?.allowed_models ?? []
             const availableModels = allowedIds.length > 0
               ? models.filter(m => allowedIds.includes(m.model_id))
               : models
+            const value = form.defaultModel ? `${form.defaultProvider}/${form.defaultModel}` : ''
 
             return (
               <>
                 <Select
-                  value={form.defaultModel}
+                  value={value}
                   disabled={!form.teamId}
                   onChange={e => {
-                    const m = models.find(x => x.model_id === e.target.value)
-                    set('defaultModel',    e.target.value)
-                    set('defaultProvider', m?.provider ?? '')
+                    const [provider, ...rest] = e.target.value.split('/')
+                    set('defaultProvider', e.target.value ? provider : '')
+                    set('defaultModel',    e.target.value ? rest.join('/') : '')
                   }}
                 >
                   <option value="">
-                    {!form.teamId
-                      ? 'Select a team first'
-                      : 'No model configured (agent must specify)'}
+                    {!form.teamId ? 'Select a team first' : 'None: the agent chooses'}
                   </option>
                   {availableModels.map(m => (
-                    <option key={m.model_id} value={m.model_id}>
+                    <option key={`${m.provider}/${m.model_id}`} value={`${m.provider}/${m.model_id}`}>
                       {m.display_name} · {m.provider}
                     </option>
                   ))}
@@ -153,10 +152,10 @@ function AgentModal({ agent, teams, models, onSave, onClose }) {
                   </p>
                 )}
                 {form.defaultModel && (
-                  <div className="text-2xs text-lo mt-1 font-mono">
-                    Agents can call{' '}
-                    <code className="text-mid">/proxy/auto/v1/chat/completions</code>
-                    {' '}— no model or provider needed in their code.
+                  <div className="text-2xs text-lo mt-1">
+                    The agent can call <code className="text-mid font-mono">/v1/chat/completions</code> without
+                    a model. A request in the Anthropic format (<code className="text-mid font-mono">/v1/messages</code>)
+                    is refused if this model is not Anthropic&apos;s, and the other way around.
                   </div>
                 )}
               </>
@@ -292,12 +291,12 @@ export default function AgentsPage() {
                     </span>
                   )}
                   {agent.default_model && (
-                    <span className="text-2xs font-mono text-mid border border-line rounded px-2 py-0.5">
-                      {agent.default_model}
+                    <span className="text-2xs font-mono text-mid border border-line rounded px-2 py-0.5" title="Every request of this agent goes to this model">
+                      → {agent.default_provider ? `${agent.default_provider}/` : ''}{agent.default_model}
                     </span>
                   )}
                   {!agent.default_model && (
-                    <span className="text-2xs text-lo opacity-40">no model configured</span>
+                    <span className="text-2xs text-lo opacity-40">the agent chooses the model</span>
                   )}
                 </div>
                 {canManage && (

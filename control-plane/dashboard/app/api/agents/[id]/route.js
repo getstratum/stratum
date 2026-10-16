@@ -1,6 +1,6 @@
 export const dynamic = 'force-dynamic'
 import { route, readJson, json, badRequest, notFound, idParam, assertTeamInScope } from '../../../../lib/route.js'
-import { newApiKey, AGENT_COLUMNS } from '../../../../lib/users.js'
+import { newApiKey, AGENT_COLUMNS, fixedModel, fixedModelProvider } from '../../../../lib/users.js'
 import { audit } from '../../../../lib/audit.js'
 
 async function loadAgent(db, session, params) {
@@ -34,8 +34,8 @@ export const PATCH = route('keys.manage', async (req, { session, db, params }) =
     if (typeof body.isActive !== 'boolean') throw badRequest('isActive tiene que ser true o false.')
     set('is_active', body.isActive)
   }
-  if (body.defaultModel !== undefined) set('default_model', body.defaultModel || null)
-  if (body.defaultProvider !== undefined) set('default_provider', body.defaultProvider || null)
+  if (body.defaultModel !== undefined) set('default_model', fixedModel(body.defaultModel))
+  if (body.defaultProvider !== undefined) set('default_provider', fixedModelProvider(body.defaultProvider))
   if (!fields.length) throw badRequest('Nada para actualizar.')
 
   values.push(agent.id, session.orgId)

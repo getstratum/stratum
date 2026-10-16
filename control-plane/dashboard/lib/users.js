@@ -4,7 +4,7 @@
 
 import { createHash, randomBytes } from 'node:crypto'
 import { assignableRoles } from './authz.js'
-import { forbidden, notFound, isUuid } from './route.js'
+import { forbidden, notFound, isUuid, badRequest } from './route.js'
 
 // Columns a console API may return about a user. Never password or key hashes.
 export const USER_COLUMNS = `
@@ -63,3 +63,20 @@ export const AGENT_COLUMNS = `
   a.id, a.name, a.description, a.api_key_prefix, a.is_active, a.created_at,
   a.default_model, a.default_provider,
   t.id AS team_id, t.name AS team_name`
+
+// An agent's fixed model (agents.default_provider / default_model): gateways
+// send every request of the agent's key there (migration 021). Empty = none.
+const PROVIDER_RE = /^[a-z0-9][a-z0-9-]{0,49}$/
+const MODEL_RE = /^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,99}$/
+
+export function fixedModelProvider(value) {
+  if (value == null || value === '') return null
+  if (typeof value !== 'string' || !PROVIDER_RE.test(value.trim())) throw badRequest('Proveedor del modelo inválido.')
+  return value.trim()
+}
+
+export function fixedModel(value) {
+  if (value == null || value === '') return null
+  if (typeof value !== 'string' || !MODEL_RE.test(value.trim())) throw badRequest('Modelo inválido.')
+  return value.trim()
+}

@@ -1,6 +1,6 @@
 export const dynamic = 'force-dynamic'
 import { route, readJson, json, badRequest, assertTeamInScope } from '../../../lib/route.js'
-import { newApiKey, AGENT_COLUMNS } from '../../../lib/users.js'
+import { newApiKey, AGENT_COLUMNS, fixedModel, fixedModelProvider } from '../../../lib/users.js'
 import { audit } from '../../../lib/audit.js'
 
 export const GET = route('users.read', async (req, { session, db }) => {
@@ -39,7 +39,7 @@ export const POST = route('keys.manage', async (req, { session, db }) => {
     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
     RETURNING id
   `, [session.orgId, teamId, name.slice(0, 255), body.description || null, key.hash, key.prefix,
-      body.defaultModel || null, body.defaultProvider || null])
+      fixedModel(body.defaultModel), fixedModelProvider(body.defaultProvider)])
 
   await audit(db, { req, session, action: 'agent.create', targetType: 'agent', targetId: rows[0].id, details: { name, teamId } })
   const { rows: agent } = await db.query(

@@ -83,7 +83,9 @@ export async function buildSyncResponse(client, { orgId, sinceVersion, syncInter
           OR COALESCE(u.key_revoked, false)
           OR NOT COALESCE(u.is_active, true)
           OR u.team_id IS NULL)                     AS revoked,
-        u.key_revoked_at
+        u.key_revoked_at,
+        NULL::text                                  AS default_provider,
+        NULL::text                                  AS default_model
       FROM users u
       WHERE u.org_id = $2
         AND u.key_version > $1
@@ -102,7 +104,9 @@ export async function buildSyncResponse(client, { orgId, sinceVersion, syncInter
         (a.api_key_hash IS NULL
           OR NOT COALESCE(a.is_active, true)
           OR a.team_id IS NULL)                     AS revoked,
-        a.key_revoked_at
+        a.key_revoked_at,
+        NULLIF(a.default_provider, '')              AS default_provider,
+        NULLIF(a.default_model, '')                 AS default_model
       FROM agents a
       WHERE a.org_id = $2
         AND a.key_version > $1

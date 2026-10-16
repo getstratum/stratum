@@ -78,7 +78,9 @@
         "version": { "$ref": "#/$defs/integer" },
         "created_at": { "type": ["string", "null"] },
         "revoked": { "type": "boolean" },
-        "key_revoked_at": { "type": ["string", "null"] }
+        "key_revoked_at": { "type": ["string", "null"] },
+        "default_provider": { "type": ["string", "null"], "description": "Agent keys only, optional. With default_model: every request of this key goes to this provider." },
+        "default_model": { "type": ["string", "null"], "description": "Agent keys only, optional. Every request of this key goes to this model, whatever model it asks for. Gateways that predate this field ignore it." }
       }
     },
     "providerConfig": {

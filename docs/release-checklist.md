@@ -30,7 +30,8 @@ Tracks what is done and what still blocks the first public release.
       presets, custom OpenAI-compatible endpoints and a connection test; gateways are registered,
       rotated and disabled from the console.
 - [x] Control plane: agent keys (`agents` table) reach gateways through the sync (migration 017).
-- [ ] Gateway: enforce an agent's default model (the console stores it; the sync does not send it yet).
+- [x] Gateway: an agent's fixed model, set in the console, travels in the sync and applies to every
+      request of its key (still within the team's policy).
 - [x] Control plane: `request_logs` partitions are created ahead of time: 24 months by migration 019, kept
       ahead by the control plane once a day, and a default partition so an insert never fails.
 - [x] Control plane: functional test of the console in a browser (`control-plane/e2e`), run in CI
