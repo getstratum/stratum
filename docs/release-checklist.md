@@ -57,8 +57,9 @@ Tracks what is done and what still blocks the first public release.
 - [x] `/livez` and `/readyz` independent of dependencies; graceful drain
 - [x] Per-phase upstream timeouts and stream idle watchdog; load shedding
 - [x] Shared quota store in Valkey, off the request path, idempotent flushes, local fallback (ADR-0004)
-- [ ] Circuit breaker per provider deployment and failover between equivalent deployments
-- [ ] Retries before the first byte with a retry budget
+- [x] Circuit breaker per provider configuration (ADR-0010)
+- [ ] Failover between equivalent deployments (needs the console to say which are equivalent; with model routing)
+- [x] Retries before the first byte with a retry budget (ADR-0010)
 - [x] A gateway can start during a control plane outage from the encrypted snapshot copy in Valkey (ADR-0008)
 - [x] Usage reported to the control plane, one record per request, for the console's usage, spend and logs (ADR-0009)
 - [ ] Usage on durable storage next to the gateway, so a crashed process loses none (needed for billing)

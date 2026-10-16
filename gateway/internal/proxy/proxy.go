@@ -12,9 +12,11 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"math"
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -24,6 +26,7 @@ import (
 	"github.com/getstratum/stratum/gateway/internal/policy"
 	"github.com/getstratum/stratum/gateway/internal/provider"
 	"github.com/getstratum/stratum/gateway/internal/quota"
+	"github.com/getstratum/stratum/gateway/internal/resilience"
 	"github.com/getstratum/stratum/gateway/internal/snapshot"
 	"github.com/getstratum/stratum/gateway/internal/usage"
 )
@@ -46,6 +49,18 @@ type Handler struct {
 	UserAgent         string
 	RequestID         func(context.Context) string
 	Usage             UsageSink // optional
+
+	// Provider failures (ADR-0010). All optional: nil Breakers or Budget
+	// turn that part off, Retry.Max 0 turns retries off.
+	Breakers *resilience.Breakers
+	Budget   *resilience.Budget
+	Retry    RetryOptions
+}
+
+// RetryOptions bound retries before the first byte reaches the client.
+type RetryOptions struct {
+	Max     int           // retries per request
+	MaxWait time.Duration // total time spent waiting between tries
 }
 
 // NewTransport returns the upstream transport. There is deliberately no
@@ -235,31 +250,38 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// ── Forward ─────────────────────────────────────────────────────────
+	// ── Forward, retrying before the first byte (ADR-0010) ──────────────
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
-	ureq, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		provider.TargetURL(prov, base, upstreamPath, r.URL.RawQuery), bytes.NewReader(final))
-	if err != nil {
-		h.fail(w, rec, &policy.Violation{Status: http.StatusInternalServerError, Code: "internal", Message: "could not build upstream request"})
-		return
-	}
-	ureq.Header.Set("Content-Type", "application/json")
-	for _, name := range []string{"Accept", "Anthropic-Version", "Anthropic-Beta", "OpenAI-Beta"} {
-		if v := r.Header.Get(name); v != "" {
-			ureq.Header.Set(name, v)
+	target := provider.TargetURL(prov, base, upstreamPath, r.URL.RawQuery)
+	build := func() (*http.Request, error) {
+		ureq, err := http.NewRequestWithContext(ctx, http.MethodPost, target, bytes.NewReader(final))
+		if err != nil {
+			return nil, err
 		}
+		ureq.Header.Set("Content-Type", "application/json")
+		for _, name := range []string{"Accept", "Anthropic-Version", "Anthropic-Beta", "OpenAI-Beta"} {
+			if v := r.Header.Get(name); v != "" {
+				ureq.Header.Set(name, v)
+			}
+		}
+		if h.UserAgent != "" {
+			ureq.Header.Set("User-Agent", h.UserAgent)
+		}
+		provider.SetAuth(ureq.Header, prov)
+		return ureq, nil
 	}
-	if h.UserAgent != "" {
-		ureq.Header.Set("User-Agent", h.UserAgent)
-	}
-	provider.SetAuth(ureq.Header, prov)
 
 	upStart := time.Now()
-	res, err := h.Client.Do(ureq)
+	res, att, err := h.send(ctx, prov.ID, build)
 	rec.upstreamMs = time.Since(upStart).Milliseconds()
 	if err != nil {
+		var paused *breakerOpenError
 		switch {
+		case errors.As(err, &paused):
+			w.Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(paused.wait.Seconds()))))
+			h.fail(w, rec, &policy.Violation{Status: http.StatusServiceUnavailable, Code: "provider_unavailable",
+				Message: "the AI provider is failing; requests to it are paused, retry after " + strconv.Itoa(int(math.Ceil(paused.wait.Seconds()))) + " s"})
 		case r.Context().Err() != nil:
 			rec.status, rec.reason = 499, "client_closed"
 		case isTimeout(err):
@@ -289,6 +311,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	default:
 		rec.reason = "upstream_aborted"
 	}
+	h.outcome(prov.ID, att, rec.reason == "stream_idle_timeout" || rec.reason == "upstream_aborted",
+		rec.reason == "client_closed")
 
 	if total := usage.Input + usage.Output; total > 0 {
 		h.Quota.Add(key.TeamID, total)
@@ -415,27 +439,6 @@ func (h *Handler) fail(w http.ResponseWriter, rec *record, v *policy.Violation) 
 	json.NewEncoder(w).Encode(b)
 }
 
-// cutDeployment splits an Azure path around its deployment name:
-// "openai/deployments/{name}/chat/completions".
-func cutDeployment(p string) (before, name, after string, ok bool) {
-	i := strings.Index("/"+p, "/deployments/")
-	if i < 0 {
-		return "", "", "", false
-	}
-	before = p[:i+len("deployments/")]
-	name, rest, slash := strings.Cut(p[len(before):], "/")
-	if slash {
-		after = "/" + rest
-	}
-	if unescaped, err := url.PathUnescape(name); err == nil {
-		name = unescaped
-	}
-	if name == "" {
-		return "", "", "", false
-	}
-	return before, name, after, true
-}
-
 func (h *Handler) finish(r *http.Request, rec *record) {
 	// The provider label only for configured providers: the name in
 	// /proxy/{provider}/ is the client's, and labels must stay few.
@@ -475,4 +478,25 @@ func (h *Handler) finish(r *http.Request, rec *record) {
 		attrs = append(attrs, "content_flags", rec.piiTypes)
 	}
 	h.Log.Info("request", attrs...)
+}
+
+// cutDeployment splits an Azure path around its deployment name:
+// "openai/deployments/{name}/chat/completions".
+func cutDeployment(p string) (before, name, after string, ok bool) {
+	i := strings.Index("/"+p, "/deployments/")
+	if i < 0 {
+		return "", "", "", false
+	}
+	before = p[:i+len("deployments/")]
+	name, rest, slash := strings.Cut(p[len(before):], "/")
+	if slash {
+		after = "/" + rest
+	}
+	if unescaped, err := url.PathUnescape(name); err == nil {
+		name = unescaped
+	}
+	if name == "" {
+		return "", "", "", false
+	}
+	return before, name, after, true
 }
