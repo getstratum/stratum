@@ -44,6 +44,10 @@ function logFailure(kind, res, stream) {
       error: res.error || undefined,
       error_code: res.error_code || undefined,
       request_id: res.headers['X-Stratum-Request-Id'] || undefined,
+      // Who answered and what, for failures the gateway never saw.
+      server: res.headers['Server'] || undefined,
+      via: res.headers['Via'] || undefined,
+      body: typeof res.body === 'string' && res.body ? res.body.slice(0, 200) : undefined,
     })}`,
   )
 }
