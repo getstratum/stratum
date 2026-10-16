@@ -13,13 +13,15 @@ administrator would, and checks the effect on a gateway synced with it:
 | People and roles | The owner creates an auditor, who can read but not change anything: the buttons that would change something are hidden, and the API answers 403. |
 | My account | Changing the password works and the old one stops working. |
 | Deactivation | Deactivating a person ends their session at once. |
+| Second factor | A new Admin can only reach the account page until they set it up (QR, key, a wrong and a right code, ten recovery codes); the next sign-in asks for a code; a recovery code works once; the owner resets it and the admin's session ends. |
 | Audit log | Everything above is recorded, refusals included; the filter shows only refusals. |
 | Sign-out | The session ends on the server too, not just in the browser. |
 
 Everything the test creates carries `e2e-<run>` in its name and is revoked,
 disabled or deactivated at the end, even when a step fails. It also signs in
 once with a wrong password as the owner (one of the ten attempts allowed in
-15 minutes).
+15 minutes). Each code from an authenticator works once, so the test may
+wait up to 30 s for the next one when it signs the owner in again.
 
 ## Against a running installation
 
@@ -32,6 +34,7 @@ STRATUM_E2E_CONSOLE_URL=https://console.example.com \
 STRATUM_E2E_GATEWAY_URL=https://gateway.example.com \
 STRATUM_E2E_EMAIL=owner@example.com \
 STRATUM_E2E_PASSWORD='...' \
+STRATUM_E2E_TOTP_SECRET='...' \
 npx playwright test
 ```
 
@@ -39,6 +42,7 @@ npx playwright test
 |---|---|---|
 | `STRATUM_E2E_CONSOLE_URL` | required | The console. |
 | `STRATUM_E2E_EMAIL`, `STRATUM_E2E_PASSWORD` | required | An Owner of the organization. |
+| `STRATUM_E2E_TOTP_SECRET` | required for an Owner with a second factor | The Owner's authenticator key (base32), from which the test computes codes. Owners must have one: set it up with `stratum-admin enroll-mfa --secret-stdin`. |
 | `STRATUM_E2E_GATEWAY_URL` | none | A gateway synced with that console. Without it the gateway steps are skipped. |
 | `STRATUM_E2E_TEAM` | `Engineering` | Team for the test agent; its policy must allow the model below. |
 | `STRATUM_E2E_MODEL` | `ollama/mock-1` | Model the agent calls through the gateway. |
@@ -62,5 +66,5 @@ providers), so use a throwaway one:
 DATABASE_URL=postgres://stratum:stratum@localhost:5432/stratum control-plane/e2e/run-local.sh
 ```
 
-It needs Node.js, Go, `psql`, `jq` and `openssl`, and ports 3125, 8080,
+It needs Node.js, Go, `psql`, `jq`, `openssl`, `base32` and `python3`, and ports 3125, 8080,
 20128 and 20129.

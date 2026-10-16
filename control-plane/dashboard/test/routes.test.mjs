@@ -20,7 +20,15 @@ const PUBLIC = {
   'healthz/route.js:GET':  'container health check',
   'session/route.js:POST': 'sign-in',
   'session/route.js:DELETE': 'sign-out (works without a valid session)',
+  'session/mfa/route.js:POST': 'second step of the sign-in: the challenge from the password and a code',
 }
+// Routes a session that must set up the second factor first may use.
+const DURING_ENROLLMENT = new Set([
+  'session/route.js:GET',
+  'session/mfa/route.js:GET',
+  'session/mfa/setup/route.js:POST',
+  'session/mfa/setup/route.js:PUT',
+])
 const SYNC_TOKEN = {
   'internal/sync/route.js:GET':     'gateways fetch their configuration',
   'internal/usage/route.js:POST':   'gateways report what each request consumed (ADR-0009)',
@@ -53,6 +61,8 @@ test('every API handler checks access', async () => {
       else {
         assert.equal(guard.kind, 'session')
         assert.ok(PERMISSIONS[guard.permission], `${key} uses unknown permission ${guard.permission}`)
+        assert.equal(!!guard.duringEnrollment, DURING_ENROLLMENT.has(key),
+          `${key}: only the second-factor setup is open to a session that must set it up`)
       }
     }
   }

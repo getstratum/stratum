@@ -33,4 +33,6 @@ keys:
 	@source $(S)/lib.sh && load_outputs && \
 	  echo "engineering: $$(sm_get key-engineering)" && \
 	  echo "marketing:   $$(sm_get key-marketing)" && \
-	  echo "console:     https://$$HOST  (dev@acme.com / $$(sm_get console-password))"
+	  echo "console:     https://$$HOST  (dev@acme.com / $$(sm_get console-password))" && \
+	  echo "  second factor: add this key to an authenticator app (time-based, 6 digits):" && \
+	  echo "  $$(sm_get console-totp)   or open: otpauth://totp/Stratum:dev@acme.com?secret=$$(sm_get console-totp)&issuer=Stratum"

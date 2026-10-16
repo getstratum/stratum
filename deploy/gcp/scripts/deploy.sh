@@ -84,6 +84,7 @@ else
   gcloud sql users create stratum --instance "$SQL_INSTANCE" --project "$PROJECT_ID" --password "$DB_PASSWORD" --quiet >/dev/null
 fi
 CONSOLE_PASSWORD="$(sm_ensure console-password b64_24)"
+CONSOLE_TOTP="$(sm_ensure console-totp b32_20)"
 ENCRYPTION_KEY="$(sm_ensure encryption-key hex32)"
 SNAPSHOT_KEY="$(sm_ensure snapshot-key hex32)"
 ENG_KEY="$(sm_ensure key-engineering sh -c 'echo "sk-stratum-$(openssl rand -hex 24)"')"
@@ -121,20 +122,27 @@ k rollout status deployment/mock-llm --timeout=10m
 ok "control plane and mock-llm ready"
 
 # The console has no default account: make dev@acme.com the demo
-# organization's owner, with a password kept in Secret Manager.
+# organization's owner, with a password kept in Secret Manager. Owners must
+# use a second factor: its authenticator secret is in Secret Manager too
+# ('make keys' prints it to add to an authenticator app).
 printf '%s' "$CONSOLE_PASSWORD" | k exec -i deploy/stratum-control-plane -c control-plane -- \
   node scripts/stratum-admin.mjs create-owner --email dev@acme.com \
   --org-id 00000000-0000-0000-0000-000000000001 --password-stdin >/dev/null
-ok "console owner: dev@acme.com"
+printf '%s' "$CONSOLE_TOTP" | k exec -i deploy/stratum-control-plane -c control-plane -- \
+  node scripts/stratum-admin.mjs enroll-mfa --email dev@acme.com --secret-stdin >/dev/null
+ok "console owner: dev@acme.com (with a second factor)"
 
 # ── 6. Register the gateway and providers through the control plane API ───
 step "Registering the gateway instance and providers"
 port_forward svc/stratum-cp-console 13000:80
 CP=http://127.0.0.1:13000
-COOKIE="$(jq -n --arg e dev@acme.com --arg p "$CONSOLE_PASSWORD" '{email:$e,password:$p}' |
-  curl -sS -D - -o /dev/null -H 'content-type: application/json' --data-binary @- "$CP/api/session" |
+CHALLENGE="$(jq -n --arg e dev@acme.com --arg p "$CONSOLE_PASSWORD" '{email:$e,password:$p}' |
+  curl -sS -H 'content-type: application/json' --data-binary @- "$CP/api/session" | jq -r '.challenge // empty')"
+[[ -n "$CHALLENGE" ]] || die "could not log in to the control plane (password step)"
+COOKIE="$(jq -n --arg c "$CHALLENGE" --arg k "$(totp_code "$CONSOLE_TOTP")" '{challenge:$c,code:$k}' |
+  curl -sS -D - -o /dev/null -H 'content-type: application/json' --data-binary @- "$CP/api/session/mfa" |
   tr -d '\r' | sed -n 's/^[Ss]et-[Cc]ookie: \(stratum_session=[^;]*\).*/\1/p')"
-[[ -n "$COOKIE" ]] || die "could not log in to the control plane"
+[[ -n "$COOKIE" ]] || die "could not log in to the control plane (second factor)"
 
 api() { curl -sS -f -H "Cookie: $COOKIE" -H 'content-type: application/json' "$@"; }
 

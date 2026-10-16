@@ -24,12 +24,17 @@ const maxHours    = () => minutesEnv('STRATUM_SESSION_MAX_HOURS', 12)
 
 export const hashToken = (token) => createHash('sha256').update(token).digest('hex')
 
-export async function createSession(db, { userId, orgId, ip, userAgent }) {
+/**
+ * enrollmentOnly: a session of an Owner or Admin who has not set up the
+ * second factor yet. lib/route.js lets it reach only the routes that set it
+ * up (migration 022).
+ */
+export async function createSession(db, { userId, orgId, ip, userAgent, enrollmentOnly = false }) {
   const token = randomBytes(32).toString('base64url')
   await db.query(
-    `INSERT INTO console_sessions (token_hash, user_id, org_id, expires_at, ip, user_agent)
-     VALUES ($1, $2, $3, now() + make_interval(hours => $4), $5, $6)`,
-    [hashToken(token), userId, orgId, maxHours(), ip ?? null, userAgent?.slice(0, 300) ?? null])
+    `INSERT INTO console_sessions (token_hash, user_id, org_id, expires_at, ip, user_agent, enrollment_only)
+     VALUES ($1, $2, $3, now() + make_interval(hours => $4), $5, $6, $7)`,
+    [hashToken(token), userId, orgId, maxHours(), ip ?? null, userAgent?.slice(0, 300) ?? null, enrollmentOnly])
   return token
 }
 
@@ -38,7 +43,7 @@ export async function loadSession(db, token) {
   if (typeof token !== 'string' || token.length < 32 || token.length > 128) return null
   const tokenHash = hashToken(token)
   const { rows } = await db.query(
-    `SELECT s.token_hash, s.user_id, s.org_id, s.last_seen_at,
+    `SELECT s.token_hash, s.user_id, s.org_id, s.last_seen_at, s.enrollment_only,
             u.email, u.name, u.role, u.team_id::text AS team_id,
             o.name AS org_name
        FROM console_sessions s
@@ -68,6 +73,7 @@ export async function loadSession(db, token) {
     name:    r.name,
     role:    r.role,
     teamId:  r.team_id,
+    enrollmentOnly: r.enrollment_only,
   }
 }
 

@@ -406,6 +406,7 @@ t_console() {
       STRATUM_E2E_GATEWAY_URL="https://$HOST" \
       STRATUM_E2E_EMAIL=dev@acme.com \
       STRATUM_E2E_PASSWORD="$(sm_get console-password)" \
+      STRATUM_E2E_TOTP_SECRET="$(sm_get console-totp)" \
       npx playwright test); then
     pass "console: functional test (report: control-plane/e2e/report/index.html)"
   else

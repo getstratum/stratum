@@ -64,13 +64,29 @@ if [[ "${STRATUM_E2E_SKIP_BUILD:-}" != 1 ]]; then
   (cd "$DASH" && NEXT_TELEMETRY_DISABLED=1 npm run build >"$WORK/build.log" 2>&1) || fail "console build failed"
 fi
 # Gateways sync every 5 s instead of 30, so key changes show up quickly.
-bg "$WORK/console.log" env DATABASE_URL="$DATABASE_URL" STRATUM_ENCRYPTION_KEY="$(openssl rand -hex 32)" \
+ENCRYPTION_KEY="$(openssl rand -hex 32)"
+bg "$WORK/console.log" env DATABASE_URL="$DATABASE_URL" STRATUM_ENCRYPTION_KEY="$ENCRYPTION_KEY" \
   SECURE_COOKIES=false STRATUM_SYNC_INTERVAL_S=5 NEXT_TELEMETRY_DISABLED=1 "$DASH/node_modules/.bin/next" start "$DASH" -p 3125
 wait_for "$CONSOLE/login" 200 "the console"
 
+# The owner, with a second factor (required for owners): the test computes
+# its codes from TOTP_SECRET, as an authenticator app would.
 PASSWORD="e2e-$(openssl rand -hex 12)"
+TOTP_SECRET="$(openssl rand 20 | base32 | tr -d '=\n')"
 printf '%s' "$PASSWORD" | (cd "$DASH" && DATABASE_URL="$DATABASE_URL" node scripts/stratum-admin.mjs create-owner \
   --email dev@acme.com --org-id 00000000-0000-0000-0000-000000000001 --password-stdin >/dev/null)
+printf '%s' "$TOTP_SECRET" | (cd "$DASH" && DATABASE_URL="$DATABASE_URL" STRATUM_ENCRYPTION_KEY="$ENCRYPTION_KEY" \
+  node scripts/stratum-admin.mjs enroll-mfa --email dev@acme.com --secret-stdin >/dev/null)
+totp_code() { # SECRET [STEP_OFFSET]: RFC 6238, like an authenticator app
+  python3 - "$1" "${2:-0}" <<'PY'
+import base64, hashlib, hmac, struct, sys, time
+secret, offset = sys.argv[1], int(sys.argv[2])
+key = base64.b32decode(secret + "=" * (-len(secret) % 8))
+mac = hmac.new(key, struct.pack(">Q", int(time.time()) // 30 + offset), hashlib.sha1).digest()
+o = mac[-1] & 15
+print("%06d" % ((struct.unpack(">I", mac[o:o + 4])[0] & 0x7FFFFFFF) % 1000000))
+PY
+}
 psql "$DATABASE_URL" -X -q -v ON_ERROR_STOP=1 \
   -c "UPDATE policies SET allow_all_models = true, allowed_providers = NULL WHERE name = 'Engineering Policy'"
 
@@ -80,8 +96,11 @@ cp_api() { # method path [json]
   curl -sS -f -b "$JAR" -c "$JAR" -H 'content-type: application/json' -H "origin: $CONSOLE" \
     -X "$1" "$CONSOLE$2" ${3:+--data-binary "$3"}
 }
-cp_api POST /api/session "$(jq -n --arg p "$PASSWORD" '{email: "dev@acme.com", password: $p}')" >/dev/null ||
-  fail "could not sign in as the owner"
+CHALLENGE="$(cp_api POST /api/session "$(jq -n --arg p "$PASSWORD" '{email: "dev@acme.com", password: $p}')" |
+  jq -r '.challenge // empty')" || fail "could not sign in as the owner"
+[[ -n "$CHALLENGE" ]] || fail "the owner's sign-in did not ask for the second factor"
+cp_api POST /api/session/mfa "$(jq -n --arg c "$CHALLENGE" --arg k "$(totp_code "$TOTP_SECRET")" '{challenge: $c, code: $k}')" >/dev/null ||
+  fail "could not complete the owner's sign-in"
 INSTANCE="$(cp_api POST /api/internal/instances '{"name":"e2e-local"}')" || fail "could not register the gateway"
 cp_api POST /api/internal/providers '{"provider":"ollama","base_url":"http://127.0.0.1:8080","api_key":"mock"}' >/dev/null ||
   fail "could not add the provider"
@@ -98,5 +117,6 @@ wait_for "$GATEWAY/readyz" 200 "the gateway"
 log "functional test"
 cd "$HERE"
 STRATUM_E2E_CONSOLE_URL="$CONSOLE" STRATUM_E2E_GATEWAY_URL="$GATEWAY" \
-  STRATUM_E2E_EMAIL=dev@acme.com STRATUM_E2E_PASSWORD="$PASSWORD" STRATUM_E2E_SYNC_TIMEOUT_S=30 \
+  STRATUM_E2E_EMAIL=dev@acme.com STRATUM_E2E_PASSWORD="$PASSWORD" STRATUM_E2E_TOTP_SECRET="$TOTP_SECRET" \
+  STRATUM_E2E_SYNC_TIMEOUT_S=30 \
   npx playwright test "$@" || fail "functional test failed (report: control-plane/e2e/report/index.html)"

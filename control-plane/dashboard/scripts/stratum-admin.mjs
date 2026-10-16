@@ -5,6 +5,8 @@
  *   node scripts/stratum-admin.mjs create-owner --email ana@acme.com [--name "Ana Pérez"]
  *                                               [--org-id <uuid> | --org-name "Acme"]
  *   node scripts/stratum-admin.mjs reset-password --email ana@acme.com
+ *   node scripts/stratum-admin.mjs reset-mfa --email ana@acme.com
+ *   node scripts/stratum-admin.mjs enroll-mfa --email ana@acme.com [--secret-stdin]
  *
  * create-owner makes (or promotes) the Owner of an organization: the first
  * account of a new installation, or a way back in when nobody can sign in.
@@ -14,6 +16,13 @@
  * Both commands print a new random password once. To choose it instead (at
  * least 12 characters), pipe it in with --password-stdin, or set
  * STRATUM_ADMIN_PASSWORD.
+ *
+ * reset-mfa turns off someone's second factor (a lost phone, when no other
+ * Owner can do it from the console); an Owner or Admin sets it up again on
+ * the next sign-in. enroll-mfa sets it up without the console, for
+ * automated installations: it prints the secret for the authenticator
+ * (or takes one in base32 from stdin) and needs STRATUM_ENCRYPTION_KEY.
+ * Recovery codes are created from the account page.
  *
  * Needs DATABASE_URL. In the control plane container:
  *   docker compose exec control-plane node scripts/stratum-admin.mjs create-owner --email ...
@@ -27,11 +36,15 @@ import pg from 'pg'
 // the output.
 process.removeAllListeners('warning')
 const { hashPassword, passwordProblem } = await import('../lib/password.js')
+const totp = await import('../lib/totp.js')
+const { encryptSecret } = await import('../lib/secrets.js')
 
 const USAGE = 'usage: stratum-admin create-owner --email <email> [--name <name>] [--org-id <uuid> | --org-name <name>] [--password-stdin]\n' +
-              '       stratum-admin reset-password --email <email> [--password-stdin]'
+              '       stratum-admin reset-password --email <email> [--password-stdin]\n' +
+              '       stratum-admin reset-mfa --email <email>\n' +
+              '       stratum-admin enroll-mfa --email <email> [--secret-stdin]'
 
-const FLAGS = new Set(['password-stdin'])
+const FLAGS = new Set(['password-stdin', 'secret-stdin'])
 
 function parseArgs(argv) {
   const [command, ...rest] = argv
@@ -142,15 +155,60 @@ async function resetPassword(db, opts) {
   if (generated) console.log(`Password (shown once): ${password}`)
 }
 
+async function findUser(db, opts) {
+  const email = opts.email?.trim().toLowerCase()
+  if (!email) throw new Error(USAGE)
+  const { rows } = await db.query('SELECT id, org_id, email FROM users WHERE lower(email) = $1', [email])
+  if (!rows[0]) throw new Error(`No account with email ${email}.`)
+  return rows[0]
+}
+
+async function resetMfa(db, opts) {
+  const u = await findUser(db, opts)
+  await db.query(
+    `UPDATE users SET totp_secret_encrypted = NULL, totp_pending_secret_encrypted = NULL, totp_enabled_at = NULL
+      WHERE id = $1`, [u.id])
+  await db.query('DELETE FROM user_recovery_codes WHERE user_id = $1', [u.id])
+  await db.query('DELETE FROM console_login_challenges WHERE user_id = $1', [u.id])
+  await db.query('UPDATE console_sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL', [u.id])
+  await audit(db, u.org_id, 'user.mfa.reset', u.id, { email: u.email })
+  console.log(`Second factor of ${u.email} turned off; their console sessions were closed.`)
+}
+
+async function enrollMfa(db, opts) {
+  const u = await findUser(db, opts)
+  let secret
+  if (opts['secret-stdin']) {
+    secret = (await readStdin()).trim().toUpperCase().replace(/[\s=]/g, '')
+    if (!/^[A-Z2-7]{26,}$/.test(secret)) throw new Error('secret: base32, at least 128 bits (26 characters).')
+  } else {
+    secret = totp.newSecret()
+  }
+  await db.query(
+    `UPDATE users SET totp_secret_encrypted = $2, totp_pending_secret_encrypted = NULL,
+                      totp_enabled_at = now(), totp_last_step = 0
+      WHERE id = $1`, [u.id, encryptSecret(secret)])
+  await db.query('DELETE FROM user_recovery_codes WHERE user_id = $1', [u.id])
+  await db.query('UPDATE console_sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL', [u.id])
+  await audit(db, u.org_id, 'mfa.enable', u.id, { email: u.email, by: 'cli' })
+  console.log(`Second factor of ${u.email} is on.`)
+  if (!opts['secret-stdin']) {
+    console.log(`Secret for the authenticator (shown once): ${secret}`)
+    console.log(`URI: ${totp.otpauthUri({ secret, account: u.email })}`)
+  }
+}
+
 async function main() {
   const { command, opts } = parseArgs(process.argv.slice(2))
-  if (!['create-owner', 'reset-password'].includes(command)) throw new Error(USAGE)
+  if (!['create-owner', 'reset-password', 'reset-mfa', 'enroll-mfa'].includes(command)) throw new Error(USAGE)
   if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is not set.')
   const db = new pg.Client({ connectionString: process.env.DATABASE_URL })
   await db.connect()
   try {
     if (command === 'create-owner') await createOwner(db, opts)
     else if (command === 'reset-password') await resetPassword(db, opts)
+    else if (command === 'reset-mfa') await resetMfa(db, opts)
+    else if (command === 'enroll-mfa') await enrollMfa(db, opts)
     else throw new Error(USAGE)
   } finally {
     await db.end()
