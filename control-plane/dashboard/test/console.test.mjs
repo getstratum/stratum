@@ -25,7 +25,7 @@ let db
 const orgs = []
 
 const mods = {}
-async function call(path, method, { as, body, query = '' } = {}) {
+async function call(path, method, { as, body, query = '', params = {} } = {}) {
   mods[path] ??= await import(`../app/api/${path}/route.js`)
   const headers = {}
   if (as) headers.cookie = `stratum_session=${as}`
@@ -33,7 +33,7 @@ async function call(path, method, { as, body, query = '' } = {}) {
   const req = new NextRequest(`http://console.test/api/${path}${query}`, {
     method, headers, body: body !== undefined ? JSON.stringify(body) : undefined,
   })
-  const res = await mods[path][method](req, { params: Promise.resolve({}) })
+  const res = await mods[path][method](req, { params: Promise.resolve(params) })
   const text = await res.text()
   return { status: res.status, body: text ? JSON.parse(text) : null, res }
 }
@@ -224,4 +224,40 @@ test('gateways: register shows the token once; rotate and disable', { skip }, as
   assert.equal(disabled.status, 'disabled')
   // A disabled gateway cannot get a new token.
   assert.equal((await call('internal/instances', 'PATCH', { as: A.owner, query: `?id=${reg.body.id}`, body: { action: 'rotate-token' } })).status, 404)
+})
+
+// --- policies --------------------------------------------------------------
+
+test('policies: providers and "all models" are set explicitly, and travel to gateways', { skip }, async () => {
+  const created = await call('policies', 'POST', { as: A.owner, body: {
+    name: 'Solo Haiku', allowedProviders: ['anthropic'], allowedModels: ['claude-haiku-4-5-20251001'] } })
+  assert.equal(created.status, 201)
+  assert.deepEqual(created.body.allowed_providers, ['anthropic'])
+  assert.equal(created.body.allow_all_models, false)
+  const id = created.body.id
+
+  const all = await call('policies/[id]', 'PATCH', { as: A.owner, params: { id }, body: { allowAllModels: true, allowedProviders: null } })
+  assert.equal(all.status, 200)
+  assert.equal(all.body.allow_all_models, true)
+  assert.equal(all.body.allowed_providers, null)
+  assert.equal(all.body.name, 'Solo Haiku', 'fields not sent stay as they were')
+
+  // A PATCH without allowedProviders leaves them alone.
+  await call('policies/[id]', 'PATCH', { as: A.owner, params: { id }, body: { allowedProviders: ['anthropic', 'openai'] } })
+  const kept = await call('policies/[id]', 'PATCH', { as: A.owner, params: { id }, body: { monthlyBudgetUsd: 5 } })
+  assert.deepEqual(kept.body.allowed_providers, ['anthropic', 'openai'])
+
+  for (const body of [{ allowedProviders: ['not-a-provider'] }, { allowedProviders: 'anthropic' }, { allowedProviders: [] }, { allowAllModels: 'yes' }]) {
+    assert.equal((await call('policies/[id]', 'PATCH', { as: A.owner, params: { id }, body })).status, 400, JSON.stringify(body))
+  }
+  assert.equal((await call('policies/[id]', 'PATCH', { as: A.auditor, params: { id }, body: { allowAllModels: false } })).status, 403)
+  assert.equal((await call('policies/[id]', 'PATCH', { as: B.owner, params: { id }, body: { allowAllModels: false } })).status, 404)
+})
+
+test('models: the catalog lists aliases', { skip }, async () => {
+  const r = await call('models', 'GET', { as: A.auditor })
+  assert.equal(r.status, 200)
+  const haiku = r.body.find(m => m.model_id === 'claude-haiku-4-5-20251001')
+  assert.deepEqual(haiku.aliases, ['claude-haiku-4-5'])
+  assert.ok(!r.body.some(m => m.provider === 'google-gemini'), 'Gemini is listed as "gemini", like gateways call it')
 })

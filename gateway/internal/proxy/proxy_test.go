@@ -245,6 +245,17 @@ func TestRoutingAndForwarding(t *testing.T) {
 	}
 }
 
+func TestRefusalsBeforeRoutingRecordTheModelAsked(t *testing.T) {
+	e := newEnv(t, allowAll, time.Minute)
+	res := e.post("/v1/chat/completions", devKey, `{"model":"llama3","messages":[]}`)
+	if res.StatusCode != 400 || errCode(t, res) != "ambiguous_provider" {
+		t.Fatalf("status %d", res.StatusCode)
+	}
+	if r := e.usage.wait(t, 1)[0]; r.Model != "llama3" || r.Provider != "" || r.Reason != "ambiguous_provider" {
+		t.Errorf("usage record = %+v", r)
+	}
+}
+
 func TestAgentFixedModel(t *testing.T) {
 	e := newEnv(t, allowAll, time.Minute)
 

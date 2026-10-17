@@ -10,11 +10,13 @@ const PROVIDER_COLORS = {
 }
 
 // ─── Policy form modal ────────────────────────────────────────────────────────
-function PolicyModal({ policy, allModels, onSave, onClose }) {
+function PolicyModal({ policy, allModels, configured, onSave, onClose }) {
   const isEdit = !!policy
   const [form, setForm] = useState({
     name:                policy?.name                    ?? '',
+    allowAllModels:      policy?.allow_all_models        ?? false,
     allowedModels:       policy?.allowed_models          ?? [],
+    allowedProviders:    policy?.allowed_providers?.length ? policy.allowed_providers : null,
     maxTokensPerRequest: policy?.max_tokens_per_request  ?? 4096,
     monthlyTokenQuota:   policy?.monthly_token_quota     ?? 1000000,
     monthlyBudgetUsd:    policy?.monthly_budget_usd      ?? 100,
@@ -33,8 +35,21 @@ function PolicyModal({ policy, allModels, onSave, onClose }) {
     }))
   }
 
+  function toggleProvider(id) {
+    setForm(f => {
+      const cur = f.allowedProviders ?? []
+      return { ...f, allowedProviders: cur.includes(id) ? cur.filter(p => p !== id) : [...cur, id] }
+    })
+  }
+
   async function submit() {
     if (!form.name.trim()) { setError('El nombre es requerido'); return }
+    if (!form.allowAllModels && form.allowedModels.length === 0) {
+      setError('Elegí al menos un modelo, o permití todos.'); return
+    }
+    if (form.allowedProviders && form.allowedProviders.length === 0) {
+      setError('Elegí al menos un proveedor, o permití todos.'); return
+    }
     setSaving(true)
     setError('')
     try {
@@ -71,12 +86,49 @@ function PolicyModal({ policy, allModels, onSave, onClose }) {
           />
         </Field>
 
-        {/* Model selector */}
-        <Field
-          label="Modelos permitidos"
-          hint="Sin selección = todos los modelos disponibles"
-        >
-          <div className="space-y-3 mt-1">
+        {/* Providers */}
+        <Field label="Proveedores" hint="Los que este equipo puede usar, entre los configurados en la organización.">
+          <div className="space-y-2 mt-1">
+            <label className="flex items-center gap-2 text-sm text-slate-200">
+              <input type="radio" name="providers" checked={form.allowedProviders === null}
+                onChange={() => set('allowedProviders', null)} className="accent-blue-500" />
+              Todos los configurados
+            </label>
+            <label className="flex items-center gap-2 text-sm text-slate-200">
+              <input type="radio" name="providers" checked={form.allowedProviders !== null}
+                onChange={() => set('allowedProviders', form.allowedProviders ?? [])} className="accent-blue-500" />
+              Solo estos
+            </label>
+            {form.allowedProviders !== null && (
+              <div className="flex flex-wrap gap-2 pl-6">
+                {configured.map(p => (
+                  <label key={p.id} className="flex items-center gap-1.5 text-xs text-slate-300 border border-border rounded-md px-2 py-1">
+                    <input type="checkbox" checked={form.allowedProviders.includes(p.id)}
+                      onChange={() => toggleProvider(p.id)} className="accent-blue-500" />
+                    {p.label}
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+        </Field>
+
+        {/* Models */}
+        <Field label="Modelos">
+          <div className="space-y-2 mt-1">
+            <label className="flex items-center gap-2 text-sm text-slate-200">
+              <input type="radio" name="models" checked={form.allowAllModels}
+                onChange={() => set('allowAllModels', true)} className="accent-blue-500" />
+              Todos los modelos de esos proveedores
+            </label>
+            <label className="flex items-center gap-2 text-sm text-slate-200">
+              <input type="radio" name="models" checked={!form.allowAllModels}
+                onChange={() => set('allowAllModels', false)} className="accent-blue-500" />
+              Solo los elegidos
+            </label>
+          </div>
+          {!form.allowAllModels && (
+          <div className="space-y-3 mt-3">
             {Object.entries(grouped).map(([provider, models]) => (
               <div key={provider}>
                 <div className="text-xs text-slate-500 uppercase tracking-wide mb-1.5">{provider}</div>
@@ -91,7 +143,7 @@ function PolicyModal({ policy, allModels, onSave, onClose }) {
                             ? 'bg-accent/10 border-accent/40'
                             : 'bg-surface border-border hover:border-slate-600'}`}
                       >
-                        <div className="flex items-center gap-2.5">
+                        <div className="flex items-center gap-2.5 min-w-0">
                           <input
                             type="checkbox"
                             checked={checked}
@@ -99,10 +151,13 @@ function PolicyModal({ policy, allModels, onSave, onClose }) {
                             className="accent-blue-500"
                           />
                           <span className="text-sm text-slate-200">{m.display_name}</span>
-                          <span className="font-mono text-xs text-slate-500">{m.model_id}</span>
+                          <span className="font-mono text-xs text-slate-500 truncate"
+                            title={(m.aliases ?? []).length ? `También: ${m.aliases.join(', ')}` : undefined}>
+                            {m.model_id}{(m.aliases ?? []).length ? ` (+${m.aliases.length} alias)` : ''}
+                          </span>
                         </div>
                         <div className="text-xs text-slate-600 tabular-nums">
-                          {formatCost(parseFloat(m.cost_per_1k_output_tokens) * 1000)}/1K
+                          {formatCost(parseFloat(m.cost_per_1k_output_tokens) * 1000)}/1M salida
                         </div>
                       </label>
                     )
@@ -110,7 +165,13 @@ function PolicyModal({ policy, allModels, onSave, onClose }) {
                 </div>
               </div>
             ))}
+            {form.allowedModels.filter(id => !allModels.some(m => m.model_id === id)).length > 0 && (
+              <p className="text-xs text-slate-500">
+                También permitidos, fuera del catálogo: {form.allowedModels.filter(id => !allModels.some(m => m.model_id === id)).join(', ')}
+              </p>
+            )}
           </div>
+          )}
         </Field>
 
         {/* Limits */}
@@ -188,17 +249,22 @@ function DeleteConfirm({ policy, onConfirm, onClose }) {
 export default function PolicyPage() {
   const [policies,  setPolicies]  = useState([])
   const [allModels, setAllModels] = useState([])
+  const [configured, setConfigured] = useState([])
   const [loading,   setLoading]   = useState(true)
   const [modal,     setModal]     = useState(null) // null | 'create' | { edit: p } | { delete: p }
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [p, m] = await Promise.all([
+    const [p, m, prov] = await Promise.all([
       fetch('/api/policies').then(r => r.json()),
       fetch('/api/models').then(r => r.json()),
+      // Only roles that manage policies can list providers; others just read.
+      fetch('/api/internal/providers').then(r => (r.ok ? r.json() : null)).catch(() => null),
     ])
     setPolicies(p)
     setAllModels(m)
+    const names = new Map((prov?.providers ?? []).map(c => [c.provider, c.provider_label ?? c.provider]))
+    setConfigured([...names].map(([id, label]) => ({ id, label })))
     setLoading(false)
   }, [])
 
@@ -271,24 +337,40 @@ export default function PolicyPage() {
                 </div>
               </div>
 
-              {/* Models */}
-              <div className="px-5 pb-5">
-                <div className="text-xs text-slate-500 mb-2">Modelos permitidos</div>
-                <div className="flex flex-wrap gap-2">
-                  {(policy.allowed_models ?? []).length === 0 ? (
-                    <span className="text-xs text-slate-600">Todos los modelos</span>
+              {/* Providers and models */}
+              <div className="px-5 pb-5 space-y-3">
+                <div>
+                  <div className="text-xs text-slate-500 mb-2">Proveedores</div>
+                  {(policy.allowed_providers ?? []).length === 0 ? (
+                    <span className="text-xs text-slate-400">Todos los configurados</span>
                   ) : (
-                    policy.allowed_models.map(model => {
-                      const provider = model.startsWith('gpt') || model.startsWith('o') ? 'openai' : 'anthropic'
-                      return (
-                        <span
-                          key={model}
-                          className={`text-xs border rounded-lg px-3 py-1.5 font-mono ${PROVIDER_COLORS[provider] ?? 'bg-slate-800 text-slate-300 border-slate-700'}`}
-                        >
-                          {model}
-                        </span>
-                      )
-                    })
+                    <div className="flex flex-wrap gap-2">
+                      {policy.allowed_providers.map(p => (
+                        <span key={p} className={`text-xs border rounded-lg px-3 py-1.5 font-mono ${PROVIDER_COLORS[p] ?? 'bg-slate-800 text-slate-300 border-slate-700'}`}>{p}</span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <div className="text-xs text-slate-500 mb-2">Modelos</div>
+                  {policy.allow_all_models ? (
+                    <span className="text-xs text-slate-400">Todos</span>
+                  ) : (policy.allowed_models ?? []).length === 0 ? (
+                    <span className="text-xs text-red-400">Ninguno: el gateway rechaza todos los pedidos de este equipo</span>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {policy.allowed_models.map(model => {
+                        const provider = allModels.find(m => m.model_id === model)?.provider
+                        return (
+                          <span
+                            key={model}
+                            className={`text-xs border rounded-lg px-3 py-1.5 font-mono ${PROVIDER_COLORS[provider] ?? 'bg-slate-800 text-slate-300 border-slate-700'}`}
+                          >
+                            {model}
+                          </span>
+                        )
+                      })}
+                    </div>
                   )}
                 </div>
               </div>
@@ -299,10 +381,10 @@ export default function PolicyPage() {
 
       {/* Modals */}
       {modal === 'create' && (
-        <PolicyModal allModels={allModels} onSave={handleSave} onClose={() => setModal(null)} />
+        <PolicyModal allModels={allModels} configured={configured} onSave={handleSave} onClose={() => setModal(null)} />
       )}
       {modal?.edit && (
-        <PolicyModal policy={modal.edit} allModels={allModels} onSave={handleSave} onClose={() => setModal(null)} />
+        <PolicyModal policy={modal.edit} allModels={allModels} configured={configured} onSave={handleSave} onClose={() => setModal(null)} />
       )}
       {modal?.delete && (
         <DeleteConfirm policy={modal.delete} onConfirm={handleSave} onClose={() => setModal(null)} />
