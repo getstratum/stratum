@@ -27,21 +27,21 @@ function TeamModal({ team, policies, onSave, onClose }) {
         }),
       })
       const data = await res.json()
-      if (!res.ok) { setError(data.message ?? data.error ?? 'Error saving'); return }
+      if (!res.ok) { setError(data.message ?? data.error ?? 'No se pudo guardar.'); return }
       onSave()
-    } catch { setError('Connection error') }
+    } catch { setError('No se pudo conectar con la consola.') }
     finally { setSaving(false) }
   }
 
   return (
-    <Modal title={`Edit · ${team.name}`} onClose={onClose}>
+    <Modal title={`Editar · ${team.name}`} onClose={onClose}>
       <div className="space-y-4">
-        <Field label="Team name">
+        <Field label="Nombre del equipo">
           <Input value={form.name} onChange={e => set('name', e.target.value)} />
         </Field>
-        <Field label="Policy" hint="Defines which models the team can use and their limits">
+        <Field label="Política" hint="Define qué modelos puede usar el equipo y con qué límites.">
           <Select value={form.policyId} onChange={e => set('policyId', e.target.value)}>
-            <option value="">No policy assigned</option>
+            <option value="">Sin política asignada</option>
             {policies.map(p => (
               <option key={p.id} value={p.id}>
                 {p.name}
@@ -49,11 +49,11 @@ function TeamModal({ team, policies, onSave, onClose }) {
             ))}
           </Select>
         </Field>
-        <Field label="Monthly budget override (USD)" hint="Leave empty to use the policy's budget">
+        <Field label="Presupuesto mensual propio (US$)" hint="Vacío: usa el presupuesto de la política.">
           <Input
             type="number"
             step="0.01"
-            placeholder="e.g. 500"
+            placeholder="Ej.: 500"
             value={form.monthlyBudgetUsd}
             onChange={e => set('monthlyBudgetUsd', e.target.value)}
           />
@@ -61,9 +61,9 @@ function TeamModal({ team, policies, onSave, onClose }) {
 
         {error && <p className="text-xs text-err">{error}</p>}
         <div className="flex gap-2 pt-1">
-          <Btn variant="secondary" onClick={onClose} className="flex-1">Cancel</Btn>
+          <Btn variant="secondary" onClick={onClose} className="flex-1">Cancelar</Btn>
           <Btn onClick={submit} disabled={saving} className="flex-1">
-            {saving ? 'Saving…' : 'Save changes'}
+            {saving ? 'Guardando…' : 'Guardar cambios'}
           </Btn>
         </div>
       </div>
@@ -88,13 +88,13 @@ export default function TeamsPage() {
 
   useEffect(() => { load() }, [load])
 
-  if (loading) return <div className="p-7 text-center text-lo text-xs">Loading…</div>
+  if (loading) return <div className="p-7 text-center text-muted text-xs">Cargando…</div>
 
   return (
-    <div className="px-8 py-7 max-w-screen-xl space-y-4">
+    <div className="px-4 py-6 md:px-10 md:py-8 max-w-screen-xl space-y-4">
       <div>
-        <h1 className="text-sm font-medium text-hi">Teams</h1>
-        <p className="text-xs text-lo mt-0.5">{teams.length} teams configured</p>
+        <h1 className="text-[26px] font-semibold text-strong tracking-tight">Equipos</h1>
+        <p className="text-xs text-muted mt-0.5">{teams.length} teams configured</p>
       </div>
 
       {teams.map(team => {
@@ -104,56 +104,56 @@ export default function TeamsPage() {
         const warn   = pct >= 80
 
         return (
-          <div key={team.id} className="bg-raised border border-line rounded-lg overflow-hidden">
+          <div key={team.id} className="bg-raised border border-border rounded-lg overflow-hidden">
 
-            <div className="px-5 py-3.5 border-b border-line flex items-center justify-between">
+            <div className="px-5 py-3.5 border-b border-border flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <span className="text-xs font-medium text-hi">{team.name}</span>
+                <span className="text-xs font-medium text-strong">{team.name}</span>
                 {team.department && (
-                  <span className="text-2xs text-lo">{team.department}</span>
+                  <span className="text-[11px] text-muted">{team.department}</span>
                 )}
                 {team.policy_name
-                  ? <span className="text-2xs text-lo border border-line rounded px-2 py-0.5">{team.policy_name}</span>
-                  : <span className="text-2xs text-warn border border-warn/20 rounded px-2 py-0.5 bg-warn/5">No policy assigned</span>
+                  ? <span className="text-[11px] text-muted border border-border rounded px-2 py-0.5">{team.policy_name}</span>
+                  : <span className="text-[11px] text-warn border border-warn/20 rounded px-2 py-0.5 bg-warn/5">Sin política asignada</span>
                 }
               </div>
               <button
                 onClick={() => setEditing(team)}
-                className="text-2xs text-lo hover:text-mid transition-colors border border-line rounded px-2.5 py-1"
+                className="text-[11px] text-muted hover:text-default transition-colors border border-border rounded px-2.5 py-1"
               >
-                Edit
+                Editar
               </button>
             </div>
 
             <div className="p-5 grid grid-cols-2 lg:grid-cols-4 gap-5">
               <div>
-                <div className="text-2xs text-lo mb-1">Requests this month</div>
-                <div className="text-xl font-medium text-hi font-mono">{Number(team.requests_month).toLocaleString()}</div>
+                <div className="text-[11px] text-muted mb-1">Requests del mes</div>
+                <div className="text-xl font-medium text-strong font-mono">{Number(team.requests_month).toLocaleString()}</div>
               </div>
               <div>
-                <div className="text-2xs text-lo mb-1">Tokens consumed</div>
-                <div className="text-xl font-medium text-hi font-mono">{formatTokens(team.tokens_month)}</div>
+                <div className="text-[11px] text-muted mb-1">Tokens</div>
+                <div className="text-xl font-medium text-strong font-mono">{formatTokens(team.tokens_month)}</div>
               </div>
               <div>
-                <div className="text-2xs text-lo mb-1">Estimated cost</div>
-                <div className={`text-xl font-medium font-mono ${warn ? 'text-err' : 'text-hi'}`}>
+                <div className="text-[11px] text-muted mb-1">Costo estimado</div>
+                <div className={`text-xl font-medium font-mono ${warn ? 'text-err' : 'text-strong'}`}>
                   {formatCost(spent)}
                 </div>
               </div>
               <div>
-                <div className="text-2xs text-lo mb-1">Active members</div>
-                <div className="text-xl font-medium text-hi font-mono">{team.total_users}</div>
+                <div className="text-[11px] text-muted mb-1">Personas activas</div>
+                <div className="text-xl font-medium text-strong font-mono">{team.total_users}</div>
               </div>
             </div>
 
             <div className="px-5 pb-4">
-              <div className="flex justify-between text-2xs text-lo mb-1.5 font-mono tabular-nums">
-                <span>Budget usage</span>
+              <div className="flex justify-between text-[11px] text-muted mb-1.5 font-mono tabular-nums">
+                <span>Uso del presupuesto</span>
                 <span className={warn ? 'text-err font-medium' : ''}>
                   {formatCost(spent)} / ${budget.toFixed(0)} ({pct.toFixed(0)}%)
                 </span>
               </div>
-              <div className="h-px bg-line rounded-full overflow-hidden">
+              <div className="h-px bg-border rounded-full overflow-hidden">
                 <div
                   className={`h-full rounded-full ${warn ? 'bg-err' : 'bg-accent'}`}
                   style={{ width: `${pct}%`, opacity: warn ? 1 : 0.4 }}
@@ -162,9 +162,9 @@ export default function TeamsPage() {
             </div>
 
             {team.allowed_models?.length > 0 && (
-              <div className="px-5 pb-4 border-t border-line pt-4 flex flex-wrap gap-2">
+              <div className="px-5 pb-4 border-t border-border pt-4 flex flex-wrap gap-2">
                 {team.allowed_models.map(m => (
-                  <span key={m} className="text-2xs text-lo font-mono border border-line rounded px-2 py-0.5">
+                  <span key={m} className="text-[11px] text-muted font-mono border border-border rounded px-2 py-0.5">
                     {m}
                   </span>
                 ))}

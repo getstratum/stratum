@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 
 const input = 'w-full bg-raised border border-border rounded-lg px-3.5 py-2.5 text-sm text-strong focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent'
 const label = 'block text-xs font-semibold text-muted mb-1.5'
-const primary = 'bg-accent hover:bg-accent-hover disabled:opacity-40 text-white font-semibold rounded-lg py-2.5 px-4 text-sm'
+const primary = 'bg-ink hover:bg-ink-hover disabled:opacity-40 text-white font-semibold rounded-lg py-2.5 px-4 text-sm'
 const secondary = 'bg-card border border-border text-default hover:bg-raised disabled:opacity-40 font-semibold rounded-lg py-2.5 px-4 text-sm'
 
 async function send(url, method, body) {
@@ -264,9 +264,9 @@ export default function AccountPage() {
   }, [load])
 
   return (
-    <div className="p-7 max-w-xl space-y-6">
+    <div className="px-4 py-6 md:px-10 md:py-8 max-w-xl space-y-6">
       <div>
-        <h1 className="text-lg font-semibold text-strong mb-1">Mi cuenta</h1>
+        <h1 className="text-[26px] font-semibold text-strong tracking-tight mb-1">Mi cuenta</h1>
         {me && <p className="text-sm text-muted">{me.user.email}</p>}
       </div>
       {me?.mfa?.enrollmentRequired && (

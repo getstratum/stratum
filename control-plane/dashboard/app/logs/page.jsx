@@ -12,9 +12,9 @@ const PROVIDER_FILTER = [
 ].map(([slug, label]) => ({ slug, label }))
 
 const STATUS_OPTIONS = [
-  { value: '',        label: 'All statuses' },
-  { value: 'success', label: 'Success (2xx)' },
-  { value: 'error',   label: 'Error (4xx/5xx)' },
+  { value: '',        label: 'Todos' },
+  { value: 'success', label: 'Correctos (2xx)' },
+  { value: 'error',   label: 'Con error (4xx/5xx)' },
 ]
 
 const LIMIT_OPTIONS = [50, 100, 200, 500]
@@ -90,15 +90,15 @@ export default function LogsPage() {
   const hasFilters = filters.team || filters.provider || filters.model || filters.status
 
   return (
-    <div className="px-8 py-6 max-w-screen-xl space-y-5">
+    <div className="px-4 py-6 md:px-10 md:py-8 max-w-screen-xl space-y-5">
 
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-strong">Requests</h1>
+          <h1 className="text-[26px] font-semibold text-strong tracking-tight">Requests</h1>
           <p className="text-sm text-muted mt-0.5">
-            {loading ? 'Loading…' : `${logs.length} results`}
-            {hasFilters && <span className="text-accent-text font-medium ml-1">· filtered</span>}
+            {loading ? 'Cargando…' : `${logs.length} results`}
+            {hasFilters && <span className="text-accent-text font-medium ml-1">· filtrado</span>}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -117,41 +117,41 @@ export default function LogsPage() {
       </div>
 
       {/* Filter bar */}
-      <div className="bg-card border border-border rounded-xl shadow-card p-4">
+      <div className="bg-card border border-border rounded-[10px] p-4">
         <div className="flex flex-wrap gap-3 items-end">
 
           {/* Team */}
           <div className="flex-1 min-w-36">
-            <label className="block text-xs text-muted mb-1.5 font-medium">Team</label>
+            <label className="block text-xs text-muted mb-1.5 font-medium">Equipo</label>
             <select
               value={filters.team}
               onChange={e => setFilter('team', e.target.value)}
               className="w-full text-sm border border-border rounded-lg px-3 py-2 bg-raised text-default focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/20"
             >
-              <option value="">All teams</option>
+              <option value="">Todos los equipos</option>
               {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
           </div>
 
           {/* Provider */}
           <div className="flex-1 min-w-36">
-            <label className="block text-xs text-muted mb-1.5 font-medium">Provider</label>
+            <label className="block text-xs text-muted mb-1.5 font-medium">Proveedor</label>
             <select
               value={filters.provider}
               onChange={e => setFilter('provider', e.target.value)}
               className="w-full text-sm border border-border rounded-lg px-3 py-2 bg-raised text-default focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/20"
             >
-              <option value="">All providers</option>
+              <option value="">Todos los proveedores</option>
               {providers.map(p => <option key={p.slug} value={p.slug}>{p.label}</option>)}
             </select>
           </div>
 
           {/* Model */}
           <div className="flex-1 min-w-36">
-            <label className="block text-xs text-muted mb-1.5 font-medium">Model</label>
+            <label className="block text-xs text-muted mb-1.5 font-medium">Modelo</label>
             <input
               type="text"
-              placeholder="Search model…"
+              placeholder="Buscar modelo…"
               value={modelInput}
               onChange={e => handleModelInput(e.target.value)}
               className="w-full text-sm border border-border rounded-lg px-3 py-2 bg-raised text-default focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/20 placeholder-subtle"
@@ -160,7 +160,7 @@ export default function LogsPage() {
 
           {/* Status */}
           <div className="flex-1 min-w-36">
-            <label className="block text-xs text-muted mb-1.5 font-medium">Status</label>
+            <label className="block text-xs text-muted mb-1.5 font-medium">Estado</label>
             <select
               value={filters.status}
               onChange={e => setFilter('status', e.target.value)}
@@ -172,7 +172,7 @@ export default function LogsPage() {
 
           {/* Limit */}
           <div className="w-28">
-            <label className="block text-xs text-muted mb-1.5 font-medium">Show</label>
+            <label className="block text-xs text-muted mb-1.5 font-medium">Mostrar</label>
             <select
               value={filters.limit}
               onChange={e => setFilter('limit', parseInt(e.target.value))}

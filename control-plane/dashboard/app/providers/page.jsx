@@ -1,7 +1,9 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import Link from 'next/link'
 import Modal, { Field, Input, Select, Btn } from '../../components/Modal'
+import { allowedBy } from '../../lib/catalog'
 
 const API = '/api/internal/providers'
 
@@ -184,13 +186,26 @@ export default function ProvidersPage() {
   const [error, setError]         = useState('')
   const [modal, setModal]         = useState(null)
   const [tests, setTests]         = useState({})
+  const [catalog, setCatalog]     = useState([])
+  const [policies, setPolicies]   = useState([])
 
   const load = useCallback(async () => {
     const res = await fetch(API)
     const data = await res.json().catch(() => ({}))
     if (!res.ok) { setError(data.message ?? 'No se pudieron cargar los proveedores.'); setLoading(false); return }
     setProviders(data.providers); setPresets(data.presets); setLoading(false)
+    const [m, pol] = await Promise.all([
+      fetch('/api/models').then(r => (r.ok ? r.json() : [])).catch(() => []),
+      fetch('/api/policies').then(r => (r.ok ? r.json() : [])).catch(() => []),
+    ])
+    setCatalog(Array.isArray(m) ? m : []); setPolicies(Array.isArray(pol) ? pol : [])
   }, [])
+
+  // Catalog models of a provider, and how many of them some policy allows.
+  function modelsOf(provider) {
+    const list = catalog.filter(m => m.provider === provider)
+    return { total: list.length, allowed: list.filter(m => policies.some(pol => allowedBy(pol, m))).length }
+  }
 
   useEffect(() => {
     load()
@@ -219,10 +234,10 @@ export default function ProvidersPage() {
   const done = () => { setModal(null); load() }
 
   return (
-    <div className="p-7 max-w-6xl">
+    <div className="px-4 py-6 md:px-10 md:py-8 max-w-6xl">
       <div className="flex flex-wrap items-end justify-between gap-4 mb-6">
         <div className="max-w-2xl">
-          <h1 className="text-lg font-semibold text-strong">Proveedores</h1>
+          <h1 className="text-[26px] font-semibold text-strong tracking-tight">Proveedores</h1>
           <p className="text-sm text-muted mt-1">
             Las credenciales se cifran en el control plane y llegan cifradas a los gateways, que las usan en 30 s como máximo.
             Nadie puede volver a verlas: solo reemplazarlas.
@@ -233,7 +248,7 @@ export default function ProvidersPage() {
 
       {error && <p className="text-sm text-err bg-err-light rounded-lg px-4 py-3 mb-4">{error}</p>}
 
-      <div className="bg-card border border-border rounded-xl overflow-x-auto">
+      <div className="relative bg-card border border-border rounded-[10px] overflow-x-auto">
         {loading ? (
           <p className="p-6 text-sm text-muted">Cargando…</p>
         ) : providers.length === 0 ? (
@@ -241,12 +256,13 @@ export default function ProvidersPage() {
             Todavía no hay proveedores. {canManage ? 'Agregá uno para que los gateways puedan atender requests.' : ''}
           </div>
         ) : (
-          <table className="w-full min-w-[860px] text-sm">
+          <table className="w-full min-w-[980px] text-sm">
             <thead>
               <tr className="text-left text-xs uppercase tracking-wide text-muted border-b border-border">
                 <th className="px-5 py-3 font-semibold">Conexión</th>
                 <th className="px-4 py-3 font-semibold">Credencial</th>
                 <th className="px-4 py-3 font-semibold">Dirección</th>
+                <th className="px-4 py-3 font-semibold">Modelos</th>
                 <th className="px-4 py-3 font-semibold">Estado</th>
                 <th className="px-5 py-3"><span className="sr-only">Acciones</span></th>
               </tr>
@@ -264,6 +280,20 @@ export default function ProvidersPage() {
                   </td>
                   <td className="px-4 py-3.5 text-xs text-muted break-all">
                     {p.base_url ?? <span>por defecto</span>}
+                  </td>
+                  <td className="px-4 py-3.5 text-xs">
+                    {(() => {
+                      const n = modelsOf(p.provider)
+                      return n.total === 0 ? (
+                        <span className="text-muted">Fuera del catálogo: sin precios</span>
+                      ) : (
+                        <div className="space-y-0.5">
+                          <div className="text-strong tabular">{n.total} en el catálogo</div>
+                          <div className="text-muted tabular">{n.allowed} permitidos por alguna política</div>
+                          <Link href={`/models?provider=${encodeURIComponent(p.provider)}`} className="text-accent hover:text-accent-hover">Ver modelos</Link>
+                        </div>
+                      )
+                    })()}
                   </td>
                   <td className="px-4 py-3.5">
                     <span className={`text-xs font-semibold ${p.enabled ? 'text-ok' : 'text-subtle'}`}>

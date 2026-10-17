@@ -1,3 +1,9 @@
+@import '@fontsource/ibm-plex-sans/400.css';
+@import '@fontsource/ibm-plex-sans/500.css';
+@import '@fontsource/ibm-plex-sans/600.css';
+@import '@fontsource/ibm-plex-mono/400.css';
+@import '@fontsource/ibm-plex-mono/500.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -5,24 +11,33 @@
 * { -webkit-font-smoothing: antialiased; }
 
 body {
-  background-color: #f3f4f6;
-  color: #374151;
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background-color: #f6f7f9;
+  color: #2b313c;
+  font-family: 'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif;
   font-size: 14px;
 }
 
+/* Plain links in running text; styled links set their own color. */
+a:not([class]) { color: #2448b8; }
+a:not([class]):hover { color: #16307f; }
+
+:focus-visible { outline: 2px solid #2448b8; outline-offset: 2px; }
+
+/* Numbers that line up in tables and tiles */
+.tabular { font-variant-numeric: tabular-nums; }
+
 /* Scrollbar */
-::-webkit-scrollbar        { width: 5px; height: 5px; }
-::-webkit-scrollbar-track  { background: #f3f4f6; }
-::-webkit-scrollbar-thumb  { background: #d1d5db; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
+::-webkit-scrollbar        { width: 6px; height: 6px; }
+::-webkit-scrollbar-track  { background: transparent; }
+::-webkit-scrollbar-thumb  { background: #c9ced6; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #9aa3b0; }
 
 /* Recharts tooltip */
 .recharts-default-tooltip {
   background: #fff !important;
-  border: 1px solid #e5e7eb !important;
+  border: 1px solid #e3e6eb !important;
   border-radius: 8px !important;
-  box-shadow: 0 4px 24px rgba(0,0,0,.08) !important;
+  box-shadow: 0 8px 28px rgba(22,26,34,.12) !important;
   font-size: 12px !important;
-  color: #374151 !important;
+  color: #2b313c !important;
 }

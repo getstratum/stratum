@@ -89,7 +89,7 @@ export default function DateFilter({ value, onChange }) {
             <button
               onClick={applyCustom}
               disabled={!custom.from || !custom.to}
-              className="w-full mt-2 bg-accent hover:bg-accent-hover disabled:opacity-40 text-white text-xs font-semibold rounded-lg py-2 transition-colors"
+              className="w-full mt-2 bg-ink hover:bg-ink-hover disabled:opacity-40 text-white text-xs font-semibold rounded-lg py-2 transition-colors"
             >
               Aplicar rango
             </button>

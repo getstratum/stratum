@@ -12,7 +12,7 @@ export default function Modal({ title, onClose, children, width = 'max-w-lg' }) 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/30" onClick={onClose} />
-      <div role="dialog" aria-modal="true" aria-label={title} className={`relative w-full ${width} bg-card border border-border rounded-2xl shadow-dropdown`}>
+      <div role="dialog" aria-modal="true" aria-label={title} className={`relative w-full ${width} bg-card border border-border rounded-xl shadow-dropdown`}>
         <div className="flex items-center justify-between px-6 py-4 border-b border-border">
           <h2 className="text-base font-semibold text-strong">{title}</h2>
           <button
@@ -64,7 +64,7 @@ export function Input({ ...props }) {
   return (
     <input
       {...props}
-      className="w-full bg-card border border-border rounded-lg px-3.5 py-2.5 text-sm text-strong placeholder-subtle focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent transition-all"
+      className="w-full bg-card border border-border-strong rounded-md px-3 h-10 text-sm text-strong placeholder-subtle focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent transition-all"
     />
   )
 }
@@ -81,9 +81,9 @@ export function Select({ children, ...props }) {
 }
 
 export function Btn({ variant = 'primary', className = '', ...props }) {
-  const base = 'px-4 py-2.5 rounded-lg text-sm font-semibold transition-all disabled:opacity-40'
+  const base = 'min-h-[40px] px-4 py-2 rounded-md text-sm font-medium transition-colors disabled:opacity-40'
   const v = {
-    primary:   'bg-accent hover:bg-accent-hover text-white shadow-sm',
+    primary:   'bg-ink hover:bg-ink-hover text-white',
     secondary: 'bg-card border border-border text-default hover:bg-raised',
     danger:    'bg-err-light border border-err/20 text-err hover:bg-red-100',
   }

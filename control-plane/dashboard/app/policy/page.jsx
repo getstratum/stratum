@@ -3,10 +3,12 @@
 import { useState, useEffect, useCallback } from 'react'
 import Modal, { Field, Input, Select, Btn } from '../../components/Modal'
 import { formatCost } from '../../lib/format'
+import { namesOf } from '../../lib/catalog'
+import { usePermissions } from '../../components/usePermissions'
 
 const PROVIDER_COLORS = {
-  openai:    'bg-emerald-950/50 text-emerald-300 border-emerald-800/50',
-  anthropic: 'bg-orange-950/50 text-orange-300 border-orange-800/50',
+  openai:    'bg-ok-light text-ok border-ok/20',
+  anthropic: 'bg-warn-light text-warn border-warn/20',
 }
 
 // ─── Policy form modal ────────────────────────────────────────────────────────
@@ -26,14 +28,21 @@ function PolicyModal({ policy, allModels, configured, onSave, onClose }) {
 
   function set(k, v) { setForm(f => ({ ...f, [k]: v })) }
 
-  function toggleModel(modelId) {
-    setForm(f => ({
-      ...f,
-      allowedModels: f.allowedModels.includes(modelId)
-        ? f.allowedModels.filter(m => m !== modelId)
-        : [...f.allowedModels, modelId],
-    }))
+  // A model counts as chosen when the list names any of its IDs (an alias,
+  // or "provider/id"), as gateways read it; unchecking removes every one.
+  const isChosen = m => namesOf(m).some(n => form.allowedModels.includes(n))
+  function toggleModel(m) {
+    setForm(f => {
+      const names = new Set(namesOf(m))
+      return {
+        ...f,
+        allowedModels: f.allowedModels.some(n => names.has(n))
+          ? f.allowedModels.filter(n => !names.has(n))
+          : [...f.allowedModels, m.model_id],
+      }
+    })
   }
+  const outside = form.allowedModels.filter(n => !allModels.some(m => namesOf(m).includes(n)))
 
   function toggleProvider(id) {
     setForm(f => {
@@ -89,22 +98,23 @@ function PolicyModal({ policy, allModels, configured, onSave, onClose }) {
         {/* Providers */}
         <Field label="Proveedores" hint="Los que este equipo puede usar, entre los configurados en la organización.">
           <div className="space-y-2 mt-1">
-            <label className="flex items-center gap-2 text-sm text-slate-200">
+            <label className="flex items-center gap-2 text-sm text-strong">
               <input type="radio" name="providers" checked={form.allowedProviders === null}
-                onChange={() => set('allowedProviders', null)} className="accent-blue-500" />
+                onChange={() => set('allowedProviders', null)} className="accent-[#2448b8]" />
               Todos los configurados
             </label>
-            <label className="flex items-center gap-2 text-sm text-slate-200">
+            <label className="flex items-center gap-2 text-sm text-strong">
               <input type="radio" name="providers" checked={form.allowedProviders !== null}
-                onChange={() => set('allowedProviders', form.allowedProviders ?? [])} className="accent-blue-500" />
+                onChange={() => set('allowedProviders', form.allowedProviders ?? [])} className="accent-[#2448b8]" />
               Solo estos
             </label>
             {form.allowedProviders !== null && (
               <div className="flex flex-wrap gap-2 pl-6">
-                {configured.map(p => (
-                  <label key={p.id} className="flex items-center gap-1.5 text-xs text-slate-300 border border-border rounded-md px-2 py-1">
+                {[...configured, ...form.allowedProviders.filter(id => !configured.some(c => c.id === id))
+                  .map(id => ({ id, label: `${id} (sin configurar)` }))].map(p => (
+                  <label key={p.id} className="flex items-center gap-1.5 text-xs text-default border border-border rounded-md px-2 py-1">
                     <input type="checkbox" checked={form.allowedProviders.includes(p.id)}
-                      onChange={() => toggleProvider(p.id)} className="accent-blue-500" />
+                      onChange={() => toggleProvider(p.id)} className="accent-[#2448b8]" />
                     {p.label}
                   </label>
                 ))}
@@ -116,14 +126,14 @@ function PolicyModal({ policy, allModels, configured, onSave, onClose }) {
         {/* Models */}
         <Field label="Modelos">
           <div className="space-y-2 mt-1">
-            <label className="flex items-center gap-2 text-sm text-slate-200">
+            <label className="flex items-center gap-2 text-sm text-strong">
               <input type="radio" name="models" checked={form.allowAllModels}
-                onChange={() => set('allowAllModels', true)} className="accent-blue-500" />
+                onChange={() => set('allowAllModels', true)} className="accent-[#2448b8]" />
               Todos los modelos de esos proveedores
             </label>
-            <label className="flex items-center gap-2 text-sm text-slate-200">
+            <label className="flex items-center gap-2 text-sm text-strong">
               <input type="radio" name="models" checked={!form.allowAllModels}
-                onChange={() => set('allowAllModels', false)} className="accent-blue-500" />
+                onChange={() => set('allowAllModels', false)} className="accent-[#2448b8]" />
               Solo los elegidos
             </label>
           </div>
@@ -131,32 +141,32 @@ function PolicyModal({ policy, allModels, configured, onSave, onClose }) {
           <div className="space-y-3 mt-3">
             {Object.entries(grouped).map(([provider, models]) => (
               <div key={provider}>
-                <div className="text-xs text-slate-500 uppercase tracking-wide mb-1.5">{provider}</div>
+                <div className="text-xs text-muted uppercase tracking-wide mb-1.5">{provider}</div>
                 <div className="space-y-1">
                   {models.map(m => {
-                    const checked = form.allowedModels.includes(m.model_id)
+                    const checked = isChosen(m)
                     return (
                       <label
                         key={m.model_id}
                         className={`flex items-center justify-between gap-3 px-3 py-2 rounded-lg cursor-pointer border transition-colors
                           ${checked
                             ? 'bg-accent/10 border-accent/40'
-                            : 'bg-surface border-border hover:border-slate-600'}`}
+                            : 'bg-card border-border hover:border-border-strong'}`}
                       >
                         <div className="flex items-center gap-2.5 min-w-0">
                           <input
                             type="checkbox"
                             checked={checked}
-                            onChange={() => toggleModel(m.model_id)}
-                            className="accent-blue-500"
+                            onChange={() => toggleModel(m)}
+                            className="accent-[#2448b8]"
                           />
-                          <span className="text-sm text-slate-200">{m.display_name}</span>
-                          <span className="font-mono text-xs text-slate-500 truncate"
+                          <span className="text-sm text-strong">{m.display_name}</span>
+                          <span className="font-mono text-xs text-muted truncate"
                             title={(m.aliases ?? []).length ? `También: ${m.aliases.join(', ')}` : undefined}>
                             {m.model_id}{(m.aliases ?? []).length ? ` (+${m.aliases.length} alias)` : ''}
                           </span>
                         </div>
-                        <div className="text-xs text-slate-600 tabular-nums">
+                        <div className="text-xs text-subtle tabular-nums">
                           {formatCost(parseFloat(m.cost_per_1k_output_tokens) * 1000)}/1M salida
                         </div>
                       </label>
@@ -165,9 +175,9 @@ function PolicyModal({ policy, allModels, configured, onSave, onClose }) {
                 </div>
               </div>
             ))}
-            {form.allowedModels.filter(id => !allModels.some(m => m.model_id === id)).length > 0 && (
-              <p className="text-xs text-slate-500">
-                También permitidos, fuera del catálogo: {form.allowedModels.filter(id => !allModels.some(m => m.model_id === id)).join(', ')}
+            {outside.length > 0 && (
+              <p className="text-xs text-muted">
+                También permitidos, fuera del catálogo: {outside.join(', ')}
               </p>
             )}
           </div>
@@ -200,7 +210,7 @@ function PolicyModal({ policy, allModels, configured, onSave, onClose }) {
           </Field>
         </div>
 
-        {error && <p className="text-xs text-red-400">{error}</p>}
+        {error && <p className="text-xs text-err">{error}</p>}
 
         <div className="flex gap-3 pt-1">
           <Btn variant="secondary" onClick={onClose} className="flex-1">Cancelar</Btn>
@@ -229,11 +239,11 @@ function DeleteConfirm({ policy, onConfirm, onClose }) {
   return (
     <Modal title="Eliminar política" onClose={onClose} width="max-w-sm">
       <div className="space-y-4">
-        <p className="text-sm text-slate-400">
-          ¿Eliminás <strong className="text-white">"{policy.name}"</strong>?
+        <p className="text-sm text-muted">
+          ¿Eliminás <strong className="text-strong">"{policy.name}"</strong>?
           Esta acción no se puede deshacer.
         </p>
-        {error && <p className="text-xs text-red-400">{error}</p>}
+        {error && <p className="text-xs text-err">{error}</p>}
         <div className="flex gap-3">
           <Btn variant="secondary" onClick={onClose} className="flex-1">Cancelar</Btn>
           <Btn variant="danger" onClick={confirm} disabled={deleting} className="flex-1">
@@ -247,6 +257,8 @@ function DeleteConfirm({ policy, onConfirm, onClose }) {
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function PolicyPage() {
+  const { can } = usePermissions()
+  const canManage = can('policies.manage')
   const [policies,  setPolicies]  = useState([])
   const [allModels, setAllModels] = useState([])
   const [configured, setConfigured] = useState([])
@@ -258,7 +270,7 @@ export default function PolicyPage() {
     const [p, m, prov] = await Promise.all([
       fetch('/api/policies').then(r => r.json()),
       fetch('/api/models').then(r => r.json()),
-      // Only roles that manage policies can list providers; others just read.
+      // Roles without providers.read (team managers) get 403: the form then lists none.
       fetch('/api/internal/providers').then(r => (r.ok ? r.json() : null)).catch(() => null),
     ])
     setPolicies(p)
@@ -273,65 +285,65 @@ export default function PolicyPage() {
   function handleSave() { setModal(null); load() }
 
   return (
-    <div className="p-7 max-w-4xl space-y-5">
+    <div className="px-4 py-6 md:px-10 md:py-8 max-w-4xl space-y-5">
 
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-white">Políticas de Acceso</h1>
-          <p className="text-sm text-slate-500 mt-0.5">
+          <h1 className="text-[26px] font-semibold text-strong tracking-tight">Políticas</h1>
+          <p className="text-sm text-muted mt-0.5">
             Define qué modelos puede usar cada equipo y con qué límites
           </p>
         </div>
-        <Btn onClick={() => setModal('create')}>+ Nueva política</Btn>
+        {canManage && <Btn onClick={() => setModal('create')}>+ Nueva política</Btn>}
       </div>
 
       {loading ? (
-        <div className="text-center text-slate-500 text-sm py-10">Cargando…</div>
+        <div className="text-center text-muted text-sm py-10">Cargando…</div>
       ) : (
         policies.map(policy => {
           const budget = parseFloat(policy.monthly_budget_usd ?? 0)
           return (
-            <div key={policy.id} className="bg-surface-card border border-border rounded-xl overflow-hidden">
+            <div key={policy.id} className="bg-card border border-border rounded-xl overflow-hidden">
 
               {/* Header */}
               <div className="px-5 py-4 border-b border-border flex items-center justify-between">
                 <div>
-                  <span className="font-bold text-white">{policy.name}</span>
-                  <span className="ml-3 text-xs text-slate-500">
+                  <span className="font-semibold text-strong">{policy.name}</span>
+                  <span className="ml-3 text-xs text-muted">
                     {policy.teams_using} equipo{policy.teams_using != 1 ? 's' : ''} asignado{policy.teams_using != 1 ? 's' : ''}
                   </span>
                 </div>
-                <div className="flex gap-2">
+                {canManage && <div className="flex gap-2">
                   <button
                     onClick={() => setModal({ edit: policy })}
-                    className="text-xs text-slate-400 hover:text-slate-200 px-3 py-1.5 rounded-lg border border-border hover:bg-surface transition-colors"
+                    className="text-xs text-muted hover:text-strong px-3 py-1.5 rounded-lg border border-border hover:bg-raised transition-colors"
                   >
                     Editar
                   </button>
                   <button
                     onClick={() => setModal({ delete: policy })}
-                    className="text-xs text-red-400 hover:text-red-300 px-3 py-1.5 rounded-lg border border-red-900/50 hover:bg-red-950/30 transition-colors"
+                    className="text-xs text-err hover:text-err px-3 py-1.5 rounded-lg border border-err/30 hover:bg-err-light transition-colors"
                   >
                     Eliminar
                   </button>
-                </div>
+                </div>}
               </div>
 
               {/* Stats */}
               <div className="p-5 grid grid-cols-3 gap-5">
                 <div>
-                  <div className="text-xs text-slate-500 mb-1">Budget mensual</div>
-                  <div className="text-xl font-bold text-orange-300">${budget.toFixed(0)} USD</div>
+                  <div className="text-xs text-muted mb-1">Budget mensual</div>
+                  <div className="text-xl font-bold text-strong">${budget.toFixed(0)} USD</div>
                 </div>
                 <div>
-                  <div className="text-xs text-slate-500 mb-1">Quota de tokens</div>
-                  <div className="text-xl font-bold text-purple-300">
+                  <div className="text-xs text-muted mb-1">Quota de tokens</div>
+                  <div className="text-xl font-bold text-strong">
                     {(policy.monthly_token_quota / 1_000_000).toFixed(1)}M / mes
                   </div>
                 </div>
                 <div>
-                  <div className="text-xs text-slate-500 mb-1">Max tokens / req</div>
-                  <div className="text-xl font-bold text-blue-300">
+                  <div className="text-xs text-muted mb-1">Max tokens / req</div>
+                  <div className="text-xl font-bold text-strong">
                     {Number(policy.max_tokens_per_request).toLocaleString()}
                   </div>
                 </div>
@@ -340,31 +352,31 @@ export default function PolicyPage() {
               {/* Providers and models */}
               <div className="px-5 pb-5 space-y-3">
                 <div>
-                  <div className="text-xs text-slate-500 mb-2">Proveedores</div>
+                  <div className="text-xs text-muted mb-2">Proveedores</div>
                   {(policy.allowed_providers ?? []).length === 0 ? (
-                    <span className="text-xs text-slate-400">Todos los configurados</span>
+                    <span className="text-xs text-muted">Todos los configurados</span>
                   ) : (
                     <div className="flex flex-wrap gap-2">
                       {policy.allowed_providers.map(p => (
-                        <span key={p} className={`text-xs border rounded-lg px-3 py-1.5 font-mono ${PROVIDER_COLORS[p] ?? 'bg-slate-800 text-slate-300 border-slate-700'}`}>{p}</span>
+                        <span key={p} className={`text-xs border rounded-lg px-3 py-1.5 font-mono ${PROVIDER_COLORS[p] ?? 'bg-raised text-default border-border'}`}>{p}</span>
                       ))}
                     </div>
                   )}
                 </div>
                 <div>
-                  <div className="text-xs text-slate-500 mb-2">Modelos</div>
+                  <div className="text-xs text-muted mb-2">Modelos</div>
                   {policy.allow_all_models ? (
-                    <span className="text-xs text-slate-400">Todos</span>
+                    <span className="text-xs text-muted">Todos</span>
                   ) : (policy.allowed_models ?? []).length === 0 ? (
-                    <span className="text-xs text-red-400">Ninguno: el gateway rechaza todos los pedidos de este equipo</span>
+                    <span className="text-xs text-err">Ninguno: el gateway rechaza todos los pedidos de este equipo</span>
                   ) : (
                     <div className="flex flex-wrap gap-2">
                       {policy.allowed_models.map(model => {
-                        const provider = allModels.find(m => m.model_id === model)?.provider
+                        const provider = allModels.find(m => namesOf(m).includes(model))?.provider
                         return (
                           <span
                             key={model}
-                            className={`text-xs border rounded-lg px-3 py-1.5 font-mono ${PROVIDER_COLORS[provider] ?? 'bg-slate-800 text-slate-300 border-slate-700'}`}
+                            className={`text-xs border rounded-lg px-3 py-1.5 font-mono ${PROVIDER_COLORS[provider] ?? 'bg-raised text-default border-border'}`}
                           >
                             {model}
                           </span>

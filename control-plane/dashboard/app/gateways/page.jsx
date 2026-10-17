@@ -144,10 +144,10 @@ export default function GatewaysPage() {
   }
 
   return (
-    <div className="p-7 max-w-6xl">
+    <div className="px-4 py-6 md:px-10 md:py-8 max-w-6xl">
       <div className="flex flex-wrap items-end justify-between gap-4 mb-6">
         <div className="max-w-2xl">
-          <h1 className="text-lg font-semibold text-strong">Gateways</h1>
+          <h1 className="text-[26px] font-semibold text-strong tracking-tight">Gateways</h1>
           <p className="text-sm text-muted mt-1">
             Los gateways corren en tu infraestructura y le piden la configuración a este control plane cada 30 s.
             Si el control plane no responde, siguen sirviendo con la última que tienen.
@@ -158,7 +158,7 @@ export default function GatewaysPage() {
 
       {error && <p className="text-sm text-err bg-err-light rounded-lg px-4 py-3 mb-4">{error}</p>}
 
-      <div className="bg-card border border-border rounded-xl overflow-x-auto">
+      <div className="relative bg-card border border-border rounded-[10px] overflow-x-auto">
         {loading ? (
           <p className="p-6 text-sm text-muted">Cargando…</p>
         ) : data.instances.length === 0 ? (

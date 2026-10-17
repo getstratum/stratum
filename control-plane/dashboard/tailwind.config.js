@@ -1,4 +1,6 @@
 /** @type {import('tailwindcss').Config} */
+// Console palette (docs: stratum/CONSOLE-UX.md prototype). Pages use these
+// names, never raw colors, so the look changes here.
 module.exports = {
   content: [
     './app/**/*.{js,jsx}',
@@ -6,38 +8,46 @@ module.exports = {
   ],
   theme: {
     extend: {
+      fontFamily: {
+        sans: ['"IBM Plex Sans"', '"Segoe UI"', 'system-ui', 'sans-serif'],
+        mono: ['"IBM Plex Mono"', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
+      },
       colors: {
-        // App surfaces
-        app:     '#f3f4f6',   // page background
-        card:    '#ffffff',   // cards, sidebar
-        raised:  '#f9fafb',   // elevated rows, inputs
+        // Surfaces
+        app:     '#f6f7f9',   // page background
+        card:    '#ffffff',   // cards, dialogs
+        raised:  '#f3f5f8',   // hovered rows, inputs at rest
+        nav:     '#eef0f3',   // sidebar
 
         // Borders
-        border:        '#e5e7eb',
-        'border-strong':'#d1d5db',
+        border:          '#e3e6eb',
+        'border-strong': '#c9ced6',
 
-        // Text hierarchy
-        strong:  '#111827',
-        default: '#374151',
-        muted:   '#6b7280',
-        subtle:  '#9ca3af',
+        // Text, darkest to lightest (all ≥ 4.5:1 on white)
+        strong:  '#161a22',
+        default: '#2b313c',
+        muted:   '#5b6472',
+        subtle:  '#6b7380',
 
-        // Violet accent
+        // Primary actions
+        ink: { DEFAULT: '#161a22', hover: '#2b313c' },
+
+        // Links, focus, selection
         accent: {
-          DEFAULT: '#7c3aed',
-          hover:   '#6d28d9',
-          light:   '#ede9fe',
-          text:    '#6d28d9',
+          DEFAULT: '#2448b8',
+          hover:   '#16307f',
+          light:   '#e8eefc',
+          text:    '#2448b8',
         },
 
         // Semantic
-        ok:    { DEFAULT: '#059669', light: '#d1fae5' },
-        err:   { DEFAULT: '#dc2626', light: '#fee2e2' },
-        warn:  { DEFAULT: '#d97706', light: '#fef3c7' },
+        ok:    { DEFAULT: '#17703f', light: '#e7f4ec' },
+        err:   { DEFAULT: '#a8261b', light: '#fbeae8' },
+        warn:  { DEFAULT: '#8a5300', light: '#fbf1e0' },
       },
       boxShadow: {
-        card: '0 1px 3px 0 rgba(0,0,0,.06), 0 1px 2px -1px rgba(0,0,0,.04)',
-        dropdown: '0 4px 24px rgba(0,0,0,.08)',
+        card: '0 1px 2px 0 rgba(22,26,34,.04)',
+        dropdown: '0 8px 28px rgba(22,26,34,.12)',
       },
     },
   },

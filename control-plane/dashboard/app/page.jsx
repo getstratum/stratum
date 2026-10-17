@@ -61,13 +61,13 @@ export default function OverviewPage() {
   useEffect(() => { load() }, [load])
 
   return (
-    <div className="px-8 py-6 max-w-screen-xl space-y-5">
+    <div className="px-4 py-6 md:px-10 md:py-8 max-w-screen-xl space-y-5">
 
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-strong">Overview</h1>
-          <p className="text-sm text-muted mt-0.5 capitalize">{periodLabel(range)}</p>
+          <h1 className="text-[26px] font-semibold text-strong tracking-tight">Inicio</h1>
+          <p className="text-sm text-muted mt-0.5 first-letter:uppercase">{periodLabel(range)}</p>
         </div>
         <DateFilter value={range} onChange={r => setRange(r)} />
       </div>
@@ -90,7 +90,7 @@ export default function OverviewPage() {
       </div>
 
       {loading && (
-        <div className="text-center text-muted text-sm py-16">Loading…</div>
+        <div className="text-center text-muted text-sm py-16">Cargando…</div>
       )}
 
       {!loading && stats && (
@@ -113,10 +113,10 @@ export default function OverviewPage() {
               <div>
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-xs font-semibold text-muted uppercase tracking-widest">
-                    Recent requests
+                    Últimos requests
                   </span>
                   <a href="/logs" className="text-xs text-accent hover:text-accent-hover font-medium">
-                    View all →
+                    Ver todos →
                   </a>
                 </div>
                 <RequestsLog logs={logs} />

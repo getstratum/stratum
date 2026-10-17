@@ -21,7 +21,8 @@ function ExportBtn({ onClick }) {
   )
 }
 
-const COLORS = ['#7c3aed', '#a855f7', '#c084fc', '#ddd6fe', '#6366f1', '#818cf8']
+// Categorical slots in fixed order (see app/usage/page.jsx).
+const COLORS = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#9aa3b0']
 
 // ─── Provider breakdown ───────────────────────────────────────────────────────
 
@@ -34,8 +35,8 @@ function ProviderTooltip({ active, payload }) {
       <div className="space-y-1 text-muted">
         <div className="flex justify-between gap-6"><span>Requests</span><span className="text-strong font-mono">{d.requests.toLocaleString()}</span></div>
         <div className="flex justify-between gap-6"><span>Tokens</span><span className="text-strong font-mono">{formatTokens(d.tokens)}</span></div>
-        <div className="flex justify-between gap-6"><span>Cost</span><span className="text-accent font-mono font-semibold">{formatCost(d.cost)}</span></div>
-        <div className="flex justify-between gap-6"><span>Avg latency</span><span className="text-strong font-mono">{d.avgLatency}ms</span></div>
+        <div className="flex justify-between gap-6"><span>Costo</span><span className="text-accent font-mono font-semibold">{formatCost(d.cost)}</span></div>
+        <div className="flex justify-between gap-6"><span>Latencia media</span><span className="text-strong font-mono">{d.avgLatency}ms</span></div>
       </div>
     </div>
   )
@@ -43,7 +44,7 @@ function ProviderTooltip({ active, payload }) {
 
 export function ProviderChart({ data }) {
   if (!data?.length) return (
-    <div className="flex items-center justify-center h-48 text-sm text-muted">No data for this period</div>
+    <div className="flex items-center justify-center h-48 text-sm text-muted">Sin datos en este período</div>
   )
 
   const donutData = data.map((d, i) => ({
@@ -56,15 +57,15 @@ export function ProviderChart({ data }) {
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
 
       {/* Bar chart — cost + requests */}
-      <div className="bg-card border border-border rounded-xl shadow-card p-5">
-        <div className="flex items-center justify-between mb-4"><div className="text-xs font-semibold text-muted uppercase tracking-widest">Cost by provider</div><ExportBtn onClick={() => { const ts=new Date().toISOString().slice(0,10); downloadCSV(toCSV(data,PROVIDER_COLUMNS),`stratum-providers-${ts}.csv`) }} /></div>
+      <div className="bg-card border border-border rounded-[10px] p-5">
+        <div className="flex items-center justify-between mb-4"><div className="text-xs font-semibold text-muted uppercase tracking-widest">Costo por proveedor</div><ExportBtn onClick={() => { const ts=new Date().toISOString().slice(0,10); downloadCSV(toCSV(data,PROVIDER_COLUMNS),`stratum-providers-${ts}.csv`) }} /></div>
         <ResponsiveContainer width="100%" height={200}>
           <BarChart data={data} barGap={6}>
-            <CartesianGrid vertical={false} stroke="#f3f4f6" />
-            <XAxis dataKey="provider" tick={{ fill: '#9ca3af', fontSize: 11 }} axisLine={false} tickLine={false} />
-            <YAxis tick={{ fill: '#9ca3af', fontSize: 11 }} axisLine={false} tickLine={false}
+            <CartesianGrid vertical={false} stroke="#eef0f3" />
+            <XAxis dataKey="provider" tick={{ fill: '#6b7380', fontSize: 11 }} axisLine={false} tickLine={false} />
+            <YAxis tick={{ fill: '#6b7380', fontSize: 11 }} axisLine={false} tickLine={false}
               tickFormatter={v => formatCost(v)} width={72} />
-            <Tooltip content={<ProviderTooltip />} cursor={{ fill: '#f9fafb' }} />
+            <Tooltip content={<ProviderTooltip />} cursor={{ fill: '#eef0f3' }} />
             <Bar dataKey="cost" radius={[4,4,0,0]}>
               {data.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
             </Bar>
@@ -73,8 +74,8 @@ export function ProviderChart({ data }) {
       </div>
 
       {/* Donut — cost share */}
-      <div className="bg-card border border-border rounded-xl shadow-card p-5">
-        <div className="text-xs font-semibold text-muted uppercase tracking-widest mb-4">Cost distribution</div>
+      <div className="bg-card border border-border rounded-[10px] p-5">
+        <div className="text-xs font-semibold text-muted uppercase tracking-widest mb-4">Distribución del costo</div>
         <div className="flex items-center gap-4">
           <ResponsiveContainer width={140} height={140}>
             <PieChart>
@@ -99,16 +100,16 @@ export function ProviderChart({ data }) {
       </div>
 
       {/* Stats table */}
-      <div className="bg-card border border-border rounded-xl shadow-card overflow-hidden lg:col-span-2">
-        <table className="w-full text-sm">
+      <div className="bg-card border border-border rounded-[10px] overflow-x-auto relative lg:col-span-2">
+        <table className="w-full min-w-[640px] text-sm">
           <thead>
             <tr className="text-xs text-muted uppercase tracking-widest bg-raised border-b border-border">
-              <th className="px-5 py-3 text-left font-semibold">Provider</th>
+              <th className="px-5 py-3 text-left font-semibold">Proveedor</th>
               <th className="px-5 py-3 text-right font-semibold">Requests</th>
               <th className="px-5 py-3 text-right font-semibold">Tokens</th>
-              <th className="px-5 py-3 text-right font-semibold">Cost</th>
-              <th className="px-5 py-3 text-right font-semibold">Avg latency</th>
-              <th className="px-5 py-3 text-right font-semibold">Errors</th>
+              <th className="px-5 py-3 text-right font-semibold">Costo</th>
+              <th className="px-5 py-3 text-right font-semibold">Latencia media</th>
+              <th className="px-5 py-3 text-right font-semibold">Errores</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
@@ -149,9 +150,9 @@ function ModelTooltip({ active, payload }) {
       <div className="text-xs text-muted mb-1">{d.provider}</div>
       <div className="space-y-1 text-muted">
         <div className="flex justify-between gap-6"><span>Requests</span><span className="text-strong font-mono">{d.requests.toLocaleString()}</span></div>
-        <div className="flex justify-between gap-6"><span>Input tokens</span><span className="text-strong font-mono">{formatTokens(d.tokensInput)}</span></div>
-        <div className="flex justify-between gap-6"><span>Output tokens</span><span className="text-strong font-mono">{formatTokens(d.tokensOutput)}</span></div>
-        <div className="flex justify-between gap-6"><span>Cost</span><span className="text-accent font-mono font-semibold">{formatCost(d.cost)}</span></div>
+        <div className="flex justify-between gap-6"><span>Tokens de entrada</span><span className="text-strong font-mono">{formatTokens(d.tokensInput)}</span></div>
+        <div className="flex justify-between gap-6"><span>Tokens de salida</span><span className="text-strong font-mono">{formatTokens(d.tokensOutput)}</span></div>
+        <div className="flex justify-between gap-6"><span>Costo</span><span className="text-accent font-mono font-semibold">{formatCost(d.cost)}</span></div>
       </div>
     </div>
   )
@@ -159,7 +160,7 @@ function ModelTooltip({ active, payload }) {
 
 export function ModelChart({ data }) {
   if (!data?.length) return (
-    <div className="flex items-center justify-center h-48 text-sm text-muted">No data for this period</div>
+    <div className="flex items-center justify-center h-48 text-sm text-muted">Sin datos en este período</div>
   )
 
   const chartData = [...data].sort((a, b) => b.cost - a.cost).slice(0, 8)
@@ -167,16 +168,16 @@ export function ModelChart({ data }) {
   return (
     <div className="space-y-5">
       {/* Horizontal bar — cost by model */}
-      <div className="bg-card border border-border rounded-xl shadow-card p-5">
-        <div className="text-xs font-semibold text-muted uppercase tracking-widest mb-4">Cost by model</div>
+      <div className="bg-card border border-border rounded-[10px] p-5">
+        <div className="text-xs font-semibold text-muted uppercase tracking-widest mb-4">Costo por modelo</div>
         <ResponsiveContainer width="100%" height={Math.max(180, chartData.length * 36)}>
           <BarChart data={chartData} layout="vertical" barCategoryGap="30%">
-            <CartesianGrid horizontal={false} stroke="#f3f4f6" />
-            <XAxis type="number" tick={{ fill: '#9ca3af', fontSize: 11 }} axisLine={false}
+            <CartesianGrid horizontal={false} stroke="#eef0f3" />
+            <XAxis type="number" tick={{ fill: '#6b7380', fontSize: 11 }} axisLine={false}
               tickLine={false} tickFormatter={v => formatCost(v)} />
-            <YAxis type="category" dataKey="model" tick={{ fill: '#374151', fontSize: 11 }}
+            <YAxis type="category" dataKey="model" tick={{ fill: '#2b313c', fontSize: 11 }}
               axisLine={false} tickLine={false} width={160} />
-            <Tooltip content={<ModelTooltip />} cursor={{ fill: '#f9fafb' }} />
+            <Tooltip content={<ModelTooltip />} cursor={{ fill: '#eef0f3' }} />
             <Bar dataKey="cost" radius={[0,4,4,0]}>
               {chartData.map((d, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
             </Bar>
@@ -185,18 +186,18 @@ export function ModelChart({ data }) {
       </div>
 
       {/* Detail table */}
-      <div className="bg-card border border-border rounded-xl shadow-card overflow-hidden">
-        <div className="flex items-center justify-between px-5 pt-4 pb-0"><div className="text-xs font-semibold text-muted uppercase tracking-widest">Model detail</div><ExportBtn onClick={() => { const ts=new Date().toISOString().slice(0,10); downloadCSV(toCSV(data,MODEL_COLUMNS),`stratum-models-${ts}.csv`) }} /></div>
-        <table className="w-full text-sm">
+      <div className="bg-card border border-border rounded-[10px] overflow-x-auto relative">
+        <div className="flex items-center justify-between px-5 pt-4 pb-0"><div className="text-xs font-semibold text-muted uppercase tracking-widest">Detalle por modelo</div><ExportBtn onClick={() => { const ts=new Date().toISOString().slice(0,10); downloadCSV(toCSV(data,MODEL_COLUMNS),`stratum-models-${ts}.csv`) }} /></div>
+        <table className="w-full min-w-[640px] text-sm">
           <thead>
             <tr className="text-xs text-muted uppercase tracking-widest bg-raised border-b border-border">
-              <th className="px-5 py-3 text-left font-semibold">Model</th>
-              <th className="px-5 py-3 text-left font-semibold">Provider</th>
+              <th className="px-5 py-3 text-left font-semibold">Modelo</th>
+              <th className="px-5 py-3 text-left font-semibold">Proveedor</th>
               <th className="px-5 py-3 text-right font-semibold">Requests</th>
-              <th className="px-5 py-3 text-right font-semibold">Input</th>
-              <th className="px-5 py-3 text-right font-semibold">Output</th>
-              <th className="px-5 py-3 text-right font-semibold">Cost</th>
-              <th className="px-5 py-3 text-right font-semibold">Avg latency</th>
+              <th className="px-5 py-3 text-right font-semibold">Entrada</th>
+              <th className="px-5 py-3 text-right font-semibold">Salida</th>
+              <th className="px-5 py-3 text-right font-semibold">Costo</th>
+              <th className="px-5 py-3 text-right font-semibold">Latencia media</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">

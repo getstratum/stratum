@@ -23,28 +23,28 @@ export default function TeamsTable({ teams, policies }) {
 
   if (!teams?.length) {
     return (
-      <div className="bg-card border border-border rounded-xl shadow-card px-5 py-10 text-center text-muted text-sm">
-        No requests this month yet.
+      <div className="bg-card border border-border rounded-[10px] px-5 py-10 text-center text-muted text-sm">
+        Todavía no hay requests este mes.
       </div>
     )
   }
 
   return (
-    <div className="bg-card border border-border rounded-xl shadow-card overflow-hidden">
+    <div className="relative bg-card border border-border rounded-[10px] overflow-x-auto">
       <div className="px-5 py-3.5 border-b border-border">
         <span className="text-xs font-semibold text-muted uppercase tracking-widest">
-          Usage by team · current month
+          Consumo por equipo · este mes
         </span>
       </div>
-      <table className="w-full text-sm">
+      <table className="w-full min-w-[640px] text-sm">
         <thead>
           <tr className="text-xs text-muted uppercase tracking-widest bg-raised border-b border-border">
-            <th className="px-5 py-3 text-left font-semibold">Team</th>
+            <th className="px-5 py-3 text-left font-semibold">Equipo</th>
             <th className="px-5 py-3 text-right font-semibold">Requests</th>
             <th className="px-5 py-3 text-right font-semibold">Tokens</th>
-            <th className="px-5 py-3 text-right font-semibold">Cost</th>
-            <th className="px-5 py-3 text-left font-semibold w-44">Budget</th>
-            <th className="px-5 py-3 text-left font-semibold">Policy</th>
+            <th className="px-5 py-3 text-right font-semibold">Costo</th>
+            <th className="px-5 py-3 text-left font-semibold w-44">Presupuesto</th>
+            <th className="px-5 py-3 text-left font-semibold">Política</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
@@ -59,7 +59,7 @@ export default function TeamsTable({ teams, policies }) {
                 <td className="px-5 py-4">
                   <div className="font-semibold text-strong">{team.team_name}</div>
                   <div className="text-xs text-muted mt-0.5">
-                    {team.active_users} member{team.active_users != 1 ? 's' : ''}
+                    {team.active_users} persona{team.active_users != 1 ? 's' : ''} activa{team.active_users != 1 ? 's' : ''}
                   </div>
                 </td>
                 <td className="px-5 py-4 text-right text-strong tabular-nums font-mono text-sm">
