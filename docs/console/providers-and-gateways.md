@@ -77,3 +77,32 @@ an agent's fixed model replaces it in the URL.
   using it on upgrade: review them first.
 - Provider configurations saved before migration 018 show their credential
   as "configured" (no last-four preview) until it is replaced.
+
+## Policies: providers and models
+
+A team's policy decides what its keys may use, and gateways enforce it:
+
+- **Providers:** all those configured in the organization, or only some.
+- **Models:** all of them, or only the ones chosen. A policy that chooses
+  none allows nothing: every request of the team is refused
+  (`model_not_allowed`).
+
+### The model catalog
+
+The list of models comes from the catalog (`ai_models`), shared by every
+organization, with list prices used to estimate costs. Migration 023 brings
+it up to date and adds **aliases**: other IDs of the same model.
+Anthropic models before the 4.6 generation have a dated ID and a short alias
+(`claude-haiku-4-5-20251001` and `claude-haiku-4-5`); OpenAI has the reverse
+(`gpt-5.5` and the snapshot `gpt-5.5-2026-04-23`).
+
+- A policy that allows a model allows every ID of it. Allowed as
+  `provider/model`, it is allowed only with that provider.
+- The cost of a request is found by the model's ID or an alias.
+- A model outside the catalog can still be allowed by its exact ID; its cost
+  is recorded as 0.
+- A change to the catalog reaches gateways in the next sync: it makes a new
+  version of every policy that lists models.
+- Prices are list prices of the date in the migration, for the shortest
+  prompt-length tier. A new price applies to requests from then on; costs
+  already recorded are not recalculated.

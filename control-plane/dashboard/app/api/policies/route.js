@@ -22,11 +22,13 @@ export const POST = route('policies.manage', async (req, { session, db }) => {
   if (!f.name) throw badRequest('El nombre es obligatorio.')
   const { rows } = await db.query(`
     INSERT INTO policies
-      (org_id, name, allowed_models, max_tokens_per_request, monthly_token_quota, monthly_budget_usd)
-    VALUES ($1, $2, $3, $4, $5, $6)
+      (org_id, name, allowed_models, max_tokens_per_request, monthly_token_quota, monthly_budget_usd,
+       allow_all_models, allowed_providers)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
     RETURNING *
   `, [session.orgId, f.name, f.allowedModels ?? [], f.maxTokensPerRequest ?? 4096,
-      f.monthlyTokenQuota ?? 1000000, f.monthlyBudgetUsd ?? 100])
+      f.monthlyTokenQuota ?? 1000000, f.monthlyBudgetUsd ?? 100,
+      f.allowAllModels ?? false, f.allowedProviders ?? null])
   await audit(db, { req, session, action: 'policy.create', targetType: 'policy', targetId: rows[0].id, details: f })
   return json(rows[0], 201)
 })

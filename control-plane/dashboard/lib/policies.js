@@ -3,6 +3,7 @@
  */
 
 import { badRequest } from './route.js'
+import { describe } from './providers.js'
 
 function optionalNumber(v, label, { integer = false } = {}) {
   if (v === undefined || v === null) return undefined
@@ -24,9 +25,25 @@ export function policyFields(body) {
     }
     out.allowedModels = [...new Set(body.allowedModels)]
   }
+  if (body.allowAllModels !== undefined) {
+    if (typeof body.allowAllModels !== 'boolean') throw badRequest('allowAllModels tiene que ser true o false.')
+    out.allowAllModels = body.allowAllModels
+  }
+  // null: every provider configured in the organization.
+  if (body.allowedProviders !== undefined) {
+    if (body.allowedProviders === null) {
+      out.allowedProviders = null
+    } else if (!Array.isArray(body.allowedProviders) || body.allowedProviders.length === 0 ||
+               body.allowedProviders.some(p => !describe(p))) {
+      // Empty is refused: gateways read an empty list as "all".
+      throw badRequest('allowedProviders tiene que ser una lista de proveedores, o null para todos.')
+    } else {
+      out.allowedProviders = [...new Set(body.allowedProviders)]
+    }
+  }
   out.maxTokensPerRequest = optionalNumber(body.maxTokensPerRequest, 'Máximo de tokens por request', { integer: true })
   out.monthlyTokenQuota   = optionalNumber(body.monthlyTokenQuota, 'Cuota mensual de tokens', { integer: true })
   out.monthlyBudgetUsd    = optionalNumber(body.monthlyBudgetUsd, 'Presupuesto mensual')
-  for (const k of Object.keys(out)) if (out[k] === undefined) delete out[k]
+  for (const k of Object.keys(out)) if (out[k] === undefined) delete out[k]  // null stays: it means "all"
   return out
 }

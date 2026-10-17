@@ -125,6 +125,17 @@ test('usage: a cost past the column is capped, not a failed batch', { skip }, as
   assert.equal(Number(row.cost_usd), 9999.999999)
 })
 
+test('usage: the cost is found by model ID or alias (migration 023)', { skip }, async () => {
+  const alias = record(A, { provider: 'anthropic', model: 'claude-haiku-4-5', tokens_in: 1000, tokens_out: 500 })
+  const dated = record(A, { provider: 'anthropic', model: 'claude-haiku-4-5-20251001', tokens_in: 1000, tokens_out: 500 })
+  const gemini = record(A, { provider: 'gemini', model: 'gemini-3.8-flash', tokens_in: 1000, tokens_out: 1000 })
+  assert.equal((await post(A.token, { records: [alias, dated, gemini] })).body.accepted, 3)
+  const cost = async r => Number((await sql('SELECT cost_usd FROM request_logs WHERE id = $1', [r.id]))[0].cost_usd)
+  assert.equal(await cost(alias), 0.0035) // 1000 × $1/M + 500 × $5/M
+  assert.equal(await cost(dated), 0.0035)
+  assert.equal(await cost(gemini), 0.0045) // provider "gemini", as gateways call it
+})
+
 test('usage: IDs from another organization are not attributed', { skip }, async () => {
   // A gateway of B reports A's team, person and agent.
   const r1 = record(B, { key_id: A.user, team_id: A.team })

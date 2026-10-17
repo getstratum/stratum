@@ -56,7 +56,8 @@ export async function buildSyncResponse(client, { orgId, sinceVersion, syncInter
         t.id::text                                       AS team_id,
         GREATEST(COALESCE(p.version, 0), t.policy_version) AS version,
         p.updated_at,
-        COALESCE(p.allowed_models, '{}')                 AS allowed_models,
+        -- Every ID of each model the policy names (migration 023).
+        stratum_expand_models(p.allowed_models)          AS allowed_models,
         COALESCE(p.allow_all_models, false)              AS allow_all_models,
         p.monthly_token_quota,
         p.monthly_budget_usd,

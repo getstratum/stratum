@@ -272,3 +272,39 @@ test('an agent without a team or another organization\'s agent never works here'
   assert.equal(key(body, `agent:${noTeam.id}`).revoked, true)
   assert.equal(key(body, `agent:${other.id}`), undefined)
 })
+
+test('a policy that names a model allows every ID of it (migration 023)', { skip }, async () => {
+  const f = await fixture()
+  await sql(`UPDATE policies SET allowed_models = '{claude-haiku-4-5-20251001,openai/gpt-5.5,my-own-model}' WHERE id = $1`, [f.p1])
+  const allowed = policyOf(await sync(f.org, 0), f.team).allowed_models
+  for (const id of ['claude-haiku-4-5-20251001', 'claude-haiku-4-5', 'openai/gpt-5.5', 'openai/gpt-5.5-2026-04-23', 'my-own-model']) {
+    assert.ok(allowed.includes(id), `${id} in ${allowed}`)
+  }
+  // Named with its provider, it is allowed only with its provider.
+  assert.ok(!allowed.includes('gpt-5.5-2026-04-23'))
+  assert.ok(!allowed.includes('claude-sonnet-4-6'))
+})
+
+test('a change to a model\'s IDs is a new version of the policies that name it; a price change is not', { skip }, async () => {
+  const f = await fixture()
+  await sql(`UPDATE policies SET allowed_models = '{claude-haiku-4-5}', allow_all_models = false WHERE id = $1`, [f.p2])
+  const versions = async c => Object.fromEntries((await c.query(
+    'SELECT id::text, version FROM policies WHERE id = ANY($1::uuid[])', [[f.p1, f.p2]])).rows.map(r => [r.id, Number(r.version)]))
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN') // rolled back: other tests never see it
+    const v0 = await versions(client)
+    await client.query(`UPDATE ai_models SET cost_per_1k_input_tokens = 0.0011 WHERE model_id = 'claude-haiku-4-5-20251001'`)
+    assert.deepEqual(await versions(client), v0, 'a price allows nothing new')
+    await client.query(`UPDATE ai_models SET aliases = '{claude-haiku-4-5,claude-haiku-latest}' WHERE model_id = 'claude-haiku-4-5-20251001'`)
+    const v1 = await versions(client)
+    assert.ok(v1[f.p2] > v0[f.p2], 'p2 names Haiku: new version')
+    assert.equal(v1[f.p1], v0[f.p1], 'p1 lists only gpt-4o: unchanged')
+    await client.query(`INSERT INTO ai_models (provider, model_id, display_name) VALUES ('openai', 'sync-test-model', 'x')`)
+    await client.query(`DELETE FROM ai_models WHERE model_id = 'sync-test-model'`)
+    assert.deepEqual(await versions(client), v1, 'a model no policy names moves nothing')
+  } finally {
+    await client.query('ROLLBACK')
+    client.release()
+  }
+})

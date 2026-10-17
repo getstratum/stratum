@@ -147,6 +147,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	model, _ := body["model"].(string)
+	rec.model = model // as asked, until the route is resolved: errors before that still say what was asked
 	pol, polFound := snap.PolicyForTeam(key.TeamID)
 
 	// The request's API format: Anthropic Messages or OpenAI-compatible.
