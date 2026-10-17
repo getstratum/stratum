@@ -172,7 +172,7 @@ test('sign-in: a wrong password is refused without saying why', async () => {
 
 test('sign-in: the owner gets in and sees every section', async () => {
   await signIn(OWNER.email, OWNER.password)
-  for (const name of ['Overview', 'Users', 'Agents', 'Providers', 'Gateways', 'Audit log']) {
+  for (const name of ['Inicio', 'Proveedores', 'Modelos', 'Gateways', 'Usuarios', 'Agentes', 'Políticas', 'Consumo', 'Auditoría']) {
     await expect(nav().getByRole('link', { name, exact: true })).toBeVisible()
   }
   const me = await api('GET', '/api/session')
@@ -265,6 +265,17 @@ test('gateways: the installation\'s own gateways are syncing', async () => {
   expect(live.length, 'at least one gateway synced in the last 2 minutes').toBeGreaterThan(0)
 })
 
+// --- models ----------------------------------------------------------------------
+
+test('models: the catalog lists each model with its aliases and prices', async () => {
+  await page.goto('/models')
+  await expect(page.getByRole('heading', { level: 1, name: 'Modelos' })).toBeVisible()
+  const haiku = page.locator('tr').filter({ hasText: 'claude-haiku-4-5-20251001' })
+  await expect(haiku).toContainText('también claude-haiku-4-5')
+  await page.getByRole('button', { name: 'openai', exact: true }).click()
+  await expect(page.locator('tr').filter({ hasText: 'claude-haiku-4-5-20251001' })).toHaveCount(0)
+})
+
 // --- agents and the gateway ---------------------------------------------------------
 
 test('agents: a new key works through the gateway, and stops working when revoked', async () => {
@@ -272,18 +283,18 @@ test('agents: a new key works through the gateway, and stops working when revoke
   const name = `${RUN}-agent`
   created.agentNames.push(name)
   await page.goto('/agents')
-  await page.getByRole('button', { name: '+ New agent' }).click()
-  const d = dialog('New agent')
-  await d.getByLabel('Name').fill(name)
+  await page.getByRole('button', { name: '+ Nuevo agente' }).click()
+  const d = dialog('Nuevo agente')
+  await d.getByLabel('Nombre').fill(name)
   // Options read "<team> · <policy>".
-  const team = d.getByLabel('Team')
+  const team = d.getByLabel('Equipo')
   await team.selectOption(await team.locator('option', { hasText: TEAM }).first().getAttribute('value'))
-  await d.getByRole('button', { name: 'Create agent' }).click()
+  await d.getByRole('button', { name: 'Crear agente' }).click()
 
-  const reveal = dialog('Agent key generated')
+  const reveal = dialog('Key del agente generada')
   const key = (await reveal.getByTestId('revealed-key').textContent()).trim()
   expect(key).toMatch(/^aig_agt_[0-9a-f]{48}$/)
-  await reveal.getByRole('button', { name: /close/ }).click()
+  await reveal.getByRole('button', { name: /cerrar/ }).click()
 
   expect(await callGateway(`${key}x`), 'an unknown key').toBe(401)
   const t0 = Date.now()
@@ -299,8 +310,16 @@ test('agents: a new key works through the gateway, and stops working when revoke
   }, 'counted', SYNC_MS, "the agent's request in the console's usage")
   console.log(`  usage reported ${((Date.now() - t2) / 1000).toFixed(1)} s after the request`)
 
+  // The agent's consumption, from its row: the request is there.
+  await page.reload()
   const row = page.getByTestId('agent-row').filter({ hasText: name })
-  await row.getByRole('button', { name: 'Revoke key' }).click()
+  await row.getByRole('link', { name: 'Ver consumo' }).click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Consumo' })).toBeVisible()
+  await expect(page.getByText(`Agente: ${name}`)).toBeVisible()
+  await expect(page.locator('table tbody tr').first()).toBeVisible()
+  await page.goto('/agents')
+
+  await row.getByRole('button', { name: 'Revocar key' }).click()
   const t1 = Date.now()
   await eventually(() => callGateway(key), 401, SYNC_MS, 'the revoked key through the gateway')
   console.log(`  key refused ${((Date.now() - t1) / 1000).toFixed(1)} s after revocation`)
@@ -326,7 +345,7 @@ test('users: the owner creates an auditor', async () => {
 test('roles: an auditor reads but cannot change anything', async () => {
   await signOut()
   await signIn(auditor.email, auditor.password)
-  await expect(nav().getByRole('link', { name: 'Audit log' })).toBeVisible()
+  await expect(nav().getByRole('link', { name: 'Auditoría' })).toBeVisible()
   await page.goto('/providers')
   await expect(page.getByRole('heading', { name: 'Proveedores' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Agregar proveedor' })).toHaveCount(0)
@@ -341,9 +360,9 @@ test('roles: an auditor reads but cannot change anything', async () => {
   await expect(page.getByRole('button', { name: /^(Editar|Desactivar|Revocar key)$/ })).toHaveCount(0)
   await page.goto('/agents')
   await page.waitForLoadState('networkidle')
-  await expect(page.getByRole('heading', { name: 'Agents' })).toBeVisible()
-  await expect(page.getByRole('button', { name: '+ New agent' })).toHaveCount(0)
-  await expect(page.getByRole('button', { name: /^(Edit|Rotate key|Deactivate)$/ })).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: 'Agentes' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '+ Nuevo agente' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: /^(Editar|Rotar key|Desactivar)$/ })).toHaveCount(0)
 
   // The server refuses even when the UI is bypassed.
   expect((await api('POST', '/api/users', { email: `${RUN}-x@example.com`, giveApiKey: true })).status).toBe(403)
@@ -406,7 +425,7 @@ test('two-step: a new admin has to set it up before using the console', async ()
   await signIn(admin.email, admin.password, { landing: '/account' })
   await expect(page.getByText('Tu rol requiere la verificación en dos pasos')).toBeVisible()
   expect((await api('GET', '/api/users')).body?.error).toBe('mfa_enrollment_required')
-  await expect(nav().getByRole('link', { name: 'Users' })).toHaveCount(0)
+  await expect(nav().getByRole('link', { name: 'Usuarios' })).toHaveCount(0)
 
   await page.getByRole('button', { name: 'Configurar' }).click()
   await page.getByLabel('Tu contraseña, para confirmar').fill(admin.password)
@@ -424,7 +443,7 @@ test('two-step: a new admin has to set it up before using the console', async ()
   admin.recovery = await codes.allTextContents()
   await page.getByRole('button', { name: 'Ya los guardé' }).click()
   await page.waitForURL((u) => new URL(u).pathname === '/')
-  await expect(nav().getByRole('link', { name: 'Users' })).toBeVisible()
+  await expect(nav().getByRole('link', { name: 'Usuarios' })).toBeVisible()
 })
 
 test('two-step: the next sign-in asks for a code; a recovery code works once', async () => {

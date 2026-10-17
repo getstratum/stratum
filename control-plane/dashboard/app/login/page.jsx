@@ -79,20 +79,15 @@ export default function LoginPage() {
     <div className="min-h-screen bg-app flex items-center justify-center px-4">
       <div className="w-full max-w-sm">
 
-        <div className="flex items-center justify-center gap-3 mb-8">
-          <div className="w-9 h-9 rounded-xl bg-accent flex items-center justify-center shadow-sm">
-            <svg width="16" height="16" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-              <path d="M6 1L11 6L6 11L1 6L6 1Z" fill="white"/>
-            </svg>
-          </div>
-          <span className="text-xl font-bold text-strong tracking-tight">Stratum</span>
+        <div className="flex flex-col items-center gap-1.5 mb-7">
+          <span className="text-[22px] font-semibold text-strong tracking-tight">Stratum</span>
+          <span className="text-sm text-muted">Consola de administración</span>
         </div>
 
-        <div className="bg-card border border-border rounded-2xl shadow-card p-8">
+        <div className="bg-card border border-border rounded-[10px] p-8">
           {!challenge ? (
             <>
-              <h1 className="text-base font-semibold text-strong mb-1">Ingresar</h1>
-              <p className="text-sm text-muted mb-6">Consola de administración</p>
+              <h1 className="text-xl font-semibold text-strong mb-6">Ingresá a tu organización</h1>
 
               <form onSubmit={handlePassword} className="space-y-4">
                 <div>
@@ -108,7 +103,7 @@ export default function LoginPage() {
                 </div>
                 {error && <p role="alert" className="text-xs text-err bg-err-light rounded-lg px-3 py-2">{error}</p>}
                 <button type="submit" disabled={loading || redirecting || !email || !password}
-                  className="w-full bg-accent hover:bg-accent-hover disabled:opacity-40 text-white font-semibold rounded-lg py-2.5 text-sm transition-colors shadow-sm mt-2">
+                  className="w-full bg-ink hover:bg-ink-hover disabled:opacity-40 text-white font-semibold rounded-lg py-2.5 text-sm transition-colors shadow-sm mt-2">
                   {redirecting ? 'Entrando…' : loading ? 'Verificando…' : 'Continuar'}
                 </button>
               </form>
@@ -129,7 +124,7 @@ export default function LoginPage() {
                 </div>
                 {error && <p role="alert" className="text-xs text-err bg-err-light rounded-lg px-3 py-2">{error}</p>}
                 <button type="submit" disabled={loading || redirecting || !code.trim()}
-                  className="w-full bg-accent hover:bg-accent-hover disabled:opacity-40 text-white font-semibold rounded-lg py-2.5 text-sm transition-colors shadow-sm">
+                  className="w-full bg-ink hover:bg-ink-hover disabled:opacity-40 text-white font-semibold rounded-lg py-2.5 text-sm transition-colors shadow-sm">
                   {redirecting ? 'Entrando…' : loading ? 'Verificando…' : 'Ingresar'}
                 </button>
                 <button type="button" onClick={restart} className="w-full text-xs text-muted hover:text-default">

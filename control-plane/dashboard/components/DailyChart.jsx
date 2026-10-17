@@ -1,76 +1,42 @@
 'use client'
 
+import Link from 'next/link'
 import {
   ResponsiveContainer, BarChart, Bar,
   XAxis, YAxis, Tooltip, CartesianGrid,
 } from 'recharts'
 import { formatCost } from '../lib/format'
 
+// Requests per day, one series on one axis; the cost of each day is in the
+// tooltip (two measures never share a chart with two scales).
 function CustomTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null
+  const d = payload[0].payload
   return (
     <div className="bg-card border border-border rounded-lg px-3 py-2.5 shadow-dropdown text-sm">
-      <div className="text-muted mb-1.5 text-xs font-medium">{label}</div>
-      <div className="flex flex-col gap-1">
-        <div className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-sm bg-accent inline-block" />
-          <span className="text-strong font-semibold">{payload[0]?.value ?? 0} requests</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-sm bg-accent/40 inline-block" />
-          <span className="text-muted">{formatCost(payload[1]?.value ?? 0)}</span>
-        </div>
-      </div>
+      <div className="text-muted mb-1 text-xs font-medium">{label}</div>
+      <div className="text-strong font-semibold tabular">{(d.requests ?? 0).toLocaleString('es-UY')} requests</div>
+      <div className="text-muted text-xs tabular">{formatCost(d.cost ?? 0)} estimado</div>
     </div>
   )
 }
 
 export default function DailyChart({ data }) {
   return (
-    <div className="bg-card rounded-xl border border-border shadow-card p-5 h-full">
-      <div className="text-xs font-semibold text-muted uppercase tracking-widest mb-5">
-        Activity — last 7 days
+    <div className="bg-card rounded-[10px] border border-border p-5 h-full">
+      <div className="flex items-baseline justify-between gap-3 mb-4">
+        <h2 className="text-base font-semibold text-strong">Requests por día</h2>
+        <Link href="/usage" className="text-[13px] text-accent hover:text-accent-hover">Ver consumo</Link>
       </div>
       <ResponsiveContainer width="100%" height={180}>
-        <BarChart data={data} barGap={3} barCategoryGap="38%">
-          <CartesianGrid vertical={false} stroke="#f3f4f6" />
-          <XAxis
-            dataKey="day"
-            tick={{ fill: '#9ca3af', fontSize: 11 }}
-            axisLine={false}
-            tickLine={false}
-          />
-          <YAxis
-            yAxisId="req"
-            tick={{ fill: '#9ca3af', fontSize: 11 }}
-            axisLine={false}
-            tickLine={false}
-            width={30}
-          />
-          <YAxis
-            yAxisId="cost"
-            orientation="right"
-            tick={{ fill: '#9ca3af', fontSize: 11 }}
-            axisLine={false}
-            tickLine={false}
-            tickFormatter={v => formatCost(v)}
-            width={72}
-          />
-          <Tooltip content={<CustomTooltip />} cursor={{ fill: '#f3f4f6' }} />
-          <Bar yAxisId="req"  dataKey="requests" fill="#7c3aed" radius={[4,4,0,0]} />
-          <Bar yAxisId="cost" dataKey="cost"     fill="#7c3aed" radius={[4,4,0,0]} opacity={0.3} />
+        <BarChart data={data} barCategoryGap="38%">
+          <CartesianGrid vertical={false} stroke="#eef0f3" />
+          <XAxis dataKey="day" tick={{ fill: '#6b7380', fontSize: 11 }} axisLine={{ stroke: '#c9ced6' }} tickLine={false} />
+          <YAxis tick={{ fill: '#6b7380', fontSize: 11 }} axisLine={false} tickLine={false} width={36} allowDecimals={false} />
+          <Tooltip content={<CustomTooltip />} cursor={{ fill: '#eef0f3' }} />
+          <Bar dataKey="requests" fill="#2a78d6" radius={[4, 4, 0, 0]} isAnimationActive={false} />
         </BarChart>
       </ResponsiveContainer>
-      <div className="flex gap-5 mt-3">
-        <span className="flex items-center gap-1.5 text-xs text-muted">
-          <span className="w-2.5 h-2 rounded-sm bg-accent inline-block"/>
-          Requests
-        </span>
-        <span className="flex items-center gap-1.5 text-xs text-muted">
-          <span className="w-2.5 h-2 rounded-sm bg-accent/30 inline-block"/>
-          Cost
-        </span>
-      </div>
     </div>
   )
 }

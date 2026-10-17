@@ -58,9 +58,9 @@ function TraceDetail({ log }) {
               {' · '}total <span className="font-semibold text-strong">{total}ms</span>
             </div>
             <TraceBar label="Auth"     ms={auth}     total={total} color="bg-accent" />
-            <TraceBar label="Policy"   ms={policy}   total={total} color="bg-accent/60" />
-            <TraceBar label="Provider" ms={provider} total={total} color="bg-accent/30" />
-            {other > 2 && <TraceBar label="Other" ms={other} total={total} color="bg-border" />}
+            <TraceBar label="Política"   ms={policy}   total={total} color="bg-accent/60" />
+            <TraceBar label="Proveedor" ms={provider} total={total} color="bg-accent/30" />
+            {other > 2 && <TraceBar label="Otro" ms={other} total={total} color="bg-border" />}
           </div>
         ) : (
           <div className="text-xs text-subtle">
@@ -77,28 +77,28 @@ export default function RequestsLog({ logs }) {
 
   if (!logs?.length) {
     return (
-      <div className="bg-card border border-border rounded-xl shadow-card px-5 py-10 text-center text-muted text-sm">
-        No requests yet. Make a call to the gateway to see logs here.
+      <div className="bg-card border border-border rounded-[10px] px-5 py-10 text-center text-muted text-sm">
+        Todavía no hay requests. Cuando un cliente llame al gateway, aparecen acá.
       </div>
     )
   }
 
   return (
-    <div className="bg-card border border-border rounded-xl shadow-card overflow-hidden">
-      <table className="w-full text-sm">
+    <div className="relative bg-card border border-border rounded-[10px] overflow-x-auto">
+      <table className="w-full min-w-[640px] text-sm">
         <thead>
           <tr className="text-xs text-muted uppercase tracking-widest bg-raised border-b border-border">
             <th className="px-4 py-3 text-left w-6" />
-            <th className="px-4 py-3 text-left font-semibold">Timestamp</th>
-            <th className="px-4 py-3 text-left font-semibold">Provider</th>
-            <th className="px-4 py-3 text-left font-semibold">Model</th>
-            <th className="px-4 py-3 text-left font-semibold">Team</th>
-            <th className="px-4 py-3 text-left font-semibold">Source</th>
-            <th className="px-4 py-3 text-right font-semibold">In</th>
-            <th className="px-4 py-3 text-right font-semibold">Out</th>
-            <th className="px-4 py-3 text-right font-semibold">Cost</th>
-            <th className="px-4 py-3 text-right font-semibold">Latency</th>
-            <th className="px-4 py-3 text-center font-semibold">Status</th>
+            <th className="px-4 py-3 text-left font-semibold">Fecha</th>
+            <th className="px-4 py-3 text-left font-semibold">Proveedor</th>
+            <th className="px-4 py-3 text-left font-semibold">Modelo</th>
+            <th className="px-4 py-3 text-left font-semibold">Equipo</th>
+            <th className="px-4 py-3 text-left font-semibold">Origen</th>
+            <th className="px-4 py-3 text-right font-semibold">Ent.</th>
+            <th className="px-4 py-3 text-right font-semibold">Sal.</th>
+            <th className="px-4 py-3 text-right font-semibold">Costo</th>
+            <th className="px-4 py-3 text-right font-semibold">Latencia</th>
+            <th className="px-4 py-3 text-center font-semibold">Estado</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
@@ -127,8 +127,8 @@ export default function RequestsLog({ logs }) {
                 <td className="px-4 py-3.5 text-xs text-muted">{log.team_name ?? '—'}</td>
                 <td className="px-4 py-3.5 text-xs">
                   {log.agent_name
-                    ? <span className="bg-accent-light text-accent-text text-xs font-medium rounded-full px-2 py-0.5">agent</span>
-                    : <span className="text-muted">user</span>}
+                    ? <span className="bg-accent-light text-accent-text text-xs font-medium rounded-full px-2 py-0.5">agente</span>
+                    : <span className="text-muted">persona</span>}
                 </td>
                 <td className="px-4 py-3.5 text-right text-xs text-muted font-mono tabular-nums">
                   {parseInt(log.tokens_input).toLocaleString()}

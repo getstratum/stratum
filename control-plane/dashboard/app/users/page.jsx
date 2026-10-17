@@ -24,7 +24,7 @@ function ApiKeyReveal({ apiKey, onClose }) {
           </code>
           <button
             onClick={() => { navigator.clipboard.writeText(apiKey); setCopied(true); setTimeout(() => setCopied(false), 2000) }}
-            className="flex-shrink-0 bg-accent hover:bg-accent-hover text-white rounded-lg px-3 py-2 text-xs font-semibold transition-colors"
+            className="flex-shrink-0 bg-ink hover:bg-ink-hover text-white rounded-lg px-3 py-2 text-xs font-semibold transition-colors"
           >
             {copied ? '✓' : 'Copiar'}
           </button>
@@ -296,11 +296,11 @@ export default function UsersPage() {
   }
 
   return (
-    <div className="p-7 max-w-6xl">
+    <div className="px-4 py-6 md:px-10 md:py-8 max-w-6xl">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-xl font-bold text-strong">Usuarios</h1>
+          <h1 className="text-[26px] font-semibold text-strong tracking-tight">Usuarios</h1>
           <p className="text-sm text-muted mt-0.5">
             {users.length} usuarios · {teams.length} equipos
           </p>
@@ -329,7 +329,7 @@ export default function UsersPage() {
       </div>
 
       {/* Table */}
-      <div className="bg-card border border-border rounded-xl overflow-hidden shadow-card">
+      <div className="relative bg-card border border-border rounded-[10px] overflow-x-auto">
         {loading ? (
           <div className="p-10 text-center text-muted text-sm">Cargando…</div>
         ) : filtered.length === 0 ? (
@@ -337,7 +337,7 @@ export default function UsersPage() {
             {search ? 'No hay usuarios que coincidan con la búsqueda' : 'No hay usuarios todavía'}
           </div>
         ) : (
-          <table className="w-full text-sm">
+          <table className="w-full min-w-[640px] text-sm">
             <thead>
               <tr className="text-xs text-muted uppercase tracking-wide border-b border-border bg-raised">
                 <th className="px-5 py-3 text-left font-semibold">Usuario</th>

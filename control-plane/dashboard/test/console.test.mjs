@@ -184,16 +184,22 @@ test('testConnection: headers per protocol, model count, refusals', async () => 
     seen.push({ u, headers: init.headers })
     return new Response(JSON.stringify(body), { status })
   }
-  const ok = await testConnection('anthropic', 'sk-ant-x', { fetchImpl: fake(200, { data: [{}, {}, {}] }) })
+  const ok = await testConnection('anthropic', 'sk-ant-x', {
+    fetchImpl: fake(200, { data: [{ id: 'claude-opus-5-5' }, { id: 'claude-haiku-4-5-20251001' }, {}] }) })
   assert.deepEqual([ok.ok, ok.models], [true, 3])
-  assert.equal(seen[0].u, 'https://api.anthropic.com/v1/models')
+  assert.deepEqual(ok.ids, ['claude-opus-5-5', 'claude-haiku-4-5-20251001'], 'the IDs, for the model list')
+  assert.equal(seen[0].u, 'https://api.anthropic.com/v1/models?limit=1000', 'one page with every model')
   assert.equal(seen[0].headers['x-api-key'], 'sk-ant-x')
   const denied = await testConnection('openai', 'sk-x', { fetchImpl: fake(401, { error: 'no' }) })
   assert.deepEqual([denied.ok, denied.status], [false, 401])
   assert.equal(seen[1].headers.authorization, 'Bearer sk-x')
+  const gemini = await testConnection('gemini', 'k', { fetchImpl: fake(200, { data: [{ id: 'models/gemini-3.8-flash' }] }) })
+  assert.deepEqual(gemini.ids, ['gemini-3.8-flash'], 'without the "models/" prefix')
+  const native = await testConnection('gemini', 'k', { fetchImpl: fake(200, { models: [{ name: 'models/gemini-3.6-flash' }] }) })
+  assert.deepEqual(native.ids, ['gemini-3.6-flash'])
   const none = await testConnection('ollama', 'x', { fetchImpl: fake(200, {}) })
   assert.equal(none.ok, false)
-  assert.equal(seen.length, 2, 'ollama was not called')
+  assert.equal(seen.length, 4, 'ollama was not called')
 })
 
 // --- gateways ----------------------------------------------------------------

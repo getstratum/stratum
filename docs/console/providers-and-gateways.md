@@ -106,3 +106,13 @@ Anthropic models before the 4.6 generation have a dated ID and a short alias
 - Prices are list prices of the date in the migration, for the shortest
   prompt-length tier. A new price applies to requests from then on; costs
   already recorded are not recalculated.
+
+### Modelos
+
+The **Modelos** page lists the catalog with prices and aliases, and which
+policies allow each model. An Owner or Admin can **verify with the provider**:
+the control plane lists the models of the account with the saved credential
+(presets at their default address only) and marks which catalog models the
+account has, and which models of the account are not in the catalog.
+**Proveedores** shows, for each connection, how many of its catalog models
+some policy allows.

@@ -17,7 +17,7 @@ import { badRequest } from './route.js'
 // models: path that lists models, for the connection test (null: no test)
 // key:    whether a credential is required
 export const PRESETS = {
-  anthropic:  { label: 'Anthropic',     protocol: 'anthropic', base: 'https://api.anthropic.com',                                models: '/v1/models', key: true },
+  anthropic:  { label: 'Anthropic',     protocol: 'anthropic', base: 'https://api.anthropic.com',                                models: '/v1/models?limit=1000', key: true },
   openai:     { label: 'OpenAI',        protocol: 'openai',    base: 'https://api.openai.com',                                   models: '/v1/models', key: true },
   gemini:     { label: 'Google Gemini', protocol: 'openai',    base: 'https://generativelanguage.googleapis.com/v1beta/openai', models: '/models',    key: true },
   mistral:    { label: 'Mistral',       protocol: 'openai',    base: 'https://api.mistral.ai',                                   models: '/v1/models', key: true },
@@ -90,8 +90,11 @@ export function extraConfig(value, provider) {
  * presets at their default address: the control plane never calls an address
  * an administrator typed (it could point at the control plane's own network).
  *
- * @returns {{ ok: boolean, status?: number, models?: number, ms: number, message: string }}
+ * @returns {{ ok: boolean, status?: number, models?: number, ids?: string[], ms: number, message: string }}
+ *   ids: the model IDs the account can use (at most MAX_IDS).
  */
+export const MAX_IDS = 1000
+
 export async function testConnection(provider, apiKey, { fetchImpl = fetch, timeoutMs = 8000 } = {}) {
   const info = Object.hasOwn(PRESETS, provider) ? PRESETS[provider] : null
   if (!info?.models) return { ok: false, ms: 0, message: 'Este proveedor se prueba desde un gateway.' }
@@ -114,7 +117,14 @@ export async function testConnection(provider, apiKey, { fetchImpl = fetch, time
     }
     const body = await res.json().catch(() => null)
     const list = Array.isArray(body?.data) ? body.data : Array.isArray(body?.models) ? body.models : null
-    return { ok: true, status: res.status, ms, models: list?.length, message: 'Conexión correcta.' }
+    // OpenAI-compatible lists and Anthropic's use "id", Gemini's native one
+    // "name"; Gemini prefixes both with "models/".
+    const ids = (list ?? [])
+      .map(m => (typeof m?.id === 'string' ? m.id : typeof m?.name === 'string' ? m.name : null))
+      .map(id => id?.replace(/^models\//, ''))
+      .filter(id => id && id.length <= 200)
+      .slice(0, MAX_IDS)
+    return { ok: true, status: res.status, ms, models: list?.length, ids, message: 'Conexión correcta.' }
   } catch (err) {
     return { ok: false, ms: Date.now() - started, message: err?.name === 'TimeoutError' ? 'El proveedor no respondió a tiempo.' : 'No se pudo conectar con el proveedor.' }
   }

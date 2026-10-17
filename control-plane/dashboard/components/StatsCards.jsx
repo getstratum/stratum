@@ -1,14 +1,11 @@
 import { formatCost, formatTokens } from '../lib/format'
 
-function StatCard({ label, value, sub, icon }) {
+function StatCard({ label, value, sub }) {
   return (
-    <div className="bg-card rounded-xl border border-border shadow-card p-5">
-      <div className="flex items-center justify-between mb-3">
-        <span className="text-xs font-semibold text-muted uppercase tracking-widest">{label}</span>
-        <span className="text-lg">{icon}</span>
-      </div>
-      <div className="text-2xl font-bold text-strong tabular-nums">{value}</div>
-      {sub && <div className="text-xs text-subtle mt-1.5">{sub}</div>}
+    <div className="bg-card rounded-[10px] border border-border p-[18px] flex flex-col gap-1.5">
+      <span className="text-[13px] text-muted">{label}</span>
+      <span className="text-[26px] font-semibold text-strong tabular-nums">{value}</span>
+      {sub && <span className="text-xs text-muted">{sub}</span>}
     </div>
   )
 }
@@ -21,10 +18,10 @@ export default function StatsCards({ stats }) {
 
   return (
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-      <StatCard label="Requests"      value={reqs.toLocaleString()}  sub="this month"         icon="↗" />
-      <StatCard label="Tokens"        value={formatTokens(tokens)}   sub="input + output"     icon="⬡" />
-      <StatCard label="Estimated cost"value={formatCost(cost)}       sub="USD · current month" icon="$" />
-      <StatCard label="Active teams"  value={String(teams)}          sub="with requests"      icon="◈" />
+      <StatCard label="Requests"        value={reqs.toLocaleString('es-UY')} sub="en el período" />
+      <StatCard label="Tokens"          value={formatTokens(tokens)}   sub="entrada + salida" />
+      <StatCard label="Costo estimado"  value={formatCost(cost)}       sub="US$, precios de lista" />
+      <StatCard label="Equipos activos" value={String(teams)}          sub="con requests" />
     </div>
   )
 }

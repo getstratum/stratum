@@ -86,10 +86,10 @@ export default function AuditPage() {
   useEffect(() => { load() }, [load])
 
   return (
-    <div className="p-7 max-w-6xl">
+    <div className="px-4 py-6 md:px-10 md:py-8 max-w-6xl">
       <div className="flex flex-wrap items-end justify-between gap-4 mb-6">
         <div className="max-w-2xl">
-          <h1 className="text-lg font-semibold text-strong">Auditoría</h1>
+          <h1 className="text-[26px] font-semibold text-strong tracking-tight">Auditoría</h1>
           <p className="text-sm text-muted mt-1">
             Cada cambio hecho en la consola, cada inicio de sesión y cada intento sin permiso. Nadie puede editar ni borrar estas entradas.
           </p>

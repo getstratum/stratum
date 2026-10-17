@@ -31,7 +31,7 @@ function AlertModal({ teams, onSave, onClose }) {
 
   async function submit() {
     if (!form.teamId || !form.destination) {
-      setError('Team and destination are required')
+      setError('El equipo y el destino son obligatorios.')
       return
     }
     setSaving(true); setError('')
@@ -42,46 +42,46 @@ function AlertModal({ teams, onSave, onClose }) {
         body:    JSON.stringify(form),
       })
       const data = await res.json()
-      if (!res.ok) { setError(data.message ?? data.error ?? 'Error saving'); return }
+      if (!res.ok) { setError(data.message ?? data.error ?? 'No se pudo guardar.'); return }
       onSave(data)
-    } catch { setError('Connection error') }
+    } catch { setError('No se pudo conectar con la consola.') }
     finally { setSaving(false) }
   }
 
   return (
-    <Modal title="New alert" onClose={onClose}>
+    <Modal title="Nueva alerta" onClose={onClose}>
       <div className="space-y-4">
-        <Field label="Team">
+        <Field label="Equipo">
           <Select value={form.teamId} onChange={e => set('teamId', e.target.value)}>
-            <option value="">Select team…</option>
+            <option value="">Elegí un equipo…</option>
             {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
           </Select>
         </Field>
 
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Alert when">
+          <Field label="Avisar cuando">
             <Select value={form.alertType} onChange={e => set('alertType', e.target.value)}>
               {ALERT_TYPES.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
             </Select>
           </Field>
-          <Field label="Threshold">
+          <Field label="Umbral">
             <Select value={form.thresholdPct} onChange={e => set('thresholdPct', parseInt(e.target.value))}>
               {THRESHOLDS.map(t => <option key={t} value={t}>{t}%</option>)}
             </Select>
           </Field>
         </div>
 
-        <Field label="Channel">
+        <Field label="Canal">
           <Select value={form.channel} onChange={e => set('channel', e.target.value)}>
             {CHANNELS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
           </Select>
         </Field>
 
         <Field
-          label={form.channel === 'email' ? 'Email address' : 'Slack webhook URL'}
+          label={form.channel === 'email' ? 'Dirección de email' : 'URL del webhook de Slack'}
           hint={form.channel === 'slack'
-            ? 'Get it from: Slack → Your workspace → Apps → Incoming Webhooks'
-            : 'Alert will be sent to this address'}
+            ? 'En Slack: tu workspace → Apps → Incoming Webhooks'
+            : 'La alerta se manda a esta dirección'}
         >
           <Input
             type={form.channel === 'email' ? 'email' : 'url'}
@@ -95,23 +95,23 @@ function AlertModal({ teams, onSave, onClose }) {
 
         {/* Preview */}
         {form.teamId && form.destination && (
-          <div className="bg-raised border border-line rounded p-3 text-2xs text-lo space-y-1">
-            <div className="text-mid font-medium">Preview</div>
+          <div className="bg-raised border border-border rounded p-3 text-[11px] text-muted space-y-1">
+            <div className="text-default font-medium">Vista previa</div>
             <div>
-              When <span className="text-hi">{teams.find(t => t.id === form.teamId)?.name ?? '—'}</span> reaches{' '}
-              <span className="text-hi">{form.thresholdPct}%</span> of its monthly{' '}
-              <span className="text-hi">{form.alertType}</span>, send a{' '}
-              <span className="text-hi">{form.channel}</span> to{' '}
-              <span className="text-hi font-mono">{form.destination.length > 40 ? form.destination.slice(0, 40) + '…' : form.destination}</span>.
+              When <span className="text-strong">{teams.find(t => t.id === form.teamId)?.name ?? '—'}</span> reaches{' '}
+              <span className="text-strong">{form.thresholdPct}%</span> of its monthly{' '}
+              <span className="text-strong">{form.alertType}</span>, send a{' '}
+              <span className="text-strong">{form.channel}</span> to{' '}
+              <span className="text-strong font-mono">{form.destination.length > 40 ? form.destination.slice(0, 40) + '…' : form.destination}</span>.
             </div>
           </div>
         )}
 
         {error && <p className="text-xs text-err">{error}</p>}
         <div className="flex gap-2 pt-1">
-          <Btn variant="secondary" onClick={onClose} className="flex-1">Cancel</Btn>
+          <Btn variant="secondary" onClick={onClose} className="flex-1">Cancelar</Btn>
           <Btn onClick={submit} disabled={saving} className="flex-1">
-            {saving ? 'Saving…' : 'Create alert'}
+            {saving ? 'Guardando…' : 'Crear alerta'}
           </Btn>
         </div>
       </div>
@@ -125,30 +125,30 @@ function AlertRow({ alert, onToggle, onDelete, onReset }) {
     && new Date(alert.last_fired_at).toDateString() === new Date().toDateString()
 
   return (
-    <tr className={`hover:bg-overlay/40 transition-colors ${!alert.is_active ? 'opacity-40' : ''}`}>
+    <tr className={`hover:bg-raised transition-colors ${!alert.is_active ? 'opacity-40' : ''}`}>
       <td className="px-5 py-3.5">
-        <div className="text-xs text-hi font-medium">{alert.team_name}</div>
+        <div className="text-xs text-strong font-medium">{alert.team_name}</div>
       </td>
-      <td className="px-5 py-3.5 text-xs text-mid">
-        {alert.alert_type === 'budget' ? 'Monthly budget' : 'Token quota'}
+      <td className="px-5 py-3.5 text-xs text-default">
+        {alert.alert_type === 'budget' ? 'Presupuesto mensual' : 'Cuota de tokens'}
       </td>
-      <td className="px-5 py-3.5 text-xs text-hi font-mono">{alert.threshold_pct}%</td>
-      <td className="px-5 py-3.5 text-2xs text-mid">{alert.channel}</td>
-      <td className="px-5 py-3.5 text-2xs text-lo font-mono max-w-xs truncate">
+      <td className="px-5 py-3.5 text-xs text-strong font-mono">{alert.threshold_pct}%</td>
+      <td className="px-5 py-3.5 text-[11px] text-default">{alert.channel}</td>
+      <td className="px-5 py-3.5 text-[11px] text-muted font-mono max-w-xs truncate">
         {alert.destination}
       </td>
       <td className="px-5 py-3.5">
         {firedToday ? (
           <div className="flex items-center gap-1.5">
             <span className="w-1.5 h-1.5 rounded-full bg-warn flex-shrink-0" />
-            <span className="text-2xs text-warn">Fired today</span>
+            <span className="text-[11px] text-warn">Disparada hoy</span>
           </div>
         ) : alert.last_fired_at ? (
-          <span className="text-2xs text-lo">
+          <span className="text-[11px] text-muted">
             {new Date(alert.last_fired_at).toLocaleDateString()}
           </span>
         ) : (
-          <span className="text-2xs text-lo opacity-40">Never</span>
+          <span className="text-[11px] text-muted opacity-40">Nunca</span>
         )}
       </td>
       <td className="px-5 py-3.5">
@@ -156,23 +156,23 @@ function AlertRow({ alert, onToggle, onDelete, onReset }) {
           {firedToday && (
             <button
               onClick={() => onReset(alert)}
-              className="text-2xs text-lo hover:text-mid transition-colors"
-              title="Reset so it can fire again today"
+              className="text-[11px] text-muted hover:text-default transition-colors"
+              title="Reiniciar para que pueda volver a dispararse hoy"
             >
-              Reset
+              Reiniciar
             </button>
           )}
           <button
             onClick={() => onToggle(alert)}
-            className={`text-2xs transition-colors ${alert.is_active ? 'text-lo hover:text-err' : 'text-lo hover:text-ok'}`}
+            className={`text-[11px] transition-colors ${alert.is_active ? 'text-muted hover:text-err' : 'text-muted hover:text-ok'}`}
           >
-            {alert.is_active ? 'Disable' : 'Enable'}
+            {alert.is_active ? 'Deshabilitar' : 'Habilitar'}
           </button>
           <button
             onClick={() => onDelete(alert)}
-            className="text-2xs text-lo hover:text-err transition-colors"
+            className="text-[11px] text-muted hover:text-err transition-colors"
           >
-            Delete
+            Eliminar
           </button>
         </div>
       </td>
@@ -207,7 +207,7 @@ export default function AlertsPage() {
   }
 
   async function del(alert) {
-    if (!confirm(`Delete alert for ${alert.team_name}?`)) return
+    if (!confirm(`¿Eliminar la alerta de ${alert.team_name}?`)) return
     await fetch(`/api/alerts/${alert.id}`, { method: 'DELETE' })
     load()
   }
@@ -221,58 +221,58 @@ export default function AlertsPage() {
   }
 
   return (
-    <div className="px-8 py-7 max-w-screen-xl">
+    <div className="px-4 py-6 md:px-10 md:py-8 max-w-screen-xl">
 
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-sm font-medium text-hi">Alerts</h1>
-          <p className="text-xs text-lo mt-0.5">
+          <h1 className="text-[26px] font-semibold text-strong tracking-tight">Alertas</h1>
+          <p className="text-xs text-muted mt-0.5">
             Get notified when a team approaches its budget or token limit
           </p>
         </div>
-        <Btn onClick={() => setModal(true)}>+ New alert</Btn>
+        <Btn onClick={() => setModal(true)}>+ Nueva alerta</Btn>
       </div>
 
       {/* How it works callout */}
-      <div className="bg-raised border border-line rounded-lg p-4 mb-6 grid grid-cols-3 gap-5">
+      <div className="bg-raised border border-border rounded-lg p-4 mb-6 grid grid-cols-3 gap-5">
         {[
-          { step: '01', title: 'Set a threshold', desc: 'Choose when to be notified — typically 80% gives time to act before hitting the limit.' },
-          { step: '02', title: 'Pick a channel', desc: 'Email to a person or team. Slack to a channel via webhook. Both channels can be configured per team.' },
-          { step: '03', title: 'Stratum fires it', desc: 'After each AI request, Stratum checks the threshold. Alerts fire once per day to avoid spam.' },
+          { step: '01', title: 'Definí un umbral', desc: 'Elegí cuándo avisar: con 80 % suele haber tiempo de actuar antes del límite.' },
+          { step: '02', title: 'Elegí un canal', desc: 'Email a una persona o equipo, o Slack a un canal por webhook. Cada equipo puede tener los dos.' },
+          { step: '03', title: 'Stratum la dispara', desc: 'Después de cada request se revisa el umbral. Cada alerta se dispara una vez por día como máximo.' },
         ].map(({ step, title, desc }) => (
           <div key={step}>
-            <div className="text-2xs text-lo font-mono mb-1">{step}</div>
-            <div className="text-xs text-hi font-medium mb-1">{title}</div>
-            <div className="text-2xs text-lo leading-relaxed">{desc}</div>
+            <div className="text-[11px] text-muted font-mono mb-1">{step}</div>
+            <div className="text-xs text-strong font-medium mb-1">{title}</div>
+            <div className="text-[11px] text-muted leading-relaxed">{desc}</div>
           </div>
         ))}
       </div>
 
       {/* Table */}
       {loading ? (
-        <div className="text-center text-lo text-xs py-10">Loading…</div>
+        <div className="text-center text-muted text-xs py-10">Cargando…</div>
       ) : alerts.length === 0 ? (
-        <div className="bg-raised border border-line rounded-lg px-8 py-16 text-center">
-          <div className="text-xs text-lo mb-1">No alerts configured</div>
-          <div className="text-2xs text-lo opacity-60">
+        <div className="bg-raised border border-border rounded-lg px-8 py-16 text-center">
+          <div className="text-xs text-muted mb-1">Todavía no hay alertas</div>
+          <div className="text-[11px] text-muted opacity-60">
             Create an alert to get notified when a team is approaching its budget or token limit.
           </div>
         </div>
       ) : (
-        <div className="bg-raised border border-line rounded-lg overflow-hidden">
+        <div className="bg-raised border border-border rounded-lg overflow-hidden">
           <table className="w-full">
             <thead>
-              <tr className="text-2xs text-lo uppercase tracking-widest border-b border-line">
-                <th className="px-5 py-3 text-left font-medium">Team</th>
-                <th className="px-5 py-3 text-left font-medium">Type</th>
-                <th className="px-5 py-3 text-left font-medium">At</th>
-                <th className="px-5 py-3 text-left font-medium">Channel</th>
-                <th className="px-5 py-3 text-left font-medium">Destination</th>
-                <th className="px-5 py-3 text-left font-medium">Last fired</th>
-                <th className="px-5 py-3 text-right font-medium">Actions</th>
+              <tr className="text-[11px] text-muted uppercase tracking-widest border-b border-border">
+                <th className="px-5 py-3 text-left font-medium">Equipo</th>
+                <th className="px-5 py-3 text-left font-medium">Tipo</th>
+                <th className="px-5 py-3 text-left font-medium">Umbral</th>
+                <th className="px-5 py-3 text-left font-medium">Canal</th>
+                <th className="px-5 py-3 text-left font-medium">Destino</th>
+                <th className="px-5 py-3 text-left font-medium">Último disparo</th>
+                <th className="px-5 py-3 text-right font-medium">Acciones</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-line">
+            <tbody className="divide-y divide-border">
               {alerts.map(alert => (
                 <AlertRow
                   key={alert.id}
