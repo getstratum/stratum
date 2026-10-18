@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
-import Modal, { Field, Input, Select, Btn } from '../../components/Modal'
+import Modal, { Field, Input, Btn } from '../../components/Modal'
 import { allowedBy } from '../../lib/catalog'
 
 const API = '/api/internal/providers'
@@ -31,6 +31,74 @@ function TestResult({ result }) {
   )
 }
 
+// ── Provider picker: search, category and free tier ───────────────────────
+const CATEGORIES = [
+  ['all', 'Todos'], ['lab', 'Laboratorios'], ['inference', 'Inferencia'], ['cloud', 'Nubes'],
+  ['regional', 'Regionales'], ['router', 'Routers'], ['self', 'Propios'],
+]
+const CATEGORY_LABEL = Object.fromEntries(CATEGORIES)
+const hostOf = (url) => { try { return new URL(url).host } catch { return '' } }
+
+function ProviderPicker({ presets, value, onChange }) {
+  const [query, setQuery] = useState('')
+  const [category, setCategory] = useState('all')
+  const [freeOnly, setFreeOnly] = useState(false)
+  const q = query.trim().toLowerCase()
+  const options = [
+    ...presets,
+    { id: 'custom', label: 'Custom (compatible con OpenAI)', category: 'self', free: false, base: null },
+  ].filter(p => (category === 'all' || p.category === category) && (!freeOnly || p.free) &&
+    (!q || p.label.toLowerCase().includes(q) || p.id.includes(q) || hostOf(p.base).includes(q)))
+  // Counts follow the free-tier filter, so a chip never promises more than it shows.
+  const pool = presets.filter(p => !freeOnly || p.free)
+  const counts = Object.fromEntries(CATEGORIES.map(([c]) => [c,
+    (c === 'all' ? pool.length : pool.filter(p => p.category === c).length) + (!freeOnly && (c === 'all' || c === 'self') ? 1 : 0)]))
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          type="search" value={query} onChange={e => setQuery(e.target.value)} aria-label="Buscar proveedor"
+          placeholder="Buscar proveedor…"
+          className="flex-1 min-w-[12rem] h-9 px-3 rounded-md border border-border bg-card text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+        />
+        <label className="flex items-center gap-1.5 text-xs text-muted">
+          <input type="checkbox" checked={freeOnly} onChange={e => setFreeOnly(e.target.checked)} /> Con plan gratis
+        </label>
+      </div>
+      <div className="flex flex-wrap gap-1" role="group" aria-label="Categoría">
+        {CATEGORIES.map(([c, label]) => (
+          <button
+            key={c} type="button" onClick={() => setCategory(c)} aria-pressed={category === c}
+            className={`text-xs px-2.5 py-1 rounded-full border ${category === c ? 'bg-ink text-white border-ink' : 'border-border text-muted hover:text-default'}`}
+          >
+            {label} <span className="tabular opacity-70">{counts[c]}</span>
+          </button>
+        ))}
+      </div>
+      <ul className="max-h-60 overflow-y-auto border border-border rounded-md divide-y divide-border" aria-label="Proveedores">
+        {options.length === 0 && <li className="px-3 py-3 text-xs text-muted">Ninguno coincide.</li>}
+        {options.map(p => (
+          <li key={p.id}>
+            <button
+              type="button" onClick={() => onChange(p.id)} aria-pressed={value === p.id}
+              className={`w-full text-left px-3 py-2 flex items-center justify-between gap-3 ${value === p.id ? 'bg-accent-light' : 'hover:bg-raised'}`}
+            >
+              <span className="min-w-0">
+                <span className="block text-sm font-medium text-strong truncate">{p.label}</span>
+                <span className="block text-xs text-muted truncate">
+                  {CATEGORY_LABEL[p.category]}{p.base ? ` · ${hostOf(p.base)}` : p.id === 'custom' ? ' · cualquier endpoint' : ' · dirección propia'}
+                </span>
+              </span>
+              {p.free && <span className="shrink-0 text-[11px] font-semibold text-ok">Plan gratis</span>}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
 // ── Add (or replace) a provider ─────────────────────────────────────────────
 function AddModal({ presets, existing, onClose, onSaved }) {
   const [form, setForm] = useState({ kind: 'anthropic', customName: '', displayName: '', baseUrl: '', apiVersion: '', apiKey: '' })
@@ -44,7 +112,7 @@ function AddModal({ presets, existing, onClose, onSaved }) {
   const provider = custom ? `custom-${form.customName.trim().toLowerCase()}` : form.kind
   const needsUrl = custom || !preset?.base
   const replaces = existing.find(p => p.provider === provider)
-  const testable = !custom && preset?.base && !form.baseUrl && form.kind !== 'azure'
+  const testable = !custom && preset?.testable && !form.baseUrl
 
   function payload() {
     return {
@@ -74,11 +142,24 @@ function AddModal({ presets, existing, onClose, onSaved }) {
     <Modal title="Agregar proveedor" onClose={onClose}>
       <div className="space-y-4">
         <Field label="Proveedor">
-          <Select value={form.kind} onChange={e => set('kind', e.target.value)}>
-            {presets.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
-            <option value="custom">Custom (compatible con OpenAI)</option>
-          </Select>
+          <ProviderPicker presets={presets} value={form.kind} onChange={v => set('kind', v)} />
         </Field>
+        {preset && (preset.docs || preset.category === 'router') && (
+          <div className="text-xs text-muted space-y-1">
+            {preset.docs && (
+              <p>
+                <a href={preset.docs} target="_blank" rel="noopener noreferrer" className="text-accent hover:text-accent-hover">
+                  Conseguir una API key de {preset.label} ↗
+                </a>
+              </p>
+            )}
+            {preset.category === 'router' && (
+              <p className="text-warn bg-warn-light rounded-lg px-3 py-2">
+                Un router revende acceso a modelos de otros proveedores: los datos pasan también por él. Revisá sus términos antes de habilitarlo.
+              </p>
+            )}
+          </div>
+        )}
         {custom && (
           <Field label="Nombre corto" hint={`Los clientes lo usan como modelo "${provider}/<modelo>". Minúsculas, números y guiones.`}>
             <Input value={form.customName} onChange={e => set('customName', e.target.value)} placeholder="vllm-interno" />

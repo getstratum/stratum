@@ -14,7 +14,8 @@ const { NextRequest } = await import('next/server.js')
 const pg = (await import('pg')).default
 const { hashPassword } = await import('../lib/password.js')
 const { closeDb } = await import('../lib/db.js')
-const { testConnection } = await import('../lib/providers.js')
+const { testConnection, PRESETS, PROVIDERS } = await import('../lib/providers.js')
+const { CATALOG } = await import('../lib/provider-catalog.js')
 const { decryptSecret } = await import('../lib/secrets.js')
 const { buildSyncResponse } = await import('../lib/sync.js')
 
@@ -178,6 +179,50 @@ test('providers: the connection test only calls presets at their default address
   assert.equal((await call('internal/providers/test', 'POST', { as: A.auditor, body: { id: pc.id } })).status, 403)
 })
 
+test('providers: a catalog provider stores its address, which gateways do not know', { skip }, async () => {
+  const list = await call('internal/providers', 'GET', { as: A.owner })
+  const cerebras = list.body.presets.find(p => p.id === 'cerebras')
+  assert.deepEqual([cerebras?.category, cerebras?.testable], ['inference', true])
+  assert.ok(list.body.presets.length > 80, 'presets and catalog')
+  assert.equal(list.body.presets.find(p => p.id === 'anthropic').category, 'lab', 'presets keep their entry')
+
+  const { status, body: pc } = await call('internal/providers', 'POST', { as: A.owner, body: { provider: 'cerebras', api_key: 'csk-0000aaaa' } })
+  assert.equal(status, 201)
+  assert.equal(pc.base_url, 'https://api.cerebras.ai/v1', 'stored, so it travels in the sync')
+  assert.equal(pc.testable, true, 'still its own address')
+  // Clearing the address goes back to the catalog's, not to nothing.
+  const q = `?id=${pc.id}`
+  await call('internal/providers', 'PATCH', { as: A.owner, query: q, body: { base_url: 'https://proxy.example/cerebras/v1' } })
+  const proxied = (await call('internal/providers', 'GET', { as: A.owner })).body.providers.find(p => p.id === pc.id)
+  assert.equal(proxied.testable, false, 'a typed address is tested from a gateway')
+  const reset = await call('internal/providers', 'PATCH', { as: A.owner, query: q, body: { base_url: null } })
+  assert.equal(reset.body.base_url, 'https://api.cerebras.ai/v1')
+  // Presets the gateway knows still store no address.
+  const { body: groq } = await call('internal/providers', 'POST', { as: A.owner, body: { provider: 'groq', api_key: 'gsk-0000bbbb' } })
+  assert.equal(groq.base_url, null)
+  await call('internal/providers', 'DELETE', { as: A.owner, query: q })
+  await call('internal/providers', 'DELETE', { as: A.owner, query: `?id=${groq.id}` })
+})
+
+test('provider catalog: names, addresses and categories gateways can use', () => {
+  const ids = new Set()
+  for (const e of CATALOG) {
+    assert.match(e.id, /^[a-z0-9][a-z0-9-]{0,38}$/, e.id)
+    assert.ok(!e.id.startsWith('custom-'), e.id)
+    assert.ok(!ids.has(e.id), `duplicate ${e.id}`); ids.add(e.id)
+    assert.ok(e.label && e.label.length <= 60, e.id)
+    assert.ok(['lab', 'inference', 'cloud', 'regional', 'router'].includes(e.category), e.id)
+    const u = new URL(e.base)
+    assert.equal(u.protocol, 'https:', e.id)
+    assert.ok(!u.search && !u.hash && !u.username && !e.base.endsWith('/'), e.id)
+    // The gateway drops the client's "v1/" only when the address has a version.
+    assert.match(u.pathname, /\/v\d+[a-z]*(\/|$)/, `${e.id}: ${e.base}`)
+    assert.ok(e.docs === null || e.docs.startsWith('https://'), e.id)
+    assert.equal(typeof e.free, 'boolean', e.id)
+  }
+  for (const id of Object.keys(PRESETS)) assert.equal(PROVIDERS[id].stored, undefined, `${id} keeps the gateway's address`)
+})
+
 test('testConnection: headers per protocol, model count, refusals', async () => {
   const seen = []
   const fake = (status, body) => async (u, init) => {
@@ -200,6 +245,10 @@ test('testConnection: headers per protocol, model count, refusals', async () => 
   const none = await testConnection('ollama', 'x', { fetchImpl: fake(200, {}) })
   assert.equal(none.ok, false)
   assert.equal(seen.length, 4, 'ollama was not called')
+  const cat = await testConnection('cerebras', 'csk', { fetchImpl: fake(200, { data: [{ id: 'llama-4' }] }) })
+  assert.deepEqual(cat.ids, ['llama-4'])
+  assert.equal(seen[4].u, 'https://api.cerebras.ai/v1/models', 'a catalog provider at its own address')
+  assert.equal(seen[4].headers.authorization, 'Bearer csk')
 })
 
 // --- gateways ----------------------------------------------------------------

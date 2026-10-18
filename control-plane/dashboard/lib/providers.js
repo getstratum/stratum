@@ -9,33 +9,52 @@
  *
  * Custom providers are any OpenAI-compatible endpoint (vLLM, Ollama,
  * LiteLLM, an internal service), named "custom-<name>".
+ *
+ * Besides the presets the gateway knows by name, the catalog
+ * (lib/provider-catalog.js) offers other OpenAI-compatible providers. The
+ * gateway does not know their addresses, so their configuration always
+ * stores the address (stored: true).
  */
 
 import { badRequest } from './route.js'
+import { CATALOG } from './provider-catalog.js'
 
-// base:   the gateway's default address (null: the configuration must give one)
-// models: path that lists models, for the connection test (null: no test)
-// key:    whether a credential is required
+// base:     the gateway's default address (null: the configuration must give one)
+// models:   path that lists models, for the connection test (null: no test)
+// key:      whether a credential is required
+// category: lab | inference | cloud | regional | router | self (how the console groups them)
+// free:     the provider offers a free tier (as listed by the catalog; it changes)
+// docs:     where to get a key
 export const PRESETS = {
-  anthropic:  { label: 'Anthropic',     protocol: 'anthropic', base: 'https://api.anthropic.com',                                models: '/v1/models?limit=1000', key: true },
-  openai:     { label: 'OpenAI',        protocol: 'openai',    base: 'https://api.openai.com',                                   models: '/v1/models', key: true },
-  gemini:     { label: 'Google Gemini', protocol: 'openai',    base: 'https://generativelanguage.googleapis.com/v1beta/openai', models: '/models',    key: true },
-  mistral:    { label: 'Mistral',       protocol: 'openai',    base: 'https://api.mistral.ai',                                   models: '/v1/models', key: true },
-  groq:       { label: 'Groq',          protocol: 'openai',    base: 'https://api.groq.com/openai',                              models: '/v1/models', key: true },
-  deepseek:   { label: 'DeepSeek',      protocol: 'openai',    base: 'https://api.deepseek.com',                                 models: '/models',    key: true },
-  openrouter: { label: 'OpenRouter',    protocol: 'openai',    base: 'https://openrouter.ai/api',                                models: '/v1/models', key: true },
-  xai:        { label: 'xAI',           protocol: 'openai',    base: 'https://api.x.ai',                                         models: '/v1/models', key: true },
-  together:   { label: 'Together AI',   protocol: 'openai',    base: 'https://api.together.xyz',                                 models: '/v1/models', key: true },
-  azure:      { label: 'Azure OpenAI',  protocol: 'azure',     base: null,                                                       models: null,         key: true },
-  ollama:     { label: 'Ollama',        protocol: 'openai',    base: null,                                                       models: null,         key: false },
+  anthropic:  { label: 'Anthropic',     protocol: 'anthropic', base: 'https://api.anthropic.com',                                models: '/v1/models?limit=1000', key: true, category: 'lab',       free: false, docs: 'https://console.anthropic.com/settings/keys' },
+  openai:     { label: 'OpenAI',        protocol: 'openai',    base: 'https://api.openai.com',                                   models: '/v1/models', key: true,  category: 'lab',       free: false, docs: 'https://platform.openai.com/api-keys' },
+  gemini:     { label: 'Google Gemini', protocol: 'openai',    base: 'https://generativelanguage.googleapis.com/v1beta/openai', models: '/models',    key: true,  category: 'lab',       free: true,  docs: 'https://aistudio.google.com/apikey' },
+  mistral:    { label: 'Mistral',       protocol: 'openai',    base: 'https://api.mistral.ai',                                   models: '/v1/models', key: true,  category: 'lab',       free: true,  docs: 'https://console.mistral.ai/api-keys' },
+  groq:       { label: 'Groq',          protocol: 'openai',    base: 'https://api.groq.com/openai',                              models: '/v1/models', key: true,  category: 'inference', free: true,  docs: 'https://console.groq.com/keys' },
+  deepseek:   { label: 'DeepSeek',      protocol: 'openai',    base: 'https://api.deepseek.com',                                 models: '/models',    key: true,  category: 'regional',  free: false, docs: 'https://platform.deepseek.com/api_keys' },
+  openrouter: { label: 'OpenRouter',    protocol: 'openai',    base: 'https://openrouter.ai/api',                                models: '/v1/models', key: true,  category: 'router',    free: true,  docs: 'https://openrouter.ai/settings/keys' },
+  xai:        { label: 'xAI',           protocol: 'openai',    base: 'https://api.x.ai',                                         models: '/v1/models', key: true,  category: 'lab',       free: false, docs: 'https://console.x.ai' },
+  together:   { label: 'Together AI',   protocol: 'openai',    base: 'https://api.together.xyz',                                 models: '/v1/models', key: true,  category: 'inference', free: false, docs: 'https://api.together.ai/settings/api-keys' },
+  azure:      { label: 'Azure OpenAI',  protocol: 'azure',     base: null,                                                       models: null,         key: true,  category: 'cloud',     free: false, docs: null },
+  ollama:     { label: 'Ollama',        protocol: 'openai',    base: null,                                                       models: null,         key: false, category: 'self',      free: false, docs: null },
 }
+
+// Every provider the console offers by name: the catalog, with the presets
+// above taking precedence over a catalog entry of the same name.
+export const PROVIDERS = Object.freeze({
+  ...Object.fromEntries(CATALOG.filter(e => !Object.hasOwn(PRESETS, e.id)).map(e => [e.id, {
+    label: e.label, protocol: 'openai', base: e.base, models: '/models', key: true,
+    category: e.category, free: e.free, docs: e.docs, stored: true,
+  }])),
+  ...PRESETS,
+})
 
 export const CUSTOM_RE = /^custom-[a-z0-9][a-z0-9-]{0,38}$/
 
 /** The preset for `provider`, a custom provider's description, or null. */
 export function describe(provider) {
   if (typeof provider !== 'string') return null
-  if (Object.hasOwn(PRESETS, provider)) return { ...PRESETS[provider], custom: false }
+  if (Object.hasOwn(PROVIDERS, provider)) return { ...PROVIDERS[provider], custom: false }
   if (CUSTOM_RE.test(provider)) return { label: 'Custom', protocol: 'openai', base: null, models: null, key: false, custom: true }
   return null
 }
@@ -43,7 +62,7 @@ export function describe(provider) {
 /** The provider name in a request, validated. */
 export function providerName(value) {
   if (typeof value !== 'string' || !describe(value)) {
-    throw badRequest(`Proveedor desconocido. Usá uno de: ${Object.keys(PRESETS).join(', ')}, o custom-<nombre> para un endpoint compatible con OpenAI.`)
+    throw badRequest('Proveedor desconocido: elegí uno de la lista, o custom-<nombre> para un endpoint compatible con OpenAI.')
   }
   return value
 }
@@ -57,7 +76,8 @@ export function providerName(value) {
 export function baseUrl(value, info) {
   if (value == null || value === '') {
     if (!info.base) throw badRequest('Este proveedor necesita una URL base.')
-    return null
+    // A catalog provider's address travels to gateways, which do not know it.
+    return info.stored ? info.base : null
   }
   let u
   try {
@@ -86,9 +106,19 @@ export function extraConfig(value, provider) {
 }
 
 /**
- * Lists the provider's models with `apiKey`, from the control plane. Only for
- * presets at their default address: the control plane never calls an address
- * an administrator typed (it could point at the control plane's own network).
+ * Whether the control plane may call this configuration to test it: only a
+ * known provider at its own address, never an address an administrator typed
+ * (it could point at the control plane's own network).
+ */
+export function testable(provider, storedBaseUrl) {
+  const info = describe(provider)
+  if (!info || info.custom || !info.models || !info.base) return false
+  return !storedBaseUrl || storedBaseUrl === info.base
+}
+
+/**
+ * Lists the provider's models with `apiKey`, from the control plane, at the
+ * provider's own address (see testable).
  *
  * @returns {{ ok: boolean, status?: number, models?: number, ids?: string[], ms: number, message: string }}
  *   ids: the model IDs the account can use (at most MAX_IDS).
@@ -96,8 +126,8 @@ export function extraConfig(value, provider) {
 export const MAX_IDS = 1000
 
 export async function testConnection(provider, apiKey, { fetchImpl = fetch, timeoutMs = 8000 } = {}) {
-  const info = Object.hasOwn(PRESETS, provider) ? PRESETS[provider] : null
-  if (!info?.models) return { ok: false, ms: 0, message: 'Este proveedor se prueba desde un gateway.' }
+  const info = testable(provider) ? describe(provider) : null
+  if (!info) return { ok: false, ms: 0, message: 'Este proveedor se prueba desde un gateway.' }
   const headers = { accept: 'application/json' }
   if (info.protocol === 'anthropic') {
     headers['x-api-key'] = apiKey

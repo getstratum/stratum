@@ -2,15 +2,15 @@
  * POST /api/internal/providers/test  { id }            — test a saved configuration
  * POST /api/internal/providers/test  { provider, api_key } — test before saving
  *
- * Lists the provider's models from the control plane. Only presets at their
- * default address (lib/providers.js testConnection): the control plane never
- * calls an address someone typed.
+ * Lists the provider's models from the control plane. Only known providers at
+ * their own address (lib/providers.js testable): the control plane never calls
+ * an address someone typed.
  */
 
 import { route, readJson, json, badRequest, notFound } from '@/lib/route'
 import { audit } from '@/lib/audit'
 import { decryptSecret } from '@/lib/secrets'
-import { providerName, testConnection } from '@/lib/providers'
+import { providerName, testConnection, testable } from '@/lib/providers'
 
 export const dynamic = 'force-dynamic'
 
@@ -23,7 +23,7 @@ export const POST = route('providers.manage', async (req, { session, db }) => {
         WHERE id = $1 AND org_id = $2 AND revoked = false`,
       [body.id, session.orgId])
     if (!pc) throw notFound('Proveedor no encontrado.')
-    if (pc.base_url) return json({ ok: false, ms: 0, message: 'Con una URL propia, se prueba desde un gateway.' })
+    if (!testable(pc.provider, pc.base_url)) return json({ ok: false, ms: 0, message: 'Con una URL propia, se prueba desde un gateway.' })
     provider = pc.provider
     try {
       apiKey = decryptSecret(pc.api_key_encrypted)
