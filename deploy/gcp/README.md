@@ -183,6 +183,15 @@ from the snapshot in Valkey 10 s into the control plane outage. The load
 balancer produced 79 errors, again in the first load after the deploy, which
 is why `make test` now starts with a warm-up.
 
+The third run ([report](../../docs/testing/gcp-2026-10-18.md); 52,805
+requests, the release gate for 0.1.0) had 0 errors from Stratum and 4 on the
+path, every scenario passed, and Valkey ran over TLS with token
+authentication (ADR-0011). It confirmed the warm-up: a run started right
+after the deploy kept seeing load balancer errors for about 17 minutes; an
+hour later the warm-up was clean in its first round and the rolling restart
+had 0 errors of 19,201. On a new environment, expect the warm-up to take
+that long.
+
 That is why end-to-end availability at 99.99% also needs **clients that
 retry** connection errors and 5xx before the first byte. The official OpenAI
 SDKs do by default (two retries with backoff); a custom client should too.
@@ -208,6 +217,7 @@ Enterprise design).
 | Uptime alert fires right after `make up` | Expected: the check exists before the load balancer and certificate do. It clears once `make deploy` finishes and the certificate is active. |
 | Cloud Build fails with "buildx component is missing" | Build in Cloud Shell instead: `BUILD_WITH=docker make deploy`. |
 | Quota test fails at the first request | The month's quota was already used: `make test-quota-reset`. |
+| The Cloud Shell connection drops during `make test` ("no k6 result") | The run stops with the shell; k6 keeps going in the cluster. Cloud Shell keeps each terminal in tmux, so reconnecting usually returns to it; run `make test 2>&1 \| tee ~/test.log` to keep the output, and re-run what did not finish (`make test-rollout`, ...). |
 
 ## Before production
 
