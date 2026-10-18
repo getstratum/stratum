@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.1](https://github.com/getstratum/stratum/compare/v0.1.0...v0.1.1) (2026-10-18)
+
+
+### Bug Fixes
+
+* **release:** publish artifacts when release-please creates a release ([#49](https://github.com/getstratum/stratum/issues/49)) ([d493884](https://github.com/getstratum/stratum/commit/d493884de6c3fc639d5e4792e577acaa62c24dc5))
+* **release:** sign the chart with registry credentials ([#52](https://github.com/getstratum/stratum/issues/52)) ([23c196e](https://github.com/getstratum/stratum/commit/23c196e2bf20a943a3d9e68768a342ff0ada8579))
+
 ## 0.1.0 (2026-10-18)
 
 
