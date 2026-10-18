@@ -74,6 +74,21 @@ endpoint (Sentinel discovery is not implemented). A Valkey that restarts empty
 resets the month's counters. Alert on `stratum_quota_store_age_seconds` and
 `stratum_quota_store_regressions_total`.
 
+Outside a single trusted network, encrypt and authenticate the link: a
+`rediss://` URL, the password (or token) in `STRATUM_VALKEY_PASSWORD`, and,
+when the server's certificate comes from a private CA (Memorystore with
+in-transit encryption, a self-managed CA), that CA in a ConfigMap:
+
+```sh
+kubectl -n stratum create configmap valkey-ca --from-file=ca.crt=server-ca.pem
+helm upgrade stratum oci://ghcr.io/getstratum/charts/stratum-gateway -n stratum --reuse-values \
+  --set quota.valkey.url=rediss://10.0.0.5:6379/0 --set quota.valkey.caConfigMap=valkey-ca
+```
+
+The gateway trusts only the CAs in that file, reads it at start (restart the
+pods after a CA rotation), and connects to an IP address only if the
+certificate names that IP. deploy/gcp does this with Memorystore.
+
 ## Exposing the gateway
 
 The chart creates a ClusterIP service. Put your regional L7 load balancer or

@@ -84,6 +84,16 @@ output "valkey_address" {
   value = "${local.valkey_primary.ip_address}:${local.valkey_primary.port}"
 }
 
+# Every CA certificate of the instance (two during a rotation), PEM. Read by
+# scripts/deploy.sh with `terraform output -raw valkey_ca_pem`.
+output "valkey_ca_pem" {
+  value = join("\n", flatten([
+    for ca in google_memorystore_instance.quota.managed_server_ca : [
+      for chain in ca.ca_certs : [for c in chain.certificates : trimspace(c)]
+    ]
+  ]))
+}
+
 output "secret_prefix" {
   description = "Secret Manager names created by the scripts start with this."
   value       = local.name
