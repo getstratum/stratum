@@ -13,7 +13,7 @@
 import { route, readJson, json, badRequest, notFound, conflict, HttpError } from '@/lib/route'
 import { audit } from '@/lib/audit'
 import { encryptSecret, secretHint } from '@/lib/secrets'
-import { describe, providerName, baseUrl, extraConfig, PRESETS } from '@/lib/providers'
+import { describe, providerName, baseUrl, extraConfig, testable, PROVIDERS } from '@/lib/providers'
 import { randomBytes } from 'crypto'
 
 export const dynamic = 'force-dynamic'
@@ -51,7 +51,7 @@ function withLabels(row) {
     provider_label: info?.label ?? row.provider,
     protocol: info?.protocol ?? 'openai',
     default_base_url: info?.base ?? null,
-    testable: !!(PRESETS[row.provider]?.models && !row.base_url),
+    testable: testable(row.provider, row.base_url),
   }
 }
 
@@ -63,7 +63,10 @@ export const GET = route('providers.read', async (req, { session, db }) => {
     [session.orgId])
   return json({
     providers: rows.map(withLabels),
-    presets: Object.entries(PRESETS).map(([id, p]) => ({ id, label: p.label, protocol: p.protocol, base: p.base, keyRequired: p.key })),
+    presets: Object.entries(PROVIDERS).map(([id, p]) => ({
+      id, label: p.label, protocol: p.protocol, base: p.base, keyRequired: p.key,
+      category: p.category, free: p.free, docs: p.docs, testable: testable(id),
+    })),
   })
 })
 

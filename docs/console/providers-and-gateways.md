@@ -13,6 +13,27 @@ organization has a single provider.
   name sets the protocol (Anthropic Messages, Azure OpenAI, or
   OpenAI-compatible) and, unless a base URL is given, the address. A preset's
   base URL must be https (a corporate proxy, for example).
+- **Catalog** (`lib/provider-catalog.js`, 75 more): OpenAI-compatible
+  providers taken from [OmniRoute](https://github.com/diegosouzapw/OmniRoute)'s
+  catalog (MIT; see NOTICE), grouped as labs, inference hosts, clouds,
+  regional providers and routers, with a free-tier mark. The gateway does not
+  know their addresses, so their configuration stores it; clearing the
+  address puts the catalog's back. Only providers that a gateway can call as
+  they are made it in: an OpenAI-compatible API with a Bearer key, at a fixed
+  https address with a version segment. Left out, with the reason:
+  - anything that signs in with a consumer subscription (Claude Code, Codex,
+    Copilot, Cursor and the like), a browser session or cookies, or an
+    unofficial reverse-engineered endpoint: against those services' terms,
+    and not something a governance product should route through;
+  - subscription "token" or "coding" plans, and duplicates of the same
+    endpoint under another name;
+  - most resellers: of the catalog's routers, only well-known ones are kept;
+  - addresses that need a per-account host (Databricks, Snowflake), a token
+    exchange (GigaChat), or no version segment (Perplexity: the gateway would
+    add `v1/` to the path).
+  The free-tier mark is the catalog's, and providers change it: check before
+  relying on it. A router resells other providers' models, so requests also
+  pass through it; the console says so.
 - **Custom**: any OpenAI-compatible endpoint, named `custom-<name>`, with a
   base URL that may be an internal `http://` address. Gateways resolve it,
   not the control plane.
@@ -22,7 +43,8 @@ organization has a single provider.
   never returned: the console shows their last four characters, who set them
   and when.
 - **Connection test**: lists the provider's models with the credential, from
-  the control plane, only for presets at their default address. The control
+  the control plane, only for presets and catalog providers at their own
+  address. The control
   plane never calls an address typed into the console, since it could point
   at the control plane's own network (cloud metadata, internal services).
   Configurations with their own address are tested from a gateway.
