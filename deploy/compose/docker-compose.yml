@@ -5,11 +5,12 @@
 #   cp deploy/compose/.env.example deploy/compose/.env    # fill in the secrets
 #   make up                                               # postgres + control plane
 #
-# Create the first console account (the console has no default one; the
-# command prints a password once):
+# Create your organization and its first console account (a new installation
+# is empty; the command prints a password once):
 #
 #   docker compose -f deploy/compose/docker-compose.yml --env-file deploy/compose/.env \
-#     exec control-plane node scripts/stratum-admin.mjs create-owner --email you@example.com
+#     exec control-plane node scripts/stratum-admin.mjs create-owner \
+#     --email you@example.com --org-name "Your company"
 #
 # Then sign in at http://localhost:3000 (the first sign-in asks you to set up
 # the second factor with an authenticator app), register a gateway instance, put the

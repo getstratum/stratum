@@ -25,12 +25,13 @@ how that is enforced. Migrations `016_console_authz.sql` and
   (`POST /api/session/password`), giving the current one; their other
   sessions end. Nobody changes their own password through the user
   management routes.
-- The console has no default account. The first Owner is created from the
-  command line, inside the control plane container:
+- A new installation is empty: no organization, no account. The first Owner
+  and their organization are created from the command line, inside the
+  control plane container:
 
   ```sh
-  node scripts/stratum-admin.mjs create-owner --email you@example.com          # the only organization
   node scripts/stratum-admin.mjs create-owner --email you@example.com --org-name "Acme"
+  node scripts/stratum-admin.mjs create-owner --email you@example.com          # the only organization
   node scripts/stratum-admin.mjs create-owner --email you@example.com --org-id <uuid>
   node scripts/stratum-admin.mjs reset-password --email you@example.com
   ```
