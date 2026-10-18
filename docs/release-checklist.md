@@ -25,6 +25,9 @@ Tracks what is done and what still blocks the first public release.
       sessions; password sign-in; audit log (docs/console/access-control.md).
 - [x] Control plane: the Playground, which called gateway routes that no longer
       exist, is removed until it uses the current gateway contract.
+- [x] Control plane: a new installation starts empty. The demo organization moved out of the
+      migrations to `control-plane/seed/demo.sql`, loaded only by the functional test and the GCP
+      kit; the first account and its organization come from `stratum-admin create-owner --org-name`.
 - [x] Control plane: TOTP second factor, required for Owner and Admin, with recovery codes and resets
       (docs/console/access-control.md).
 - [x] Control plane: the console's Providers page edits `provider_configs` (what gateways read), with
