@@ -3,11 +3,10 @@
 # Stratum gateway image: one static binary on distroless, running as non-root
 # with a read-only root filesystem (only /var/lib/stratum is writable).
 #
-# Base images are referenced by tag here; Dependabot pins and bumps them.
+# Base images are pinned by tag and digest (scripts/pin-images.sh);
+# Dependabot proposes new digests and versions.
 
-ARG GO_VERSION=1.26
-
-FROM --platform=$BUILDPLATFORM golang:${GO_VERSION}-alpine AS build
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS build
 WORKDIR /src
 COPY go.mod ./
 RUN go mod download

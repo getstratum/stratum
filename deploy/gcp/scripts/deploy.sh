@@ -32,7 +32,7 @@ if [[ "${SKIP_BUILD:-0}" != "1" ]]; then
   if [[ "${BUILD_WITH:-cloudbuild}" == "docker" ]]; then
     require docker
     gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet >/dev/null
-    docker build --build-arg GO_VERSION=1.26 -t "$IMAGE_REPO/stratum-gateway:$TAG" "$REPO_ROOT/gateway"
+    docker build -t "$IMAGE_REPO/stratum-gateway:$TAG" "$REPO_ROOT/gateway"
     docker build --build-arg "NEXT_PUBLIC_GATEWAY_URL=https://$HOST" -t "$IMAGE_REPO/stratum-control-plane:$TAG" "$REPO_ROOT/control-plane/dashboard"
     docker build -t "$IMAGE_REPO/mock-llm:$TAG" "$GCP_DIR/mock-llm"
     for i in stratum-gateway stratum-control-plane mock-llm; do docker push -q "$IMAGE_REPO/$i:$TAG"; done
