@@ -1,13 +1,16 @@
 -- Test-environment bootstrap, run once after migrations by scripts/deploy.sh.
 -- Variables (psql -v): eng_hash, mkt_hash = SHA-256 of freshly generated keys.
 --
--- 1. The seed migration ships demo users whose API keys are published in the
---    repository. On an internet-facing environment they must not work:
---    replace them with random keys that only exist in Secret Manager.
+-- 1. The demo organization (control-plane/seed/demo.sql, mounted next to
+--    this file): a new installation starts empty, the test plan needs its
+--    teams and policies. Its two users get random keys that only exist in
+--    Secret Manager.
 -- 2. Policies for the test plan: Engineering may use the mock model with a
 --    large quota (load tests); Marketing has a small quota (shared quota
 --    test: 30 requests of 100 tokens).
 \set ON_ERROR_STOP on
+
+\ir demo.sql
 
 BEGIN;
 

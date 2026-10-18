@@ -61,9 +61,10 @@ flowchart LR
 
 The **gateway syncs its configuration over the public HTTPS endpoint**, as a
 customer's gateway would against a managed control plane, and that endpoint
-only accepts the environment's NAT address. The **demo users' published API
-keys are replaced** at bootstrap; an internet-facing environment must never
-accept them.
+only accepts the environment's NAT address. A new installation starts
+empty; the kit loads the **demo organization** (`control-plane/seed/demo.sql`)
+at bootstrap and gives its users random keys that only exist in Secret
+Manager.
 
 ## Cost breakdown (us-central1, on-demand, per hour)
 
