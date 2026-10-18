@@ -6,7 +6,7 @@
 # Base images are pinned by tag and digest (scripts/pin-images.sh);
 # Dependabot proposes new digests and versions.
 
-FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS build
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine@sha256:3082400e369fa24d5fc60bca20edab3f6d604e0c5a690ec66b295eff4dd87ade AS build
 WORKDIR /src
 COPY go.mod ./
 RUN go mod download
@@ -23,7 +23,7 @@ RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
       -o /out/stratum-gateway ./cmd/stratum-gateway \
  && mkdir -p /out/state
 
-FROM gcr.io/distroless/static-debian12:nonroot
+FROM gcr.io/distroless/static-debian12:nonroot@sha256:afa5c872c891853ca7fcf1f12c3edb23f7eeef36189728842dd51042ff57f7ab
 COPY --from=build /out/stratum-gateway /usr/local/bin/stratum-gateway
 COPY --from=build --chown=65532:65532 /out/state /var/lib/stratum
 
