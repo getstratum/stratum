@@ -5,7 +5,8 @@
  * gateway: the organization is the reporting instance's, and a team, user
  * or agent ID that is not in that organization is stored as NULL. The cost
  * is computed here from the model catalog (ai_models, by model ID or
- * alias), not sent by gateways.
+ * alias) at the organization's own price when it set one, not sent by
+ * gateways.
  * Records already stored (same ID and time: a retried batch) are skipped.
  */
 
@@ -96,13 +97,24 @@ export async function ingest(db, instance, records) {
        LEFT JOIN teams tm  ON tm.id::text = r.team_id AND tm.org_id = $1::uuid
        LEFT JOIN users u   ON r.key_id NOT LIKE 'agent:%' AND u.id::text = r.key_id AND u.org_id = $1::uuid
        LEFT JOIN agents a  ON r.key_id LIKE 'agent:%' AND a.id::text = substr(r.key_id, 7) AND a.org_id = $1::uuid
-       -- The model by its ID or an alias (migration 023); the ID wins.
+       -- The model by its ID or an alias (migration 023), the ID first, at
+       -- the organization's price when it set one (migration 024); then a
+       -- model outside the catalog that the organization priced.
        LEFT JOIN LATERAL (
-         SELECT cost_per_1k_input_tokens, cost_per_1k_output_tokens
-           FROM ai_models
-          WHERE provider = r.provider AND (model_id = r.model OR r.model = ANY(aliases))
-          ORDER BY (model_id = r.model) DESC
-          LIMIT 1) m ON true
+         SELECT * FROM (
+           SELECT COALESCE(s.cost_per_1k_input_tokens, c.cost_per_1k_input_tokens)   AS cost_per_1k_input_tokens,
+                  COALESCE(s.cost_per_1k_output_tokens, c.cost_per_1k_output_tokens) AS cost_per_1k_output_tokens,
+                  CASE WHEN c.model_id = r.model THEN 0 ELSE 1 END AS rank
+             FROM ai_models c
+             LEFT JOIN org_model_settings s
+               ON s.org_id = $1::uuid AND s.provider = c.provider AND s.model_id = c.model_id
+            WHERE c.provider = r.provider AND (c.model_id = r.model OR r.model = ANY(c.aliases))
+           UNION ALL
+           SELECT s.cost_per_1k_input_tokens, s.cost_per_1k_output_tokens, 2
+             FROM org_model_settings s
+            WHERE s.org_id = $1::uuid AND s.provider = r.provider AND s.model_id = r.model
+              AND s.cost_per_1k_input_tokens IS NOT NULL AND s.cost_per_1k_output_tokens IS NOT NULL
+         ) x ORDER BY rank LIMIT 1) m ON true
      ON CONFLICT DO NOTHING`,
     [instance.org_id, instance.id,
      col(records, 'id'), col(records, 'ts'), col(records, 'request_id'), col(records, 'key_id'),

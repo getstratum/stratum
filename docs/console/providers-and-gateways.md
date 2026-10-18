@@ -125,16 +125,47 @@ Anthropic models before the 4.6 generation have a dated ID and a short alias
   is recorded as 0.
 - A change to the catalog reaches gateways in the next sync: it makes a new
   version of every policy that lists models.
-- Prices are list prices of the date in the migration, for the shortest
-  prompt-length tier. A new price applies to requests from then on; costs
-  already recorded are not recalculated.
+- Prices are list prices for the shortest prompt-length tier. A new price
+  applies to requests from then on; costs already recorded are not
+  recalculated.
+
+### Keeping the catalog current (ADR-0012)
+
+The catalog changes more often than Stratum is released, so the control
+plane reads a **feed** once a day (a minute after it starts, then every 24
+hours): by default `catalog/models.json` in the Stratum repository, changed
+by pull request.
+
+- `STRATUM_MODEL_CATALOG_URL`: another https address (an internal mirror),
+  or `off`. Without internet access, apply a copy by hand:
+  `node scripts/stratum-admin.mjs catalog-update --file models.json`.
+- A feed adds and updates models (names, aliases, prices, the date a model
+  is retired) and never deletes: a model missing from the feed stays, and
+  `"retired": true` stops offering it. Anything malformed rejects the whole
+  feed; the catalog stays as it was and Modelos shows the error.
+- New or changed IDs give the policies that name the model a new version;
+  a price change does not.
+
+### Per organization: off switch and own prices
+
+- An Owner or Admin can **turn a model off** for the organization in
+  Modelos. Gateways refuse it (`model_disabled`, 403) for every team, also
+  under "all models", by its ID or any alias, only with that provider.
+  Gateways before 0.2 ignore the switch (`denied_models` in the sync).
+- They can also set the **prices the organization pays** (negotiated
+  discounts): usage is costed with them from then on.
+- Models a provider lists in a connection test but the catalog does not
+  have are kept for the organization: they appear in Modelos (outside the
+  catalog, no price) and can be chosen in policies, turned off or priced.
 
 ### Modelos
 
-The **Modelos** page lists the catalog with prices and aliases, and which
-policies allow each model. An Owner or Admin can **verify with the provider**:
-the control plane lists the models of the account with the saved credential
-(presets at their default address only) and marks which catalog models the
-account has, and which models of the account are not in the catalog.
+The **Modelos** page lists the catalog with prices and aliases, retirement
+dates, which policies allow each model and whether it is on for the
+organization, and when the catalog was last checked. An Owner or Admin can
+**verify with the provider**: the control plane lists the models of the
+account with the saved credential (presets at their default address only)
+and marks which catalog models the account has; the models of the account
+that are not in the catalog are added to the list.
 **Proveedores** shows, for each connection, how many of its catalog models
 some policy allows.

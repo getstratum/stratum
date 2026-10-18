@@ -69,12 +69,15 @@ type SyncResponse struct {
 // WirePolicy is a team policy. One row per team: the control plane joins
 // policies to teams, so a policy shared by two teams arrives twice.
 type WirePolicy struct {
-	ID                string   `json:"id"`
-	TeamID            string   `json:"team_id"`
-	Version           Int64    `json:"version"`
-	AllowedModels     []string `json:"allowed_models"`
-	AllowAllModels    bool     `json:"allow_all_models"`
-	AllowedProviders  []string `json:"allowed_providers,omitempty"`
+	ID               string   `json:"id"`
+	TeamID           string   `json:"team_id"`
+	Version          Int64    `json:"version"`
+	AllowedModels    []string `json:"allowed_models"`
+	AllowAllModels   bool     `json:"allow_all_models"`
+	AllowedProviders []string `json:"allowed_providers,omitempty"`
+	// Models the organization turned off, with every ID and "provider/ID"
+	// form: refused even when the policy allows every model.
+	DeniedModels      []string `json:"denied_models,omitempty"`
 	MonthlyTokenQuota *Int64   `json:"monthly_token_quota"`
 	MonthlyBudgetUSD  *Float64 `json:"monthly_budget_usd"`
 	PIIAction         string   `json:"pii_action,omitempty"`

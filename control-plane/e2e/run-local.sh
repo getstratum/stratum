@@ -66,7 +66,8 @@ fi
 # Gateways sync every 5 s instead of 30, so key changes show up quickly.
 ENCRYPTION_KEY="$(openssl rand -hex 32)"
 bg "$WORK/console.log" env DATABASE_URL="$DATABASE_URL" STRATUM_ENCRYPTION_KEY="$ENCRYPTION_KEY" \
-  SECURE_COOKIES=false STRATUM_SYNC_INTERVAL_S=5 NEXT_TELEMETRY_DISABLED=1 "$DASH/node_modules/.bin/next" start "$DASH" -p 3125
+  SECURE_COOKIES=false STRATUM_SYNC_INTERVAL_S=5 STRATUM_MODEL_CATALOG_URL=off NEXT_TELEMETRY_DISABLED=1 \
+  "$DASH/node_modules/.bin/next" start "$DASH" -p 3125
 wait_for "$CONSOLE/login" 200 "the console"
 
 # The owner, with a second factor (required for owners): the test computes

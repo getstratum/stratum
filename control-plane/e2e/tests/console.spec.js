@@ -304,6 +304,20 @@ test('models: the catalog lists each model with its aliases and prices', async (
   await expect(page.locator('tr').filter({ hasText: 'claude-haiku-4-5-20251001' })).toHaveCount(0)
 })
 
+test('models: the owner turns a model off for the organization, and on again', async () => {
+  await page.goto('/models?provider=openai')
+  const row = page.locator('tr').filter({ hasText: 'gpt-4o-mini' })
+  const sw = row.getByRole('switch')
+  await expect(sw).toHaveAttribute('aria-checked', 'true')
+  await sw.click()
+  await expect(sw).toHaveAttribute('aria-checked', 'false')
+  await expect(row).toContainText('Nadie: está apagado')
+  const model = ((await api('GET', '/api/models')).body ?? []).find((m) => m.provider === 'openai' && m.model_id === 'gpt-4o-mini')
+  expect(model.enabled).toBe(false)
+  await sw.click()
+  await expect(sw).toHaveAttribute('aria-checked', 'true')
+})
+
 // --- agents and the gateway ---------------------------------------------------------
 
 test('agents: a new key works through the gateway, and stops working when revoked', async () => {

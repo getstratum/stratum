@@ -58,6 +58,9 @@ func TestRevocationsDelta(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := Build(full, time.Now())
+	if p, _ := before.PolicyForTeam("team_marketing"); len(p.DeniedModels) != 2 {
+		t.Fatalf("denied_models travels in the policy: %+v", p.DeniedModels)
+	}
 	if _, ok := before.KeyByHash("3ba6ea2bd037fee129f1115ad2361d4692aa55d0c3e530fa5b82622792943d1f"); !ok {
 		t.Fatal("fixture: user_dev should be active before the delta")
 	}

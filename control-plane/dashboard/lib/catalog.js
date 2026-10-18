@@ -15,9 +15,12 @@ export function namesOf(model) {
   return [...ids, ...ids.map(id => `${model.provider}/${id}`)]
 }
 
-/** Whether `policy` lets a request use catalog `model`. */
+/**
+ * Whether `policy` lets a request use catalog `model`. A model the
+ * organization turned off (enabled: false) is refused under any policy.
+ */
 export function allowedBy(policy, model) {
-  if (!policy) return false
+  if (!policy || model.enabled === false) return false
   const providers = policy.allowed_providers ?? []
   if (providers.length > 0 && !providers.includes(model.provider)) return false
   if (policy.allow_all_models) return true

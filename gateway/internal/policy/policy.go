@@ -38,6 +38,14 @@ func Check(pol snapshot.Policy, found bool, provider, model string) *Violation {
 	if model == "" {
 		return &Violation{http.StatusBadRequest, "missing_model", "request body has no model"}
 	}
+	if len(pol.DeniedModels) > 0 {
+		_, bare := pol.DeniedModels[model]
+		_, qualified := pol.DeniedModels[provider+"/"+model]
+		if bare || qualified {
+			return &Violation{http.StatusForbidden, "model_disabled",
+				fmt.Sprintf("model %q is turned off for this organization", model)}
+		}
+	}
 	if !pol.AllowAllModels {
 		_, bare := pol.AllowedModels[model]
 		_, qualified := pol.AllowedModels[provider+"/"+model]

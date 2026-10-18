@@ -7,6 +7,7 @@
  *   node scripts/stratum-admin.mjs reset-password --email ana@acme.com
  *   node scripts/stratum-admin.mjs reset-mfa --email ana@acme.com
  *   node scripts/stratum-admin.mjs enroll-mfa --email ana@acme.com [--secret-stdin]
+ *   node scripts/stratum-admin.mjs catalog-update [--file models.json | --url https://...]
  *
  * create-owner makes (or promotes) the Owner of an organization: the first
  * account of a new installation, or a way back in when nobody can sign in.
@@ -24,6 +25,11 @@
  * (or takes one in base32 from stdin) and needs STRATUM_ENCRYPTION_KEY.
  * Recovery codes are created from the account page.
  *
+ * catalog-update applies the model catalog feed now (ADR-0012): from
+ * STRATUM_MODEL_CATALOG_URL or the default feed, a URL, or a local file for
+ * installations without internet access (the repository's
+ * catalog/models.json).
+ *
  * Needs DATABASE_URL. In the control plane container:
  *   docker compose exec control-plane node scripts/stratum-admin.mjs create-owner --email ...
  */
@@ -38,11 +44,13 @@ process.removeAllListeners('warning')
 const { hashPassword, passwordProblem } = await import('../lib/password.js')
 const totp = await import('../lib/totp.js')
 const { encryptSecret } = await import('../lib/secrets.js')
+const feed = await import('../lib/model-feed.js')
 
 const USAGE = 'usage: stratum-admin create-owner --email <email> [--name <name>] [--org-id <uuid> | --org-name <name>] [--password-stdin]\n' +
               '       stratum-admin reset-password --email <email> [--password-stdin]\n' +
               '       stratum-admin reset-mfa --email <email>\n' +
-              '       stratum-admin enroll-mfa --email <email> [--secret-stdin]'
+              '       stratum-admin enroll-mfa --email <email> [--secret-stdin]\n' +
+              '       stratum-admin catalog-update [--file <models.json> | --url <https://...>]'
 
 const FLAGS = new Set(['password-stdin', 'secret-stdin'])
 
@@ -198,9 +206,30 @@ async function enrollMfa(db, opts) {
   }
 }
 
+async function catalogUpdate(db, opts) {
+  if (opts.file && opts.url) throw new Error('Use --file or --url, not both.')
+  if (opts.file) {
+    const { readFile } = await import('node:fs/promises')
+    let json
+    try {
+      json = JSON.parse(await readFile(opts.file, 'utf8'))
+    } catch (err) {
+      throw new Error(`${opts.file}: ${err.message}`)
+    }
+    const parsed = feed.parseFeed(json) // throws FeedError naming the problem
+    const r = await feed.applyFeed(db, parsed, { source: `file:${opts.file}` })
+    console.log(r.applied ? `Catalog of ${parsed.updated}: ${r.changed} of ${r.models} models changed.` : 'Another control plane is applying the catalog now; nothing done.')
+    return
+  }
+  const url = opts.url ?? feed.feedUrl() ?? feed.DEFAULT_FEED_URL
+  const r = await feed.refreshCatalog(db, { url })
+  if (!r.ok) throw new Error(`Catalog not updated: ${r.message}`)
+  console.log(r.applied ? `Catalog from ${url}: ${r.changed} of ${r.models} models changed.` : 'Another control plane is applying the catalog now; nothing done.')
+}
+
 async function main() {
   const { command, opts } = parseArgs(process.argv.slice(2))
-  if (!['create-owner', 'reset-password', 'reset-mfa', 'enroll-mfa'].includes(command)) throw new Error(USAGE)
+  if (!['create-owner', 'reset-password', 'reset-mfa', 'enroll-mfa', 'catalog-update'].includes(command)) throw new Error(USAGE)
   if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is not set.')
   const db = new pg.Client({ connectionString: process.env.DATABASE_URL })
   await db.connect()
@@ -209,6 +238,7 @@ async function main() {
     else if (command === 'reset-password') await resetPassword(db, opts)
     else if (command === 'reset-mfa') await resetMfa(db, opts)
     else if (command === 'enroll-mfa') await enrollMfa(db, opts)
+    else if (command === 'catalog-update') await catalogUpdate(db, opts)
     else throw new Error(USAGE)
   } finally {
     await db.end()
