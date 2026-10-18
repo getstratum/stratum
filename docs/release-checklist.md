@@ -10,8 +10,8 @@ Tracks what is done and what still blocks the first public release.
 - [x] CI: gofmt, vet, staticcheck, race tests, govulncheck, reproducible build check, contract validation, image builds
 - [x] Release pipeline: multi-arch images, SBOM, cosign keyless signatures, SLSA provenance, signed binaries
 - [x] Dependabot for Go, npm, Docker and GitHub Actions
-- [ ] Pin every GitHub Action to a commit SHA (`pinact run`), then let Dependabot maintain the pins
-- [ ] Pin base images by digest in both Dockerfiles
+- [x] Pin every GitHub Action to a commit SHA, maintained by Dependabot with a 14-day cooldown
+- [x] Pin base images by tag and digest (`scripts/pin-images.sh`, checked in CI), maintained by Dependabot
 - [ ] Enable branch protection on `main` (required checks, signed-off commits, linear history)
 - [ ] Enable GitHub private vulnerability reporting and OpenSSF Scorecard publishing
 - [x] Decide ADR-0006: high availability is part of the open-source edition

@@ -21,7 +21,6 @@ steps:
     waitFor: ["-"]
     args:
       - build
-      - --build-arg=GO_VERSION=1.26
       - --build-arg=VERSION=${_TAG}
       - --build-arg=COMMIT=${_TAG}
       - --tag=${_REPO}/stratum-gateway:${_TAG}

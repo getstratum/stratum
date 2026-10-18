@@ -6,8 +6,16 @@ updates:
   - package-ecosystem: gomod
     directory: /gateway
     schedule: { interval: weekly }
+  # Base images are pinned by tag and digest (scripts/pin-images.sh); these
+  # propose new digests as well as new versions.
   - package-ecosystem: docker
-    directories: [/gateway, /control-plane/dashboard]
+    directories: [/gateway, /control-plane/dashboard, /deploy/gcp/mock-llm]
+    schedule: { interval: weekly }
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+  - package-ecosystem: docker-compose
+    directory: /deploy/compose
     schedule: { interval: weekly }
     ignore:
       - dependency-name: "*"
