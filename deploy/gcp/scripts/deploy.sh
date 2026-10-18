@@ -170,8 +170,30 @@ provider ollama "Mock LLM (tests)" mock "http://mock-llm.${NAMESPACE}.svc.cluste
 [[ -n "${ANTHROPIC_API_KEY:-}" ]] && provider anthropic "Anthropic" "$ANTHROPIC_API_KEY"
 cleanup_pf
 
+# Valkey takes TLS with a CA of the instance's own and a token for its
+# default user (docs/adr/0011). Memorystore generates the token when it
+# creates the instance; it is read here on every deploy, not stored.
+step "Valkey: CA certificates and auth token"
+VALKEY_CA="$("$TF" -chdir="$TF_DIR" output -raw valkey_ca_pem 2>/dev/null)" || VALKEY_CA=""
+[[ "$VALKEY_CA" == *"BEGIN CERTIFICATE"* ]] ||
+  die "Terraform has no CA for Valkey: run 'make up' (in-transit encryption recreates the instance)"
+k create configmap valkey-ca --from-literal=ca.crt="$VALKEY_CA" --dry-run=client -o yaml | k apply -f - >/dev/null
+valkey_token() {
+  local url="https://memorystore.googleapis.com/v1/projects/$PROJECT_ID/locations/$REGION/instances/$VALKEY_INSTANCE/tokenAuthUsers/default/authTokens"
+  local tok
+  for _ in $(seq 1 30); do
+    tok="$(curl -sS -f -H "Authorization: Bearer $(gcloud auth print-access-token)" -H "x-goog-user-project: $PROJECT_ID" "$url" |
+      jq -r '[.authTokens[]? | select(.state == "ACTIVE") | .token][0] // empty')" || tok=""
+    [[ -n "$tok" ]] && { printf '%s' "$tok"; return 0; }
+    sleep 10
+  done
+  return 1
+}
+VALKEY_TOKEN="$(valkey_token)" || die "Memorystore did not return an active token for the default user of $VALKEY_INSTANCE"
+ok "configmap valkey-ca ($(grep -c 'BEGIN CERTIFICATE' <<<"$VALKEY_CA") CA certificates); token for the default user"
+
 kube_secret stratum-gateway "STRATUM_SYNC_TOKEN=$SYNC_TOKEN" "STRATUM_INSTANCE_ID=$INSTANCE_ID" \
-  "STRATUM_SNAPSHOT_KEY=$SNAPSHOT_KEY"
+  "STRATUM_SNAPSHOT_KEY=$SNAPSHOT_KEY" "STRATUM_VALKEY_PASSWORD=$VALKEY_TOKEN"
 
 # ── 7. Certificate: gateways sync over the public HTTPS endpoint ───────────
 step "Waiting for the TLS certificate for $HOST"
@@ -203,7 +225,8 @@ helm upgrade --install stratum-gateway "$REPO_ROOT/deploy/helm/stratum-gateway" 
   --set "image.digest=$GATEWAY_DIGEST" \
   --set "controlPlane.url=$CP_URL" \
   --set "controlPlane.allowHTTP=$ALLOW_HTTP" \
-  --set "quota.valkey.url=redis://$VALKEY_ADDRESS/0" \
+  --set "quota.valkey.url=rediss://$VALKEY_ADDRESS/0" \
+  --set "quota.valkey.caConfigMap=valkey-ca" \
   --wait --timeout 20m
 ok "gateway ready"
 

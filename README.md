@@ -119,6 +119,7 @@ around) is refused with `agent_model_mismatch`.
 | `STRATUM_CORS_ALLOWED_ORIGINS` | | Comma-separated origins allowed to call the gateway from a browser. |
 | `STRATUM_VALKEY_URL` | | Shared quota counters across replicas and the shared snapshot copy, e.g. `redis://valkey:6379/0` or `rediss://` for TLS. Without it each replica counts on its own. See [Quotas](#quotas-across-replicas). |
 | `STRATUM_VALKEY_PASSWORD` | | Overrides the password in the URL, so the URL can live in a ConfigMap. |
+| `STRATUM_VALKEY_CA_FILE` | | PEM file with the CA certificates to trust for `rediss://` instead of the system roots, for a Valkey with a private CA (Memorystore with in-transit encryption: every CA from `gcloud memorystore instances get-certificate-authority`). Read at start. |
 | `STRATUM_QUOTA_SYNC_INTERVAL` / `STRATUM_QUOTA_STALE_AFTER` | `1s` / `30s` | How often usage is flushed to Valkey, and after how long without a flush the store counts as down. |
 | `STRATUM_QUOTA_FAIL_MODE` | `open` | While Valkey is down: `open` keeps enforcing with last known totals plus local usage; `closed` rejects requests of teams that have a quota (503). |
 

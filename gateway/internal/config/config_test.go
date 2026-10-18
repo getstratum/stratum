@@ -1,6 +1,15 @@
 package config
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
+	"math/big"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -195,5 +204,61 @@ func TestSharedSnapshotSettings(t *testing.T) {
 	m["STRATUM_SNAPSHOT_BOOTSTRAP_TIMEOUT"] = "-1s"
 	if _, err := Load(envOf(m)); err == nil {
 		t.Fatal("negative bootstrap timeout must be rejected")
+	}
+}
+
+func TestValkeyCAFile(t *testing.T) {
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmpl := &x509.Certificate{
+		SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "test CA"},
+		NotBefore: time.Now(), NotAfter: time.Now().Add(time.Hour),
+		IsCA: true, BasicConstraintsValid: true, KeyUsage: x509.KeyUsageCertSign,
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, key.Public(), key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	write := func(name, content string) string {
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	ca := string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}))
+	good := write("ca.pem", ca+ca) // two CAs, as during a rotation
+	base := func(extra map[string]string) map[string]string {
+		m := map[string]string{"STRATUM_CONFIG_FILE": "/etc/stratum/stratum.json"}
+		for k, v := range extra {
+			m[k] = v
+		}
+		return m
+	}
+
+	c, err := Load(envOf(base(map[string]string{"STRATUM_VALKEY_URL": "rediss://10.0.0.5:6379/0", "STRATUM_VALKEY_CA_FILE": good})))
+	if err != nil || c.ValkeyRootCAs == nil {
+		t.Fatalf("CA file not loaded: %v", err)
+	}
+
+	for name, env := range map[string]map[string]string{
+		"plain URL":     {"STRATUM_VALKEY_URL": "redis://10.0.0.5:6379/0", "STRATUM_VALKEY_CA_FILE": good},
+		"no Valkey":     {"STRATUM_VALKEY_CA_FILE": good},
+		"missing file":  {"STRATUM_VALKEY_URL": "rediss://h", "STRATUM_VALKEY_CA_FILE": filepath.Join(dir, "nope.pem")},
+		"no PEM":        {"STRATUM_VALKEY_URL": "rediss://h", "STRATUM_VALKEY_CA_FILE": write("empty.pem", "not a certificate\n")},
+		"broken cert":   {"STRATUM_VALKEY_URL": "rediss://h", "STRATUM_VALKEY_CA_FILE": write("bad.pem", "-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----\n")},
+		"password leak": {"STRATUM_VALKEY_URL": "redis://:hunter2@h", "STRATUM_VALKEY_CA_FILE": good},
+	} {
+		_, err := Load(envOf(base(env)))
+		if err == nil {
+			t.Errorf("%s: expected an error", name)
+			continue
+		}
+		if strings.Contains(err.Error(), "hunter2") {
+			t.Errorf("%s: error leaks the password: %v", name, err)
+		}
 	}
 }

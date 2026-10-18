@@ -111,6 +111,10 @@ spec:
             {{- end }}
             - name: STRATUM_VALKEY_KEY_PREFIX
               value: {{ .Values.quota.valkey.keyPrefix | quote }}
+            {{- if .Values.quota.valkey.caConfigMap }}
+            - name: STRATUM_VALKEY_CA_FILE
+              value: /etc/stratum-valkey-ca/ca.crt
+            {{- end }}
             - name: STRATUM_QUOTA_SYNC_INTERVAL
               value: {{ .Values.quota.syncInterval | quote }}
             - name: STRATUM_QUOTA_STALE_AFTER
@@ -184,6 +188,11 @@ spec:
               mountPath: /etc/stratum
               readOnly: true
             {{- end }}
+            {{- if .Values.quota.valkey.caConfigMap }}
+            - name: valkey-ca
+              mountPath: /etc/stratum-valkey-ca
+              readOnly: true
+            {{- end }}
       volumes:
         - name: state
           emptyDir:
@@ -192,6 +201,14 @@ spec:
         - name: config
           configMap:
             name: {{ include "stratum-gateway.configMapName" . }}
+        {{- end }}
+        {{- with .Values.quota.valkey.caConfigMap }}
+        - name: valkey-ca
+          configMap:
+            name: {{ . }}
+            items:
+              - key: ca.crt
+                path: ca.crt
         {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:

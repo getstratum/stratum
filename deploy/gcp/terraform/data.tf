@@ -77,6 +77,7 @@ resource "google_network_connectivity_service_connection_policy" "valkey" {
 }
 
 resource "google_memorystore_instance" "quota" {
+  provider      = google-beta
   instance_id   = "${local.name}-quota-${var.suffix}"
   location      = var.region
   mode          = "CLUSTER_DISABLED"
@@ -106,10 +107,17 @@ resource "google_memorystore_instance" "quota" {
     "maxmemory-policy" = "noeviction"
   }
 
-  # Reachable only from this VPC through Private Service Connect. TLS and
-  # authentication are a production item (see README, "Before production").
-  authorization_mode      = "AUTH_DISABLED"
-  transit_encryption_mode = "TRANSIT_ENCRYPTION_DISABLED"
+  # Reachable only from this VPC through Private Service Connect, and even
+  # so encrypted and authenticated (docs/adr/0011): TLS with a CA of this
+  # instance's own, and a token for the default user that gateways send with
+  # AUTH. Not IAM authentication: that needs a fresh Google token for every
+  # new connection, so a gateway starting during an IAM outage could not
+  # reach Valkey, and the gateway would need Google permissions it has none
+  # of today. Both settings are immutable: changing them recreates the
+  # instance (and empties it).
+  authorization_mode      = "TOKEN_AUTH"
+  transit_encryption_mode = "SERVER_AUTHENTICATION"
+  server_ca_mode          = "GOOGLE_MANAGED_PER_INSTANCE_CA"
 
   deletion_protection_enabled = false
   labels                      = local.labels
