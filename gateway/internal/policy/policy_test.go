@@ -34,6 +34,11 @@ func TestCheck(t *testing.T) {
 		{"allow all", snapshot.Policy{AllowAllModels: true}, true, "groq", "anything", ""},
 		{"provider restriction", snapshot.Policy{AllowAllModels: true, AllowedProviders: set("openai")}, true, "groq", "x", "provider_not_allowed"},
 		{"missing model", snapshot.Policy{AllowAllModels: true}, true, "openai", "", "missing_model"},
+		{"turned off beats allow all", snapshot.Policy{AllowAllModels: true, DeniedModels: set("o3")}, true, "openai", "o3", "model_disabled"},
+		{"turned off, qualified form", snapshot.Policy{AllowAllModels: true, DeniedModels: set("openai/o3")}, true, "openai", "o3", "model_disabled"},
+		{"turned off beats the allowlist", snapshot.Policy{AllowedModels: set("gpt-4o"), DeniedModels: set("gpt-4o")}, true, "openai", "gpt-4o", "model_disabled"},
+		{"another provider's model of that name", snapshot.Policy{AllowAllModels: true, DeniedModels: set("openai/o3")}, true, "azure", "o3", ""},
+		{"provider check first", snapshot.Policy{AllowAllModels: true, AllowedProviders: set("openai"), DeniedModels: set("x")}, true, "groq", "x", "provider_not_allowed"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -59,6 +59,9 @@ export async function buildSyncResponse(client, { orgId, sinceVersion, syncInter
         -- Every ID of each model the policy names (migration 023).
         stratum_expand_models(p.allowed_models)          AS allowed_models,
         COALESCE(p.allow_all_models, false)              AS allow_all_models,
+        -- Models the organization turned off (migration 024): refused even
+        -- under "all models".
+        stratum_org_denied_models($2)                    AS denied_models,
         p.monthly_token_quota,
         p.monthly_budget_usd,
         COALESCE(p.pii_action, 'off')                    AS pii_action,

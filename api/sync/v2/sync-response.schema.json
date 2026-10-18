@@ -56,6 +56,16 @@
         "updated_at": { "type": ["string", "null"] },
         "allowed_models": { "type": ["array", "null"], "items": { "type": "string" } },
         "allow_all_models": { "type": "boolean" },
+        "denied_models": {
+          "description": "Models the organization turned off, with every ID and alias, bare and as provider/ID. Refused even when allow_all_models is true. Gateways older than 0.2 ignore it.",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          }
+        },
         "allowed_providers": { "type": ["array", "null"], "items": { "type": "string" } },
         "monthly_token_quota": { "anyOf": [{ "$ref": "#/$defs/integer" }, { "type": "null" }] },
         "monthly_budget_usd": { "anyOf": [{ "$ref": "#/$defs/decimal" }, { "type": "null" }] },

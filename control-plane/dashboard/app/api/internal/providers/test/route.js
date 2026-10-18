@@ -39,6 +39,16 @@ export const POST = route('providers.manage', async (req, { session, db }) => {
   }
 
   const result = await testConnection(provider, apiKey)
+  // The models the provider listed become choosable in policies, also those
+  // the catalog does not have (migration 024: they have no price).
+  if (result.ok && result.ids?.length) {
+    await db.query(
+      `INSERT INTO provider_models (org_id, provider, model_id, seen_at)
+       SELECT $1, $2, id, now() FROM unnest($3::text[]) AS id
+        WHERE id ~ '^[A-Za-z0-9][A-Za-z0-9._:@/+-]{0,199}$'
+       ON CONFLICT (org_id, provider, model_id) DO UPDATE SET seen_at = now()`,
+      [session.orgId, provider, result.ids])
+  }
   await audit(db, {
     req, session, action: 'provider.test', targetType: 'provider_config', targetId: id,
     result: result.ok ? 'ok' : 'failed', details: { provider, status: result.status ?? null },

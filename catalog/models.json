@@ -1,0 +1,31 @@
+{
+  "schema": 1,
+  "updated": "2026-10-18",
+  "about": "Stratum model catalog feed (ADR-0012). List prices in US$ per million tokens. The control plane reads this file once a day; a model removed from it stays in installations, use \"retired\": true instead. Change it with a pull request.",
+  "models": [
+    {"provider": "anthropic", "id": "claude-fable-5-1", "name": "Claude Fable 5.1", "aliases": [], "input_per_mtok": 10, "output_per_mtok": 50, "deprecated_on": null},
+    {"provider": "anthropic", "id": "claude-haiku-4-5-20251001", "name": "Claude Haiku 4.5", "aliases": ["claude-haiku-4-5"], "input_per_mtok": 1, "output_per_mtok": 5, "deprecated_on": null},
+    {"provider": "anthropic", "id": "claude-haiku-5-5", "name": "Claude Haiku 5.5", "aliases": [], "input_per_mtok": 0.1, "output_per_mtok": 0.5, "deprecated_on": null},
+    {"provider": "anthropic", "id": "claude-opus-4-6", "name": "Claude Opus 4.6", "aliases": [], "input_per_mtok": 5, "output_per_mtok": 25, "deprecated_on": null},
+    {"provider": "anthropic", "id": "claude-opus-4-7", "name": "Claude Opus 4.7", "aliases": [], "input_per_mtok": 5, "output_per_mtok": 25, "deprecated_on": null},
+    {"provider": "anthropic", "id": "claude-opus-4-8", "name": "Claude Opus 4.8", "aliases": [], "input_per_mtok": 5, "output_per_mtok": 25, "deprecated_on": null},
+    {"provider": "anthropic", "id": "claude-opus-5", "name": "Claude Opus 5", "aliases": [], "input_per_mtok": 5, "output_per_mtok": 25, "deprecated_on": null},
+    {"provider": "anthropic", "id": "claude-opus-5-5", "name": "Claude Opus 5.5", "aliases": [], "input_per_mtok": 4, "output_per_mtok": 20, "deprecated_on": null},
+    {"provider": "anthropic", "id": "claude-sonnet-4-5-20250929", "name": "Claude Sonnet 4.5", "aliases": ["claude-sonnet-4-5"], "input_per_mtok": 3, "output_per_mtok": 15, "deprecated_on": null},
+    {"provider": "anthropic", "id": "claude-sonnet-4-6", "name": "Claude Sonnet 4.6", "aliases": [], "input_per_mtok": 3, "output_per_mtok": 15, "deprecated_on": null},
+    {"provider": "anthropic", "id": "claude-sonnet-5", "name": "Claude Sonnet 5", "aliases": [], "input_per_mtok": 2, "output_per_mtok": 10, "deprecated_on": null},
+    {"provider": "anthropic", "id": "claude-sonnet-5-5", "name": "Claude Sonnet 5.5", "aliases": [], "input_per_mtok": 2, "output_per_mtok": 10, "deprecated_on": null},
+    {"provider": "bonsai", "id": "bonsai-8b", "name": "Bonsai 8B \u2014 local", "aliases": [], "input_per_mtok": 0, "output_per_mtok": 0, "deprecated_on": null},
+    {"provider": "gemini", "id": "gemini-3.1-flash-lite", "name": "Gemini 3.1 Flash-Lite", "aliases": [], "input_per_mtok": 0.25, "output_per_mtok": 1.5, "deprecated_on": null},
+    {"provider": "gemini", "id": "gemini-3.1-pro-preview", "name": "Gemini 3.1 Pro (preview)", "aliases": [], "input_per_mtok": 2, "output_per_mtok": 12, "deprecated_on": null},
+    {"provider": "gemini", "id": "gemini-3.5-flash", "name": "Gemini 3.5 Flash", "aliases": [], "input_per_mtok": 0.75, "output_per_mtok": 4.5, "deprecated_on": null},
+    {"provider": "gemini", "id": "gemini-3.5-flash-lite", "name": "Gemini 3.5 Flash-Lite", "aliases": [], "input_per_mtok": 0.3, "output_per_mtok": 2.5, "deprecated_on": null},
+    {"provider": "gemini", "id": "gemini-3.6-flash", "name": "Gemini 3.6 Flash", "aliases": [], "input_per_mtok": 0.75, "output_per_mtok": 3.75, "deprecated_on": null},
+    {"provider": "gemini", "id": "gemini-3.8-flash", "name": "Gemini 3.8 Flash", "aliases": [], "input_per_mtok": 0.75, "output_per_mtok": 3.75, "deprecated_on": null},
+    {"provider": "openai", "id": "gpt-4o", "name": "GPT-4o", "aliases": [], "input_per_mtok": 2.5, "output_per_mtok": 10, "deprecated_on": null},
+    {"provider": "openai", "id": "gpt-4o-mini", "name": "GPT-4o Mini", "aliases": [], "input_per_mtok": 0.15, "output_per_mtok": 0.6, "deprecated_on": null},
+    {"provider": "openai", "id": "gpt-5.4", "name": "GPT-5.4", "aliases": ["gpt-5.4-2026-03-05"], "input_per_mtok": 2.5, "output_per_mtok": 15, "deprecated_on": null},
+    {"provider": "openai", "id": "gpt-5.5", "name": "GPT-5.5", "aliases": ["gpt-5.5-2026-04-23"], "input_per_mtok": 5, "output_per_mtok": 30, "deprecated_on": null},
+    {"provider": "openai", "id": "o3", "name": "o3", "aliases": [], "input_per_mtok": 2, "output_per_mtok": 8, "deprecated_on": null}
+  ]
+}

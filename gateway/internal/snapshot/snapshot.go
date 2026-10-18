@@ -25,6 +25,7 @@ type Policy struct {
 	AllowAllModels    bool
 	AllowedModels     map[string]struct{}
 	AllowedProviders  map[string]struct{} // empty = any provider
+	DeniedModels      map[string]struct{} // turned off for the organization; wins over the allowlist
 	MonthlyTokenQuota *int64
 	MonthlyBudgetUSD  *float64
 	PIIAction         string // off | log | redact | block
@@ -81,6 +82,7 @@ func Build(st *State, syncedAt time.Time) *Snapshot {
 			AllowAllModels:   p.AllowAllModels,
 			AllowedModels:    toSet(p.AllowedModels),
 			AllowedProviders: toSet(p.AllowedProviders),
+			DeniedModels:     toSet(p.DeniedModels),
 			PIIAction:        normalizeAction(p.PIIAction),
 			DLPAction:        normalizeAction(p.DLPAction),
 			Revoked:          p.Revoked,

@@ -21,6 +21,7 @@
       "version": 36,
       "allowed_models": ["gpt-4o-mini"],
       "allow_all_models": false,
+      "denied_models": ["o3", "openai/o3"],
       "allowed_providers": ["openai"],
       "monthly_token_quota": 200000,
       "monthly_budget_usd": null,

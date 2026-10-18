@@ -22,8 +22,10 @@ API: `GET /api/consumption?by=team|agent|user|model|provider` with the period
 
 Errors are 4xx and 5xx answers, refusals included. Refused by policy:
 `no_policy`, `team_disabled`, `provider_not_allowed`, `model_not_allowed`,
-`quota_exceeded`, `sensitive_data_detected`, `agent_model_mismatch`.
+`quota_exceeded`, `sensitive_data_detected`, `agent_model_mismatch`,
+`model_disabled`.
 
-The cost is an estimate: tokens the provider reported × the catalog's list
-price when the request was recorded. Requests to models outside the catalog
-cost 0 here.
+The cost is an estimate: tokens the provider reported × the price when the
+request was recorded: the organization's own price for that model if it set
+one in Modelos, the catalog's list price otherwise. Requests to models
+without either cost 0 here.

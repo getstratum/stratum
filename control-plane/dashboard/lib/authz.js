@@ -43,6 +43,7 @@ export const PERMISSIONS = {
   'gateways.read':     { owner: 'org', admin: 'org', auditor: 'org' },
   'gateways.manage':   { owner: 'org', admin: 'org' },
   'models.read':       ALL,
+  'models.manage':     { owner: 'org', admin: 'org' },
 
   // Usage and records
   'usage.read':        ALL,
