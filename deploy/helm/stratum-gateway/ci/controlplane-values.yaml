@@ -6,4 +6,5 @@ metrics:
     enabled: true
 quota:
   valkey:
-    url: redis://valkey.stratum.svc:6379/0
+    url: rediss://valkey.stratum.svc:6379/0
+    caConfigMap: valkey-ca

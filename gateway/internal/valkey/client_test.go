@@ -67,6 +67,10 @@ func newFakeServer(t *testing.T) *fakeServer {
 	if err != nil {
 		t.Fatal(err)
 	}
+	return serveFake(t, ln)
+}
+
+func serveFake(t *testing.T, ln net.Listener) *fakeServer {
 	s := &fakeServer{ln: ln, commands: make(chan []string, 64)}
 	t.Cleanup(func() { ln.Close() })
 	go func() {

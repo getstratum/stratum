@@ -299,6 +299,9 @@ func valkeyOptions(cfg *config.Config) valkey.Options {
 	if cfg.ValkeyPassword != "" {
 		vo.Password = cfg.ValkeyPassword
 	}
+	if cfg.ValkeyRootCAs != nil && vo.TLS != nil {
+		vo.TLS.RootCAs = cfg.ValkeyRootCAs
+	}
 	return vo
 }
 

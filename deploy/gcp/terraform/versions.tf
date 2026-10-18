@@ -6,6 +6,12 @@ terraform {
       source  = "hashicorp/google"
       version = "~> 8.6"
     }
+    # Only for Memorystore's token authentication (TOKEN_AUTH), which the
+    # google provider does not accept yet.
+    google-beta = {
+      source  = "hashicorp/google-beta"
+      version = "~> 8.6"
+    }
   }
 
   # Local state is fine for a throwaway test environment run from Cloud Shell.
@@ -22,6 +28,14 @@ provider "google" {
   billing_project       = var.project_id
 
   default_labels = local.labels
+}
+
+provider "google-beta" {
+  project               = var.project_id
+  region                = var.region
+  user_project_override = true
+  billing_project       = var.project_id
+  default_labels        = local.labels
 }
 
 data "google_project" "this" {

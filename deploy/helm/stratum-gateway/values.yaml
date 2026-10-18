@@ -76,6 +76,9 @@ quota:
     # empty and put the whole STRATUM_VALKEY_URL in existingSecret.
     url: ""
     keyPrefix: stratum
+    # With rediss:// and a private CA: a ConfigMap whose key ca.crt holds
+    # the CA certificates (PEM) to trust instead of the system roots.
+    caConfigMap: ""
   syncInterval: 1s
   staleAfter: 30s
   # open: keep enforcing with last known totals while Valkey is down.
