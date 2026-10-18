@@ -4,7 +4,9 @@
 package config
 
 import (
+	"crypto/x509"
 	"encoding/hex"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"net/url"
@@ -74,6 +76,8 @@ type Config struct {
 	// Shared quota store (optional). Empty ValkeyURL means local counters.
 	ValkeyURL         string
 	ValkeyPassword    string // overrides the password in ValkeyURL
+	ValkeyCAFile      string // PEM bundle trusted for rediss:// instead of the system roots
+	ValkeyRootCAs     *x509.CertPool
 	ValkeyKeyPrefix   string
 	QuotaSyncInterval time.Duration
 	QuotaStaleAfter   time.Duration
@@ -127,6 +131,7 @@ func Load(getenv func(string) string) (*Config, error) {
 
 		ValkeyURL:         e.str("STRATUM_VALKEY_URL", ""),
 		ValkeyPassword:    e.str("STRATUM_VALKEY_PASSWORD", ""),
+		ValkeyCAFile:      e.str("STRATUM_VALKEY_CA_FILE", ""),
 		ValkeyKeyPrefix:   e.str("STRATUM_VALKEY_KEY_PREFIX", "stratum"),
 		QuotaSyncInterval: e.dur("STRATUM_QUOTA_SYNC_INTERVAL", time.Second),
 		QuotaStaleAfter:   e.dur("STRATUM_QUOTA_STALE_AFTER", 30*time.Second),
@@ -188,9 +193,19 @@ func Load(getenv func(string) string) (*Config, error) {
 		e.fail("STRATUM_QUOTA_FAIL_MODE must be open or closed")
 	}
 	if c.ValkeyURL != "" {
-		if _, err := valkey.ParseURL(c.ValkeyURL); err != nil {
+		vo, err := valkey.ParseURL(c.ValkeyURL)
+		if err != nil {
 			// Never echo the URL: it may carry a password.
 			e.fail("STRATUM_VALKEY_URL: " + err.Error())
+		}
+		if c.ValkeyCAFile != "" {
+			if err == nil && vo.TLS == nil {
+				e.fail("STRATUM_VALKEY_CA_FILE needs a TLS URL in STRATUM_VALKEY_URL (rediss:// or valkeys://)")
+			} else if pool, err := loadCAs(c.ValkeyCAFile); err != nil {
+				e.fail("STRATUM_VALKEY_CA_FILE: " + err.Error())
+			} else {
+				c.ValkeyRootCAs = pool
+			}
 		}
 		if c.QuotaSyncInterval < 100*time.Millisecond || c.QuotaSyncInterval > time.Minute {
 			e.fail("STRATUM_QUOTA_SYNC_INTERVAL must be between 100ms and 1m")
@@ -198,8 +213,13 @@ func Load(getenv func(string) string) (*Config, error) {
 		if c.QuotaStaleAfter < 2*c.QuotaSyncInterval {
 			e.fail("STRATUM_QUOTA_STALE_AFTER must be at least twice STRATUM_QUOTA_SYNC_INTERVAL")
 		}
-	} else if c.QuotaFailClosed {
-		e.fail("STRATUM_QUOTA_FAIL_MODE=closed needs STRATUM_VALKEY_URL")
+	} else {
+		if c.QuotaFailClosed {
+			e.fail("STRATUM_QUOTA_FAIL_MODE=closed needs STRATUM_VALKEY_URL")
+		}
+		if c.ValkeyCAFile != "" {
+			e.fail("STRATUM_VALKEY_CA_FILE needs STRATUM_VALKEY_URL")
+		}
 	}
 	switch c.LogLevel {
 	case "debug", "info", "warn", "error":
@@ -260,6 +280,37 @@ func (c *Config) SharedSnapshotEnabled() bool {
 type env struct {
 	get  func(string) string
 	errs []error
+}
+
+// loadCAs reads a PEM bundle of CA certificates, such as the ones a managed
+// Valkey service issues per instance (several during a CA rotation).
+func loadCAs(path string) (*x509.CertPool, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	pool := x509.NewCertPool()
+	n := 0
+	for {
+		var block *pem.Block
+		block, data = pem.Decode(data)
+		if block == nil {
+			break
+		}
+		if block.Type != "CERTIFICATE" {
+			continue
+		}
+		cert, err := x509.ParseCertificate(block.Bytes)
+		if err != nil {
+			return nil, fmt.Errorf("certificate %d: %w", n+1, err)
+		}
+		pool.AddCert(cert)
+		n++
+	}
+	if n == 0 {
+		return nil, errors.New("no PEM certificates in the file")
+	}
+	return pool, nil
 }
 
 func (e *env) fail(msg string) { e.errs = append(e.errs, errors.New(msg)) }

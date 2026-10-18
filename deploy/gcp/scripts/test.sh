@@ -197,12 +197,16 @@ t_quota_reset() {
   step "quota-reset: delete this month's counters in Valkey"
   local pattern overrides
   pattern="stratum:{quota}:tok:$(date -u +%Y-%m):*"
+  # TLS with the instance's CA and the gateways' token (docs/adr/0011).
   overrides="$(jq -n --arg img "$VALKEY_CLI_IMAGE" --arg ip "$VALKEY_IP" --arg pat "$pattern" '{
     spec: {
       securityContext: {runAsNonRoot: true, runAsUser: 999, seccompProfile: {type: "RuntimeDefault"}},
+      volumes: [{name: "ca", configMap: {name: "valkey-ca"}}],
       containers: [{
         name: "valkey-cli", image: $img,
-        command: ["sh", "-c", "valkey-cli -h \($ip) --scan --pattern \"\($pat)\" | xargs -r valkey-cli -h \($ip) DEL"],
+        env: [{name: "REDISCLI_AUTH", valueFrom: {secretKeyRef: {name: "stratum-gateway", key: "STRATUM_VALKEY_PASSWORD"}}}],
+        command: ["sh", "-c", "valkey-cli --tls --cacert /ca/ca.crt -h \($ip) --scan --pattern \"\($pat)\" | xargs -r valkey-cli --tls --cacert /ca/ca.crt -h \($ip) DEL"],
+        volumeMounts: [{name: "ca", mountPath: "/ca", readOnly: true}],
         securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: ["ALL"]}}
       }]
     }}')"

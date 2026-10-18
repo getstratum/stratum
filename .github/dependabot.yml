@@ -14,6 +14,11 @@ updates:
     ignore:
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
+      # A new Go release (1.26 -> 1.27) changes go.mod's toolchain, the CI and
+      # the release binaries too; it is done by hand in one PR. New digests
+      # of the same Go release still come from here.
+      - dependency-name: golang
+        update-types: ["version-update:semver-minor"]
   - package-ecosystem: docker-compose
     directory: /deploy/compose
     schedule: { interval: weekly }

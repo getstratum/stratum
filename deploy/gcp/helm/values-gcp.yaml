@@ -1,8 +1,10 @@
 # Gateway chart values for the GCP reference deployment (GKE Autopilot,
 # global external Application Load Balancer through the Gateway API).
-# scripts/deploy.sh adds: image, controlPlane.url, quota.valkey.url.
+# scripts/deploy.sh adds: image, controlPlane.url, quota.valkey.url and
+# quota.valkey.caConfigMap.
 
-existingSecret: stratum-gateway # STRATUM_SYNC_TOKEN, STRATUM_INSTANCE_ID, STRATUM_SNAPSHOT_KEY
+# STRATUM_SYNC_TOKEN, STRATUM_INSTANCE_ID, STRATUM_SNAPSHOT_KEY, STRATUM_VALKEY_PASSWORD
+existingSecret: stratum-gateway
 
 autoscaling:
   enabled: true
