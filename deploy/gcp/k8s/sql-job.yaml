@@ -1,6 +1,7 @@
 # One-shot psql job against Cloud SQL through the Auth Proxy (native
-# sidecar, so the job completes when psql exits). Used for migrations and
-# for the test bootstrap. Rendered by scripts/lib.sh:run_sql_job.
+# sidecar, so the job completes when psql exits). Used for the test
+# bootstrap (migrations run in the control plane pods). Rendered by
+# scripts/lib.sh:run_sql_job.
 apiVersion: batch/v1
 kind: Job
 metadata:

@@ -34,8 +34,9 @@ if [[ "${SKIP_BUILD:-0}" != "1" ]]; then
     gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet >/dev/null
     docker build -t "$IMAGE_REPO/stratum-gateway:$TAG" "$REPO_ROOT/gateway"
     docker build --build-arg "NEXT_PUBLIC_GATEWAY_URL=https://$HOST" -t "$IMAGE_REPO/stratum-control-plane:$TAG" "$REPO_ROOT/control-plane/dashboard"
+    docker build -t "$IMAGE_REPO/stratum-migrations:$TAG" "$REPO_ROOT/control-plane/migrations"
     docker build -t "$IMAGE_REPO/mock-llm:$TAG" "$GCP_DIR/mock-llm"
-    for i in stratum-gateway stratum-control-plane mock-llm; do docker push -q "$IMAGE_REPO/$i:$TAG"; done
+    for i in stratum-gateway stratum-control-plane stratum-migrations mock-llm; do docker push -q "$IMAGE_REPO/$i:$TAG"; done
   else
     # Paths are relative to the repository root (the uploaded source). Logs
     # go to Cloud Logging only (custom build identity), so poll the status
@@ -65,8 +66,8 @@ digest() {
 }
 GATEWAY_DIGEST="$(digest stratum-gateway)"
 CP_DIGEST="$(digest stratum-control-plane)"
+MIGRATIONS_DIGEST="$(digest stratum-migrations)"
 MOCK_DIGEST="$(digest mock-llm)"
-export CP_IMAGE="$IMAGE_REPO/stratum-control-plane@$CP_DIGEST"
 export MOCK_IMAGE="$IMAGE_REPO/mock-llm@$MOCK_DIGEST"
 ok "images pinned by digest"
 
@@ -97,12 +98,34 @@ kube_secret stratum-control-plane \
 kube_secret stratum-test-keys "engineering=$ENG_KEY" "marketing=$MKT_KEY"
 ok "Secret Manager: ${SECRET_PREFIX}-* ; Kubernetes: stratum-db, stratum-control-plane, stratum-test-keys"
 
-# ── 4. Database: migrations, then the test bootstrap ───────────────────────
-step "Database migrations"
-k create configmap stratum-migrations --from-file="$REPO_ROOT/control-plane/migrations" \
-  --dry-run=client -o yaml | k apply -f - >/dev/null
-run_sql_job stratum-migrate stratum-migrations '["sh", "/sql/migrate.sh", "/sql"]'
+# ── 4. Control plane: the Helm chart (deploy/helm/stratum-control-plane).
+#       Its pods apply the database migrations before they start. ─────────
+step "Control plane: Helm release stratum-control-plane"
+# Earlier versions of this kit applied the control plane as plain
+# manifests. Helm cannot adopt that Deployment (its selector differs), so it
+# is replaced: the console is down for a minute, gateways keep serving.
+if k get deployment stratum-control-plane >/dev/null 2>&1 &&
+  [[ "$(k get deployment stratum-control-plane -o jsonpath='{.metadata.labels.app\.kubernetes\.io/managed-by}')" != Helm ]]; then
+  warn "replacing the control plane applied from manifests with the Helm release"
+  k delete deployment stratum-control-plane --wait=true >/dev/null
+  k delete pdb stratum-control-plane --ignore-not-found >/dev/null
+fi
+render "$GCP_DIR/k8s/cp-services.yaml" | k apply -f - >/dev/null
+cp_values="$(mktemp)"
+render "$GCP_DIR/helm/values-gcp-control-plane.yaml" >"$cp_values"
+helm upgrade --install stratum-control-plane "$REPO_ROOT/deploy/helm/stratum-control-plane" \
+  --namespace "$NAMESPACE" \
+  -f "$cp_values" \
+  --set "image.repository=$IMAGE_REPO/stratum-control-plane" \
+  --set "image.digest=$CP_DIGEST" \
+  --set "migrations.image.repository=$IMAGE_REPO/stratum-migrations" \
+  --set "migrations.image.digest=$MIGRATIONS_DIGEST" \
+  --wait --timeout 15m
+rm -f "$cp_values"
+k logs deployment/stratum-control-plane -c migrate --tail=5 2>/dev/null | sed 's/^/    /' || true
+ok "control plane ready (migrations applied by its pods)"
 
+# ── 5. Test bootstrap, mock provider, policies, monitoring ────────────────
 step "Bootstrap: demo organization, test keys and policies"
 ENG_HASH="$(printf '%s' "$ENG_KEY" | sha256sum | cut -d' ' -f1)"
 MKT_HASH="$(printf '%s' "$MKT_KEY" | sha256sum | cut -d' ' -f1)"
@@ -112,15 +135,12 @@ k create configmap stratum-bootstrap --from-file="$GCP_DIR/sql/bootstrap.sql" \
 run_sql_job stratum-bootstrap stratum-bootstrap \
   "[\"psql\", \"-X\", \"-v\", \"eng_hash=$ENG_HASH\", \"-v\", \"mkt_hash=$MKT_HASH\", \"-f\", \"/sql/bootstrap.sql\"]"
 
-# ── 5. Control plane, mock provider, policies, monitoring ──────────────────
-step "Control plane and mock provider"
-render "$GCP_DIR/k8s/control-plane.yaml" | k apply -f - >/dev/null
+step "Mock provider, network policies, monitoring"
 render "$GCP_DIR/k8s/mock-llm.yaml" | k apply -f - >/dev/null
 render "$GCP_DIR/k8s/network-policy.yaml" | k apply -f - >/dev/null
 render "$GCP_DIR/k8s/monitoring.yaml" | k apply -f - >/dev/null
-k rollout status deployment/stratum-control-plane --timeout=15m
 k rollout status deployment/mock-llm --timeout=10m
-ok "control plane and mock-llm ready"
+ok "mock-llm ready"
 
 # The console has no default account: make dev@acme.com the demo
 # organization's owner, with a password kept in Secret Manager. Owners must

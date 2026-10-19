@@ -1,4 +1,4 @@
-# Builds the three images of the test environment from this checkout and
+# Builds the four images of the test environment from this checkout and
 # pushes them to the environment's Artifact Registry. Run by
 # scripts/deploy.sh with the build service account created by Terraform.
 #
@@ -35,6 +35,14 @@ steps:
       - --tag=${_REPO}/stratum-control-plane:${_TAG}
       - control-plane/dashboard
 
+  - id: migrations
+    name: gcr.io/cloud-builders/docker
+    waitFor: ["-"]
+    args:
+      - build
+      - --tag=${_REPO}/stratum-migrations:${_TAG}
+      - control-plane/migrations
+
   - id: mock-llm
     name: gcr.io/cloud-builders/docker
     waitFor: ["-"]
@@ -46,6 +54,7 @@ steps:
 images:
   - ${_REPO}/stratum-gateway:${_TAG}
   - ${_REPO}/stratum-control-plane:${_TAG}
+  - ${_REPO}/stratum-migrations:${_TAG}
   - ${_REPO}/mock-llm:${_TAG}
 
 timeout: 1800s

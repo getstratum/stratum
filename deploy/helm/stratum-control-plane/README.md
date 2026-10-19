@@ -116,9 +116,9 @@ sidecars:
       capabilities: { drop: ["ALL"] }
 ```
 
-deploy/gcp still deploys the control plane from plain manifests
-(`deploy/gcp/k8s/control-plane.yaml`), with two services for two Cloud Armor
-policies.
+deploy/gcp installs the chart this way
+([values-gcp-control-plane.yaml](../../gcp/helm/values-gcp-control-plane.yaml)),
+plus two Services for two Cloud Armor policies.
 
 ## Without internet access
 
