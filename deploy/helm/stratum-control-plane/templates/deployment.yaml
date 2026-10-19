@@ -1,0 +1,179 @@
+{{- include "stratum-cp.validate" . -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "stratum-cp.fullname" . }}
+  labels:
+    {{- include "stratum-cp.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      {{- include "stratum-cp.selectorLabels" . | nindent 6 }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        {{- include "stratum-cp.selectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "stratum-cp.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: {{ .Values.lifecycle.terminationGracePeriodSeconds }}
+      {{- with .Values.priorityClassName }}
+      priorityClassName: {{ . }}
+      {{- end }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- include "stratum-cp.podSecurityContext" . | nindent 8 }}
+      {{- if .Values.topologySpread.enabled }}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: {{ .Values.topologySpread.zoneWhenUnsatisfiable }}
+          labelSelector:
+            matchLabels:
+              {{- include "stratum-cp.selectorLabels" . | nindent 14 }}
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: {{ .Values.topologySpread.hostWhenUnsatisfiable }}
+          labelSelector:
+            matchLabels:
+              {{- include "stratum-cp.selectorLabels" . | nindent 14 }}
+      {{- end }}
+      {{- if or .Values.sidecars .Values.migrations.enabled }}
+      initContainers:
+        {{- with .Values.sidecars }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        {{- if .Values.migrations.enabled }}
+        # Applies pending migrations before the console starts (migrate.sh).
+        - name: migrate
+          image: {{ include "stratum-cp.imageRef" (list .Values.migrations.image .) | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.existingSecret }}
+                  key: DATABASE_URL
+          securityContext:
+            runAsUser: 70
+            runAsGroup: 70
+            {{- include "stratum-cp.containerSecurityContext" . | nindent 12 }}
+          resources:
+            {{- toYaml .Values.migrations.resources | nindent 12 }}
+          volumeMounts:
+            - name: migrate-tmp
+              mountPath: /tmp
+        {{- end }}
+      {{- end }}
+      containers:
+        - name: control-plane
+          image: {{ include "stratum-cp.imageRef" (list .Values.image .) | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 3000
+              protocol: TCP
+          env:
+            - name: SECURE_COOKIES
+              value: {{ .Values.console.secureCookies | toString | quote }}
+            - name: STRATUM_TRUSTED_PROXY_HOPS
+              value: {{ .Values.console.trustedProxyHops | toString | quote }}
+            - name: STRATUM_SYNC_INTERVAL_S
+              value: {{ .Values.console.syncIntervalSeconds | toString | quote }}
+            {{- with .Values.console.modelCatalogUrl }}
+            - name: STRATUM_MODEL_CATALOG_URL
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          envFrom:
+            - secretRef:
+                name: {{ .Values.existingSecret }}
+            {{- with .Values.extraEnvFrom }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          # /api/healthz does not touch the database: a database outage does
+          # not restart pods that would come back to the same outage.
+          readinessProbe:
+            httpGet:
+              path: /api/healthz
+              port: http
+            periodSeconds: 5
+            failureThreshold: 2
+          livenessProbe:
+            httpGet:
+              path: /api/healthz
+              port: http
+            periodSeconds: 10
+            failureThreshold: 3
+          startupProbe:
+            httpGet:
+              path: /api/healthz
+              port: http
+            periodSeconds: 2
+            failureThreshold: 30
+          lifecycle:
+            preStop:
+              sleep:
+                seconds: {{ .Values.lifecycle.preStopSleepSeconds }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+            {{- include "stratum-cp.containerSecurityContext" . | nindent 12 }}
+          volumeMounts:
+            - name: next-cache
+              mountPath: /app/.next/cache
+            - name: tmp
+              mountPath: /tmp
+            {{- with .Values.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+      volumes:
+        - name: next-cache
+          emptyDir:
+            sizeLimit: 256Mi
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+        {{- if .Values.migrations.enabled }}
+        - name: migrate-tmp
+          emptyDir:
+            sizeLimit: 16Mi
+        {{- end }}
+        {{- with .Values.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

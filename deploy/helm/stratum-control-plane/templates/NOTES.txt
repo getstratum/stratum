@@ -1,0 +1,27 @@
+Stratum control plane {{ .Chart.AppVersion }} — {{ if .Values.autoscaling.enabled }}{{ .Values.autoscaling.minReplicas }}-{{ .Values.autoscaling.maxReplicas }}{{ else }}{{ .Values.replicaCount }}{{ end }} replicas
+Migrations: {{ if .Values.migrations.enabled }}applied by each pod before it starts (init container "migrate"){{ else }}disabled: apply them yourself before upgrading (control-plane/migrations/migrate.sh){{ end }}
+
+1. Wait until the pods are ready:
+     kubectl -n {{ .Release.Namespace }} rollout status deployment/{{ include "stratum-cp.fullname" . }}
+
+2. A new installation is empty. Create your organization and its first Owner
+   (prints a password once; the first sign-in sets up the second factor):
+     kubectl -n {{ .Release.Namespace }} exec deploy/{{ include "stratum-cp.fullname" . }} -c control-plane -- \
+       node scripts/stratum-admin.mjs create-owner --email you@example.com --org-name "Your company"
+
+3. Open the console:
+{{- if .Values.ingress.enabled }}
+{{- range .Values.ingress.hosts }}
+     https://{{ .host }}
+{{- end }}
+{{- else }}
+     kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "stratum-cp.fullname" . }} 3000:{{ .Values.service.port }}
+     http://localhost:3000
+{{- end }}
+
+4. Register a gateway (Gateways page) and install the stratum-gateway chart
+   with the token and instance id it shows, and controlPlane.url pointing
+   to an https address of this control plane.
+
+Keep a copy of STRATUM_ENCRYPTION_KEY outside the cluster: provider
+credentials and second factors cannot be read without it.

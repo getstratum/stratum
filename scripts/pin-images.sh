@@ -14,6 +14,7 @@ cd "$(dirname "$0")/.."
 FILES=(
   gateway/Dockerfile
   control-plane/dashboard/Dockerfile
+  control-plane/migrations/Dockerfile
   deploy/gcp/mock-llm/Dockerfile
   deploy/compose/docker-compose.yml
 )

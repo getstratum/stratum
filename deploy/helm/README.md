@@ -2,6 +2,8 @@
 
 Highly available reference deployment of the Stratum gateway (data plane),
 following [docs/architecture/overview.md](../../docs/architecture/overview.md).
+The control plane has its own chart:
+[stratum-control-plane](stratum-control-plane/README.md).
 
 What the defaults give you:
 

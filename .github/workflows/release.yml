@@ -1,6 +1,6 @@
 name: release
 
-# Builds, signs and publishes a version: images, gateway binaries and chart.
+# Builds, signs and publishes a version: images, gateway binaries and charts.
 #
 # - release-please calls it when it creates a release. Its tag does not
 #   trigger "push: tags" here: GitHub starts no workflow for events made
@@ -75,6 +75,8 @@ jobs:
             context: gateway
           - name: stratum-control-plane
             context: control-plane/dashboard
+          - name: stratum-migrations
+            context: control-plane/migrations
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -195,9 +197,11 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           version: ${{ needs.tag.outputs.version }}
         run: |
-          helm package deploy/helm/stratum-gateway --version "$version" --app-version "$version" -d dist
           echo "$GH_TOKEN" | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
-          helm push "dist/stratum-gateway-${version}.tgz" "oci://ghcr.io/${OWNER}/charts" 2>&1 | tee push.log
-          digest=$(grep -o 'sha256:[a-f0-9]\{64\}' push.log | head -1)
-          [ -n "$digest" ] || { echo "::error::no digest in the helm push output"; exit 1; }
-          cosign sign --yes "ghcr.io/${OWNER}/charts/stratum-gateway@${digest}"
+          for chart in stratum-gateway stratum-control-plane; do
+            helm package "deploy/helm/${chart}" --version "$version" --app-version "$version" -d dist
+            helm push "dist/${chart}-${version}.tgz" "oci://ghcr.io/${OWNER}/charts" 2>&1 | tee push.log
+            digest=$(grep -o 'sha256:[a-f0-9]\{64\}' push.log | head -1)
+            [ -n "$digest" ] || { echo "::error::no digest in the helm push output for ${chart}"; exit 1; }
+            cosign sign --yes "ghcr.io/${OWNER}/charts/${chart}@${digest}"
+          done

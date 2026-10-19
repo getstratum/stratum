@@ -1,0 +1,138 @@
+# Stratum control plane — values for a highly available deployment.
+#
+# The control plane is the console and the configuration source gateways
+# sync from. It is not on the request path: gateways keep serving with their
+# last configuration while it is down (docs/adr/0005-fail-static.md). Its
+# pods are stateless; everything lives in PostgreSQL, which you provide.
+
+replicaCount: 2
+
+image:
+  repository: ghcr.io/getstratum/stratum-control-plane
+  # Defaults to the chart's appVersion.
+  tag: ""
+  # Prefer pinning by digest in production: sha256:...
+  digest: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+# Secret with the control plane's credentials. Create it yourself (or with
+# your secret manager) and reference it here; the chart never renders secrets.
+#   DATABASE_URL            postgresql://user:password@host:5432/db?sslmode=verify-full
+#                           (the migrations read it with psql too, so use
+#                           sslmode values libpq knows)
+#   STRATUM_ENCRYPTION_KEY  64 hex chars (openssl rand -hex 32). Encrypts provider
+#                           credentials and second factors at rest; keep a copy,
+#                           without it they cannot be read.
+existingSecret: ""
+
+# Database migrations run in an init container of every pod, before the
+# console starts: each file is applied once, under an advisory lock, so pods
+# starting together wait for one another and a pod with nothing to apply
+# starts right away. A rolling update applies the new release's migrations
+# with its first pod.
+migrations:
+  enabled: true
+  image:
+    repository: ghcr.io/getstratum/stratum-migrations
+    # Defaults to the chart's appVersion.
+    tag: ""
+    digest: ""
+  resources:
+    requests:
+      cpu: 50m
+      memory: 32Mi
+    limits:
+      memory: 128Mi
+
+console:
+  # Session cookies are Secure. Turn off only to reach the console over
+  # plain http on a network you trust.
+  secureCookies: true
+  # Proxies in front of the console that append to X-Forwarded-For, so the
+  # audit log records the client's address and not a proxy's: 1 behind an
+  # ingress controller, 2 behind Google Cloud's load balancer.
+  trustedProxyHops: 1
+  # Seconds between gateway syncs, as the control plane tells gateways.
+  syncIntervalSeconds: 30
+  # Model catalog feed (docs/adr/0012-live-model-catalog.md): empty for the
+  # project's feed, a URL of your own, or "off" without internet access
+  # (then: stratum-admin catalog-update --file).
+  modelCatalogUrl: ""
+
+extraEnv: []
+extraEnvFrom: []
+
+# Containers that run next to the console in every pod and in the migrations
+# step, started first: for example the Cloud SQL Auth Proxy. They go in
+# initContainers with restartPolicy: Always (native sidecars, Kubernetes
+# 1.29+), so they are up before the migrations and stop after the console.
+sidecars: []
+extraVolumes: []
+extraVolumeMounts: []
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+  limits:
+    memory: 768Mi
+
+service:
+  type: ClusterIP
+  port: 80
+  annotations: {}
+
+# Optional Ingress for the console and the gateways' sync endpoint (both on
+# the same service). Terminate TLS here or in front of it: gateways refuse
+# a plain http control plane.
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts: []
+  #  - host: stratum-cp.example.com
+  #    paths:
+  #      - path: /
+  #        pathType: Prefix
+  tls: []
+  #  - secretName: stratum-cp-tls
+  #    hosts: [stratum-cp.example.com]
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 6
+  targetCPUUtilizationPercentage: 70
+
+# Spread replicas across zones and nodes. Use "ScheduleAnyway" for the zone
+# on single-zone clusters.
+topologySpread:
+  enabled: true
+  zoneWhenUnsatisfiable: DoNotSchedule
+  hostWhenUnsatisfiable: ScheduleAnyway
+
+lifecycle:
+  # Time for the load balancer to stop routing to a pod that is shutting
+  # down, before the server gets SIGTERM.
+  preStopSleepSeconds: 10
+  terminationGracePeriodSeconds: 45
+
+podAnnotations: {}
+podLabels: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}
+priorityClassName: ""
+
+serviceAccount:
+  create: true
+  name: ""
+  # For example, Workload Identity on GKE:
+  #   iam.gke.io/gcp-service-account: stratum-cp@PROJECT.iam.gserviceaccount.com
+  annotations: {}

@@ -63,13 +63,21 @@ gateway and start it.
 ## Quick start: Kubernetes (highly available)
 
 ```sh
+# Control plane: two stateless replicas on your PostgreSQL
+helm install stratum-control-plane oci://ghcr.io/getstratum/charts/stratum-control-plane -n stratum \
+  --set existingSecret=stratum-control-plane
+
+# Gateways
 helm install stratum oci://ghcr.io/getstratum/charts/stratum-gateway -n stratum \
   --set controlPlane.url=https://stratum-cp.example.com \
   --set existingSecret=stratum-gateway
 ```
 
-Three replicas across zones, a disruption budget, zero-capacity-loss rollouts
-and graceful drain of streams by default. See [deploy/helm](deploy/helm/README.md).
+Replicas across zones, disruption budgets and zero-capacity-loss rollouts by
+default; the gateway drains streams on shutdown and the control plane applies
+its database migrations itself. See
+[deploy/helm/stratum-control-plane](deploy/helm/stratum-control-plane/README.md)
+and [deploy/helm](deploy/helm/README.md) for the gateway.
 
 To try the whole highly available topology on Google Cloud (Terraform, GKE
 Autopilot, global load balancer, Cloud SQL HA, Memorystore) and run failure
