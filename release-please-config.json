@@ -7,7 +7,17 @@
     ".": {
       "package-name": "stratum",
       "changelog-path": "CHANGELOG.md",
-      "initial-version": "0.1.0"
+      "initial-version": "0.1.0",
+      "extra-files": [
+        {
+          "type": "generic",
+          "path": "deploy/helm/stratum-gateway/Chart.yaml"
+        },
+        {
+          "type": "generic",
+          "path": "deploy/helm/stratum-control-plane/Chart.yaml"
+        }
+      ]
     }
   }
 }
