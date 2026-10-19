@@ -26,10 +26,12 @@ ENV NODE_ENV=production \
 COPY --from=builder --chown=node:node /app/.next/standalone ./
 COPY --from=builder --chown=node:node /app/.next/static ./.next/static
 COPY --from=builder --chown=node:node /app/public ./public
-# The account CLI (scripts/stratum-admin.mjs) and the modules it imports;
-# pg is already in the standalone output.
+# The account CLI (scripts/stratum-admin.mjs) runs from source, so it gets
+# lib/ whole: a list of files fell behind once (model-feed.js) and the CLI
+# could not start. pg is already in the standalone output. CI runs the CLI
+# in the built image.
 COPY --from=builder --chown=node:node /app/scripts ./scripts
-COPY --from=builder --chown=node:node /app/lib/password.js /app/lib/totp.js /app/lib/secrets.js ./lib/
+COPY --from=builder --chown=node:node /app/lib ./lib
 USER node
 EXPOSE 3000
 HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=3 \

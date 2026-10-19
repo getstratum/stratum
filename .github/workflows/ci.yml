@@ -203,8 +203,18 @@ jobs:
         with:
           context: control-plane/dashboard
           push: false
+          load: true
+          tags: stratum-control-plane:ci
           cache-from: type=gha,scope=cp
           cache-to: type=gha,mode=max,scope=cp
+      # stratum-admin is how the first Owner is created: it has to start in
+      # the image, with every module it imports. Without a command it loads
+      # them all and prints its usage.
+      - name: stratum-admin starts in the control plane image
+        run: |
+          out=$(docker run --rm stratum-control-plane:ci node scripts/stratum-admin.mjs 2>&1 || true)
+          echo "$out"
+          case "$out" in usage:*) ;; *) echo "::error::stratum-admin did not start in the image"; exit 1 ;; esac
 
   helm:
     name: helm chart
