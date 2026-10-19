@@ -196,8 +196,25 @@ jobs:
         with:
           context: control-plane/migrations
           push: false
+          load: true
+          tags: stratum-migrations:ci
           cache-from: type=gha,scope=migrations
           cache-to: type=gha,mode=max,scope=migrations
+      # Runs the image as the chart does (its own user, DATABASE_URL) against
+      # an empty PostgreSQL, twice: the second run must find nothing to do.
+      - name: migrations image applies the migrations
+        run: |
+          docker network create mig
+          docker run -d --name pg --network mig -e POSTGRES_USER=stratum -e POSTGRES_PASSWORD=ci -e POSTGRES_DB=stratum postgres:16-alpine
+          for _ in $(seq 1 30); do docker exec pg pg_isready -U stratum -d stratum -h 127.0.0.1 >/dev/null 2>&1 && break; sleep 1; done
+          url=postgresql://stratum:ci@pg:5432/stratum
+          docker run --rm --network mig -e DATABASE_URL=$url --read-only --tmpfs /tmp stratum-migrations:ci | tee first.log
+          grep -q -- '--> 001_schema.sql' first.log
+          docker run --rm --network mig -e DATABASE_URL=$url --read-only --tmpfs /tmp stratum-migrations:ci | tee second.log
+          ! grep -q -- '-->' second.log
+          applied=$(docker exec pg psql -U stratum -d stratum -Atc 'SELECT count(*) FROM schema_migrations')
+          files=$(ls control-plane/migrations/*.sql | wc -l)
+          [ "$applied" = "$files" ] || { echo "::error::$applied of $files migrations recorded"; exit 1; }
       - name: gateway image
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:

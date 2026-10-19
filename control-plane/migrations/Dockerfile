@@ -5,8 +5,9 @@
 #
 #   docker run --rm -e DATABASE_URL=postgresql://... ghcr.io/getstratum/stratum-migrations
 FROM postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
-COPY --chmod=0444 *.sql /migrations/
-COPY --chmod=0555 migrate.sh /migrations/
+# Plain COPY: with --chmod, BuildKit gave the directory it created the
+# files' mode too (0444, no search bit), and uid 70 could not open them.
+COPY *.sql migrate.sh /migrations/
 # uid 70: the postgres user of the alpine image. psql only needs /tmp.
 USER 70:70
 ENTRYPOINT ["sh", "/migrations/migrate.sh", "/migrations"]
