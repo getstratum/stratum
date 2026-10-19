@@ -262,7 +262,7 @@ jobs:
           done
       - name: render and validate against Kubernetes schemas
         run: |
-          go install github.com/yannh/kubeconform/cmd/kubeconform@v0.6.7
+          scripts/install-kubeconform.sh "$(go env GOPATH)/bin"
           for chart in deploy/helm/stratum-gateway deploy/helm/stratum-control-plane; do
             for v in "$chart"/ci/*-values.yaml; do
               helm template stratum "$chart" -f "$v" \
@@ -316,7 +316,7 @@ jobs:
         run: go vet ./... && go test ./... && go build ./...
       - name: render and validate manifests (core and GKE CRDs)
         run: |
-          go install github.com/yannh/kubeconform/cmd/kubeconform@v0.6.7
+          scripts/install-kubeconform.sh "$(go env GOPATH)/bin"
           export NAMESPACE=stratum HOST=203-0-113-10.sslip.io CERT_MAP=m EDGE_IP_NAME=ip SSL_POLICY=tls \
             ARMOR_API=a ARMOR_CONSOLE=c ARMOR_SYNC=s MOCK_IMAGE=r/m@sha256:0 \
             PROXY_IMAGE=p:1 PSQL_IMAGE=postgres:16-alpine K6_IMAGE=grafana/k6:1.0.0 SQL_CONNECTION_NAME=p:r:i \
