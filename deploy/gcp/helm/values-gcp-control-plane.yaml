@@ -1,0 +1,96 @@
+# Control plane chart values for the GCP reference deployment (GKE Autopilot,
+# Cloud SQL through the Auth Proxy, global external Application Load
+# Balancer). Rendered by scripts/deploy.sh (render substitutes the variables),
+# which also sets image and migrations.image by digest.
+#
+# Target 99.9 %, not on the gateway's request path: two stateless replicas
+# in different zones. The load balancer reaches them through two more
+# Services (k8s/cp-services.yaml), one per Cloud Armor policy.
+
+# DATABASE_URL (to the proxy on 127.0.0.1:5432), STRATUM_ENCRYPTION_KEY
+existingSecret: stratum-control-plane
+
+replicaCount: 2
+
+# Created in k8s/base.yaml and mapped to IAM by Workload Identity
+# Federation (roles/cloudsql.client, cloudsql.instanceUser).
+serviceAccount:
+  create: false
+  name: stratum-control-plane
+
+console:
+  # The Google load balancer appends the client and its own address.
+  trustedProxyHops: 2
+
+extraEnv:
+  # Keep-alive longer than the load balancer's (600 s), so the server never
+  # closes a connection the load balancer is about to reuse.
+  - name: KEEP_ALIVE_TIMEOUT
+    value: "620000"
+
+# Let the load balancer stop routing before the server exits.
+lifecycle:
+  preStopSleepSeconds: 15
+  terminationGracePeriodSeconds: 45
+
+resources:
+  requests:
+    cpu: 450m
+    memory: 960Mi
+  limits:
+    memory: 960Mi
+
+# Autopilot rounds smaller requests up.
+migrations:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 128Mi
+
+topologySpread:
+  enabled: true
+  zoneWhenUnsatisfiable: DoNotSchedule
+  hostWhenUnsatisfiable: ScheduleAnyway
+
+# Cloud SQL Auth Proxy as a native sidecar: up before the migrations and the
+# console, down after them. mTLS + IAM to the instance's private IP.
+sidecars:
+  - name: cloud-sql-proxy
+    image: ${PROXY_IMAGE}
+    restartPolicy: Always
+    args:
+      - --private-ip
+      - --structured-logs
+      - --port=5432
+      - --health-check
+      - --http-address=0.0.0.0
+      - --http-port=9801
+      - --exit-zero-on-sigterm
+      - ${SQL_CONNECTION_NAME}
+    startupProbe:
+      httpGet:
+        path: /startup
+        port: 9801
+      periodSeconds: 1
+      failureThreshold: 60
+    livenessProbe:
+      httpGet:
+        path: /liveness
+        port: 9801
+      periodSeconds: 10
+      failureThreshold: 3
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        memory: 128Mi
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 65532
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities:
+        drop: ["ALL"]

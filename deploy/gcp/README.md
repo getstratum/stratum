@@ -61,7 +61,12 @@ flowchart LR
 
 The **gateway syncs its configuration over the public HTTPS endpoint**, as a
 customer's gateway would against a managed control plane, and that endpoint
-only accepts the environment's NAT address. A new installation starts
+only accepts the environment's NAT address. Both components are installed
+with the project's Helm charts ([deploy/helm](../helm/README.md)): the
+gateway with `helm/values-gcp.yaml`, the control plane with
+`helm/values-gcp-control-plane.yaml` (Cloud SQL Auth Proxy as a native
+sidecar); the control plane's pods apply the database migrations before
+they start. A new installation starts
 empty; the kit loads the **demo organization** (`control-plane/seed/demo.sql`)
 at bootstrap and gives its users random keys that only exist in Secret
 Manager.
@@ -208,6 +213,8 @@ Enterprise design).
 |---|---|
 | `make deploy` waits on the certificate | Normal for 15–60 min the first time. After `CERT_WAIT_MINUTES` the gateways sync in-cluster; re-run `SKIP_BUILD=1 IMAGE_TAG=<tag> make deploy` once `make status` shows `ACTIVE`. |
 | LB returns `502 failed_to_connect_to_backend` | Check `kubectl -n stratum get pods`; if pods are ready, the NetworkPolicy may not match your LB's source ranges: `kubectl -n stratum delete networkpolicy --all` to confirm. |
+| Control plane pods stuck in `Init` | The migrations or the Auth Proxy: `kubectl -n stratum logs deploy/stratum-control-plane -c migrate` and `-c cloud-sql-proxy`. |
+| First `make deploy` after updating the kit says it replaces the control plane | Earlier versions applied it as plain manifests; Helm cannot adopt that Deployment, so it is deleted and installed again (the console is down about a minute; gateways keep serving). Once. |
 | Pods stuck in `ImagePullBackOff` on the Auth Proxy | Set `PROXY_IMAGE` to a current `gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.x` tag and re-run `make deploy`. |
 | Console returns 403 | Your IP changed; update `console_allowed_cidrs` and `make up`. |
 | `make down` fails on the network | Leftover NEGs from the Gateway controller; the script removes them and retries. If it still fails, delete the project. |

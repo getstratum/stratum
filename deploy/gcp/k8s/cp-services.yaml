@@ -1,0 +1,31 @@
+# Two Services over the control plane pods (Helm release
+# stratum-control-plane) so the load balancer gets two backend services with
+# different Cloud Armor policies: the console (allowlisted operators) and
+# the gateways' sync (the NAT address). k8s/edge.yaml routes to them.
+apiVersion: v1
+kind: Service
+metadata:
+  name: stratum-cp-console
+  namespace: ${NAMESPACE}
+spec:
+  selector:
+    app.kubernetes.io/name: stratum-control-plane
+    app.kubernetes.io/instance: stratum-control-plane
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: stratum-cp-sync
+  namespace: ${NAMESPACE}
+spec:
+  selector:
+    app.kubernetes.io/name: stratum-control-plane
+    app.kubernetes.io/instance: stratum-control-plane
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

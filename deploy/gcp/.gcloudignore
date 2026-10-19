@@ -1,4 +1,4 @@
-# Source uploaded to Cloud Build: only what the three images need.
+# Source uploaded to Cloud Build: only what the four images need.
 .git
 .github
 **/node_modules

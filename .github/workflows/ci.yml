@@ -256,15 +256,19 @@ jobs:
       # The chart refuses values that would fail at run time.
       - name: control plane chart refuses incomplete values
         run: |
+          # refuses <words of the expected error> <helm args...>
           refuses() {
-            if helm template stratum deploy/helm/stratum-control-plane "$@" >/dev/null 2>&1; then
+            local want="$1" out; shift
+            if out="$(helm template stratum deploy/helm/stratum-control-plane "$@" 2>&1)"; then
               echo "::error::accepted: $*"; exit 1
             fi
+            grep -qF "$want" <<<"$out" || { echo "::error::refused for another reason: $out"; exit 1; }
           }
-          refuses
-          refuses --set existingSecret=s --set replicaCount=1
-          refuses --set existingSecret=s --set console.modelCatalogUrl=http://example.com/models.json
-          refuses --set existingSecret=s --set 'sidecars[0].name=proxy' --set 'sidecars[0].image=x'
+          refuses "existingSecret is required"
+          refuses "replicaCount must be at least 2" --set existingSecret=s --set replicaCount=1
+          refuses "modelCatalogUrl must be" --set existingSecret=s --set console.modelCatalogUrl=http://example.com/models.json
+          refuses "needs restartPolicy: Always" --set existingSecret=s --set 'sidecars[0].name=proxy' --set 'sidecars[0].image=x'
+          refuses "ingress.hosts needs at least one host" --set existingSecret=s --set ingress.enabled=true
 
   gcp-kit:
     name: GCP reference deployment
@@ -279,6 +283,9 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: stable
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v4.3.0 # same Helm in CI and in releases
       - name: terraform fmt and validate
         working-directory: deploy/gcp/terraform
         run: |
@@ -294,7 +301,7 @@ jobs:
         run: |
           go install github.com/yannh/kubeconform/cmd/kubeconform@v0.6.7
           export NAMESPACE=stratum HOST=203-0-113-10.sslip.io CERT_MAP=m EDGE_IP_NAME=ip SSL_POLICY=tls \
-            ARMOR_API=a ARMOR_CONSOLE=c ARMOR_SYNC=s CP_IMAGE=r/cp@sha256:0 MOCK_IMAGE=r/m@sha256:0 \
+            ARMOR_API=a ARMOR_CONSOLE=c ARMOR_SYNC=s MOCK_IMAGE=r/m@sha256:0 \
             PROXY_IMAGE=p:1 PSQL_IMAGE=postgres:16-alpine K6_IMAGE=grafana/k6:1.0.0 SQL_CONNECTION_NAME=p:r:i \
             SQL_DATABASE=stratum JOB_NAME=j SQL_COMMAND='["true"]' SQL_CONFIGMAP=c RATE=1 DURATION=1m \
             MAX_ERROR_RATE=0 VALKEY_IP=10.0.0.1
@@ -305,6 +312,17 @@ jobs:
             -schema-location default \
             -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
             /tmp/rendered/*.yaml
+          # The two charts with the kit's values, as scripts/deploy.sh installs them.
+          envsubst < deploy/gcp/helm/values-gcp-control-plane.yaml > /tmp/values-cp.yaml
+          ! grep -n '${' /tmp/values-cp.yaml
+          helm template stratum-control-plane deploy/helm/stratum-control-plane -n stratum -f /tmp/values-cp.yaml \
+              --set image.repository=r/cp --set image.digest=sha256:0 \
+              --set migrations.image.repository=r/migrations --set migrations.image.digest=sha256:0 \
+            | "$(go env GOPATH)/bin/kubeconform" -strict -summary -kubernetes-version 1.33.0
+          helm template stratum-gateway deploy/helm/stratum-gateway -n stratum -f deploy/gcp/helm/values-gcp.yaml \
+              --set controlPlane.url=https://203-0-113-10.sslip.io \
+              --set quota.valkey.url=rediss://10.0.0.1:6379/0 --set quota.valkey.caConfigMap=valkey-ca \
+            | "$(go env GOPATH)/bin/kubeconform" -strict -summary -kubernetes-version 1.33.0 -skip ServiceMonitor
 
   pr-title:
     name: conventional PR title
