@@ -281,6 +281,45 @@ test('gateways: register shows the token once; rotate and disable', { skip }, as
   assert.equal((await call('internal/instances', 'PATCH', { as: A.owner, query: `?id=${reg.body.id}`, body: { action: 'rotate-token' } })).status, 404)
 })
 
+test('gateways: the versions their replicas run, from the User-Agent of each sync', { skip }, async () => {
+  const { recordSync } = await import('../lib/instance-auth.js')
+  const reg = await call('internal/instances', 'POST', { as: A.owner, body: { name: 'gw-versions' } })
+  const id = reg.body.id
+  const versions = async () => (await call('internal/instances', 'GET', { as: A.auditor })).body.instances.find(i => i.id === id).versions
+
+  assert.deepEqual(await versions(), [])
+  // Mid-upgrade: replicas of two releases sync with the same token.
+  await recordSync(db, id, 5, 'stratum-gateway/v0.1.1')
+  await recordSync(db, id, 5, 'stratum-gateway/v0.2.0')
+  await recordSync(db, id, 6, 'stratum-gateway/v0.2.0')
+  assert.deepEqual(await versions(), ['0.1.1', '0.2.0'])
+  const [row] = await sql('SELECT last_version, last_seen_at FROM data_plane_instances WHERE id = $1', [id])
+  assert.equal(Number(row.last_version), 6)
+  assert.ok(row.last_seen_at)
+
+  // A version not seen for 15 minutes is no longer running: not shown, and
+  // dropped at the next sync. A sync without a recognizable User-Agent
+  // changes nothing.
+  await sql(`UPDATE data_plane_instances
+                SET gateway_versions = jsonb_set(gateway_versions, '{0.1.1}', to_jsonb(now() - interval '16 minutes'))
+              WHERE id = $1`, [id])
+  assert.deepEqual(await versions(), ['0.2.0'])
+  await recordSync(db, id, 6, 'curl/8.5.0')
+  assert.deepEqual(Object.keys((await sql('SELECT gateway_versions FROM data_plane_instances WHERE id = $1', [id]))[0].gateway_versions).sort(), ['0.1.1', '0.2.0'])
+  await recordSync(db, id, 6, 'stratum-gateway/v0.2.0')
+  assert.deepEqual(Object.keys((await sql('SELECT gateway_versions FROM data_plane_instances WHERE id = $1', [id]))[0].gateway_versions), ['0.2.0'])
+
+  // The sync route records it.
+  const sync = await import('../app/api/internal/sync/route.js')
+  const rot = await call('internal/instances', 'PATCH', { as: A.owner, query: `?id=${id}`, body: { action: 'rotate-token' } })
+  const res = await sync.GET(new NextRequest(`http://console.test/api/internal/sync?instance_id=${id}`, {
+    headers: { authorization: `Bearer ${rot.body.sync_token}`, 'user-agent': 'stratum-gateway/v0.3.0' } }))
+  assert.equal(res.status, 200)
+  let seen = []
+  for (let i = 0; i < 50 && !seen.includes('0.3.0'); i++) { await new Promise(r => setTimeout(r, 50)); seen = await versions() }
+  assert.deepEqual(seen, ['0.2.0', '0.3.0'])
+})
+
 // --- policies --------------------------------------------------------------
 
 test('policies: providers and "all models" are set explicitly, and travel to gateways', { skip }, async () => {

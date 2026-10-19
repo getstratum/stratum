@@ -61,6 +61,12 @@ once, on registration or rotation.
 - **Status** comes from the gateway's own sync requests: *Sincronizado*
   (within 2 min), *Atrasado* (within 10 min), *Sin contacto*, *Nunca se
   conectó*, *Dado de baja*. The control plane never connects to the gateway.
+- **Versión** is the software the gateway runs, from the User-Agent of its
+  syncs. The replicas of one Helm release share a registration, so during an
+  upgrade it lists every version seen in the last 15 minutes. A release that
+  predates something gateways enforce is shown in amber, and the page warns
+  about it: before 0.2.0 a gateway ignores the models turned off in Modelos
+  (Modelos shows the same warning).
 - **Configuración** compares the version the gateway last fetched with the
   organization's current one.
 - **Último uso reportado** is when the gateway last sent its usage records
@@ -151,7 +157,8 @@ by pull request.
 - An Owner or Admin can **turn a model off** for the organization in
   Modelos. Gateways refuse it (`model_disabled`, 403) for every team, also
   under "all models", by its ID or any alias, only with that provider.
-  Gateways before 0.2 ignore the switch (`denied_models` in the sync).
+  Gateways before 0.2 ignore the switch (`denied_models` in the sync); the
+  console warns while one of them is syncing.
 - They can also set the **prices the organization pays** (negotiated
   discounts): usage is costed with them from then on.
 - Models a provider lists in a connection test but the catalog does not
