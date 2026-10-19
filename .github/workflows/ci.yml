@@ -313,7 +313,7 @@ jobs:
         run: shellcheck -x -S warning deploy/gcp/scripts/*.sh
       - name: mock provider builds
         working-directory: deploy/gcp/mock-llm
-        run: go vet ./... && go build ./...
+        run: go vet ./... && go test ./... && go build ./...
       - name: render and validate manifests (core and GKE CRDs)
         run: |
           go install github.com/yannh/kubeconform/cmd/kubeconform@v0.6.7

@@ -6,14 +6,18 @@
 //	POST /v1/chat/completions   non-streamed or streamed (SSE)
 //	GET  /healthz
 //
-// Every response reports 60 prompt + 40 completion tokens (100 total), which
-// makes quota tests predictable.
+// By default every response reports 60 prompt + 40 completion tokens (100
+// total), which makes quota tests predictable. With MOCK_USAGE=request the
+// usage follows the request instead, for usage and cost demos: prompt
+// tokens about one per 4 characters of the messages, completion tokens the
+// request's max_tokens (or max_completion_tokens), 40 without one.
 //
 // Environment:
 //
 //	MOCK_LATENCY_MS         time to first byte (default 300)
 //	MOCK_STREAM_CHUNKS      chunks per streamed response (default 20)
 //	MOCK_CHUNK_INTERVAL_MS  pause between chunks (default 100)
+//	MOCK_USAGE              fixed (default) or request
 package main
 
 import (
@@ -39,6 +43,7 @@ type config struct {
 	latency       time.Duration
 	chunks        int
 	chunkInterval time.Duration
+	usageFromReq  bool
 }
 
 func main() {
@@ -46,6 +51,7 @@ func main() {
 		latency:       envMillis("MOCK_LATENCY_MS", 300),
 		chunks:        envInt("MOCK_STREAM_CHUNKS", 20),
 		chunkInterval: envMillis("MOCK_CHUNK_INTERVAL_MS", 100),
+		usageFromReq:  os.Getenv("MOCK_USAGE") == "request",
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.Write([]byte("ok")) })
@@ -69,8 +75,31 @@ func main() {
 }
 
 type request struct {
-	Model  string `json:"model"`
-	Stream bool   `json:"stream"`
+	Model               string            `json:"model"`
+	Stream              bool              `json:"stream"`
+	Messages            []json.RawMessage `json:"messages"`
+	MaxTokens           int               `json:"max_tokens"`
+	MaxCompletionTokens int               `json:"max_completion_tokens"`
+}
+
+// tokens returns the prompt and completion tokens a response reports.
+func (c config) tokens(req request) (prompt, completion int) {
+	if !c.usageFromReq {
+		return promptTokens, completionTokens
+	}
+	chars := 0
+	for _, m := range req.Messages {
+		chars += len(m)
+	}
+	prompt = chars/4 + 1
+	completion = req.MaxCompletionTokens
+	if completion <= 0 {
+		completion = req.MaxTokens
+	}
+	if completion <= 0 {
+		completion = completionTokens
+	}
+	return prompt, min(completion, 100000)
 }
 
 func (c config) chat(w http.ResponseWriter, r *http.Request) {
@@ -88,10 +117,8 @@ func (c config) chat(w http.ResponseWriter, r *http.Request) {
 	if !sleep(r.Context(), c.latency) {
 		return
 	}
-	usage := map[string]int{
-		"prompt_tokens": promptTokens, "completion_tokens": completionTokens,
-		"total_tokens": promptTokens + completionTokens,
-	}
+	pt, ct := c.tokens(req)
+	usage := map[string]int{"prompt_tokens": pt, "completion_tokens": ct, "total_tokens": pt + ct}
 
 	if !req.Stream {
 		w.Header().Set("Content-Type", "application/json")
