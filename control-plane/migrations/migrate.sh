@@ -9,7 +9,9 @@
 # runners started at the same time cannot apply the same file twice. Files
 # manage their own transactions; the first error stops the run.
 #
-# Usage: migrate.sh <dir>   with PGHOST, PGUSER, PGDATABASE, PGPASSWORD set.
+# Usage: migrate.sh <dir>   with PGHOST, PGUSER, PGDATABASE, PGPASSWORD set,
+#                           or DATABASE_URL (a libpq connection URI, which
+#                           takes precedence).
 set -eu
 
 DIR="${1:-/migrations}"
@@ -53,4 +55,6 @@ trap 'rm -f "$script"' EXIT
   printf '%s\n' "\\echo '==> Migrations up to date.'"
 } > "$script"
 
-psql -X -q -v ON_ERROR_STOP=1 -f "$script"
+# The control plane's DATABASE_URL works here too, so one secret serves both.
+if [ -n "${DATABASE_URL:-}" ]; then set -- -d "$DATABASE_URL"; else set --; fi
+psql -X -q -v ON_ERROR_STOP=1 "$@" -f "$script"

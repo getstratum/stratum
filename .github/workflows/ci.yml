@@ -191,6 +191,13 @@ jobs:
       - name: base images pinned by digest
         run: scripts/pin-images.sh --check
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: migrations image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: control-plane/migrations
+          push: false
+          cache-from: type=gha,scope=migrations
+          cache-to: type=gha,mode=max,scope=migrations
       - name: gateway image
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
@@ -231,17 +238,33 @@ jobs:
           go-version: stable
       - name: helm lint
         run: |
-          for v in deploy/helm/stratum-gateway/ci/*-values.yaml; do
-            helm lint --strict deploy/helm/stratum-gateway -f "$v"
+          for chart in deploy/helm/stratum-gateway deploy/helm/stratum-control-plane; do
+            for v in "$chart"/ci/*-values.yaml; do
+              helm lint --strict "$chart" -f "$v"
+            done
           done
       - name: render and validate against Kubernetes schemas
         run: |
           go install github.com/yannh/kubeconform/cmd/kubeconform@v0.6.7
-          for v in deploy/helm/stratum-gateway/ci/*-values.yaml; do
-            helm template stratum deploy/helm/stratum-gateway -f "$v" \
-              | "$(go env GOPATH)/bin/kubeconform" -strict -summary \
-                  -kubernetes-version 1.29.0 -skip ServiceMonitor
+          for chart in deploy/helm/stratum-gateway deploy/helm/stratum-control-plane; do
+            for v in "$chart"/ci/*-values.yaml; do
+              helm template stratum "$chart" -f "$v" \
+                | "$(go env GOPATH)/bin/kubeconform" -strict -summary \
+                    -kubernetes-version 1.29.0 -skip ServiceMonitor
+            done
           done
+      # The chart refuses values that would fail at run time.
+      - name: control plane chart refuses incomplete values
+        run: |
+          refuses() {
+            if helm template stratum deploy/helm/stratum-control-plane "$@" >/dev/null 2>&1; then
+              echo "::error::accepted: $*"; exit 1
+            fi
+          }
+          refuses
+          refuses --set existingSecret=s --set replicaCount=1
+          refuses --set existingSecret=s --set console.modelCatalogUrl=http://example.com/models.json
+          refuses --set existingSecret=s --set 'sidecars[0].name=proxy' --set 'sidecars[0].image=x'
 
   gcp-kit:
     name: GCP reference deployment

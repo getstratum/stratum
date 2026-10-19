@@ -1,0 +1,55 @@
+# Everything turned on: digests, ingress, autoscaling, a Cloud SQL Auth Proxy
+# sidecar, Workload Identity, the feed off.
+existingSecret: stratum-control-plane
+image:
+  digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+migrations:
+  image:
+    tag: "0.2.0"
+console:
+  trustedProxyHops: 2
+  modelCatalogUrl: "off"
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 4
+topologySpread:
+  zoneWhenUnsatisfiable: ScheduleAnyway
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: 1m
+  hosts:
+    - host: stratum-cp.example.com
+  tls:
+    - secretName: stratum-cp-tls
+      hosts: [stratum-cp.example.com]
+serviceAccount:
+  annotations:
+    iam.gke.io/gcp-service-account: stratum-cp@example-project.iam.gserviceaccount.com
+sidecars:
+  - name: cloud-sql-proxy
+    image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.14.1
+    restartPolicy: Always
+    args: [--private-ip, --port=5432, --health-check, --http-address=0.0.0.0, --http-port=9801, --exit-zero-on-sigterm, "example-project:us-central1:stratum"]
+    startupProbe:
+      httpGet: { path: /startup, port: 9801 }
+      periodSeconds: 1
+      failureThreshold: 60
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 65532
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities: { drop: ["ALL"] }
+extraEnv:
+  - name: NODE_OPTIONS
+    value: --max-old-space-size=512
+extraEnvFrom:
+  - configMapRef:
+      name: stratum-cp-extra
+podAnnotations:
+  example.com/team: platform
+nodeSelector:
+  kubernetes.io/os: linux
