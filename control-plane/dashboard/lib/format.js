@@ -1,40 +1,61 @@
 /**
- * Formats a USD cost with enough decimal places to always be meaningful.
+ * lib/format.js — how the console writes numbers, money and times: Spanish
+ * (Uruguay) separators, "US$" for dollars, the same rules on every page.
+ */
+
+const LOCALE = 'es-UY'
+
+/** A number with a fixed number of decimals: 1.234,5 */
+export const nf = (v, digits = 0) =>
+  Number(v ?? 0).toLocaleString(LOCALE, { minimumFractionDigits: digits, maximumFractionDigits: digits })
+
+/**
+ * A cost in dollars. Two decimals from one cent up; below that, two
+ * significant digits, so a single request's cost still says something.
  *
- *   >= $1000  → 2 decimals   ($1,234.56)
- *   >= $1     → 4 decimals   ($1.2345)
- *   >= $0.01  → 6 decimals   ($0.001234)
- *   < $0.01   → 8 decimals   ($0.00000045)
- *   = 0       → 6 decimals   ($0.000000)
+ *   0 → US$ 0 · 0.0013 → US$ 0,0013 · 1.5 → US$ 1,50 · 1234.5 → US$ 1.234,50
  */
 export function formatCost(usd) {
-  const n = parseFloat(usd ?? 0)
-  if (n === 0)    return '$0.000000'
-  if (n >= 1000)  return `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-  if (n >= 1)     return `$${n.toFixed(4)}`
-  if (n >= 0.01)  return `$${n.toFixed(6)}`
-  return `$${n.toFixed(8)}`
+  const n = Number(usd ?? 0)
+  if (!Number.isFinite(n) || n === 0) return 'US$ 0'
+  if (Math.abs(n) < 0.01) return `US$ ${n.toLocaleString(LOCALE, { maximumSignificantDigits: 2 })}`
+  return `US$ ${nf(n, 2)}`
 }
 
-/**
- * Compact cost for tight spaces (chart axes, badges).
- * Always shows at least 4 significant decimals.
- */
+/** For tight spaces (chart axes): no decimals from US$ 10 up. */
 export function formatCostCompact(usd) {
-  const n = parseFloat(usd ?? 0)
-  if (n === 0)   return '$0'
-  if (n >= 1)    return `$${n.toFixed(2)}`
-  if (n >= 0.01) return `$${n.toFixed(4)}`
-  return `$${n.toFixed(6)}`
+  const n = Number(usd ?? 0)
+  if (!Number.isFinite(n) || n === 0) return 'US$ 0'
+  if (n >= 10) return `US$ ${nf(n)}`
+  return formatCost(n)
 }
 
-/**
- * Formats token counts with K/M suffix.
- */
-export function formatTokens(n) {
-  const v = parseInt(n ?? 0)
-  if (v === 0)        return '0'
-  if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(3)}M`
-  if (v >= 1_000)     return `${(v / 1_000).toFixed(2)}K`
-  return v.toLocaleString()
+/** Tokens: 950 · 62,2 k · 500 k · 1,3 M */
+export function formatTokens(v) {
+  const n = Number(v ?? 0)
+  const short = x => x.toLocaleString(LOCALE, { maximumFractionDigits: 1 })
+  if (n >= 1e6) return `${short(n / 1e6)} M`
+  if (n >= 1e3) return `${short(n / 1e3)} k`
+  return nf(n)
+}
+
+/** A duration in milliseconds: 820 ms · 2,3 s */
+export const formatMs = v => (v == null ? '—' : v >= 1000 ? `${nf(v / 1000, 1)} s` : `${nf(v)} ms`)
+
+/** Date and time, short: 18 oct., 23:23 (with seconds when asked) */
+export function formatDateTime(v, { seconds = false } = {}) {
+  if (!v) return '—'
+  return new Date(v).toLocaleString(LOCALE, {
+    day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', ...(seconds ? { second: '2-digit' } : {}), hour12: false,
+  })
+}
+
+/** Relative time for recent events: recién · hace 5 min · hace 3 h · 12 oct. */
+export function formatAgo(t) {
+  if (!t) return '—'
+  const s = (Date.now() - new Date(t).getTime()) / 1000
+  if (s < 90) return 'recién'
+  if (s < 3600) return `hace ${Math.round(s / 60)} min`
+  if (s < 86400) return `hace ${Math.round(s / 3600)} h`
+  return new Date(t).toLocaleDateString(LOCALE, { day: 'numeric', month: 'short' })
 }

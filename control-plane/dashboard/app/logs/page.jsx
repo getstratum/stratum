@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import RequestsLog from '../../components/RequestsLog'
 import DateFilter  from '../../components/DateFilter'
 import { toCSV, downloadCSV, LOG_COLUMNS } from '../../lib/csv'
+import { nf } from '../../lib/format'
 
 const PROVIDER_FILTER = [
   ['anthropic', 'Anthropic'], ['openai', 'OpenAI'], ['gemini', 'Google Gemini'], ['mistral', 'Mistral'],
@@ -59,8 +60,15 @@ export default function LogsPage() {
 
   const load = useCallback(async () => {
     setLoading(true)
-    const data = await fetch(`/api/logs${buildQuery(filters)}`).then(r => r.json())
-    setLogs(data)
+    const data = await fetch(`/api/logs${buildQuery(filters)}`).then(r => (r.ok ? r.json() : []))
+    setLogs(Array.isArray(data) ? data : [])
+    // Providers that show up in requests join the filter, with the slug as label.
+    setProviders(ps => {
+      const seen = new Set(ps.map(p => p.slug))
+      const extra = [...new Set((Array.isArray(data) ? data : []).map(l => l.provider))]
+        .filter(slug => slug && !seen.has(slug)).map(slug => ({ slug, label: slug }))
+      return extra.length ? [...ps, ...extra] : ps
+    })
     setLoading(false)
   }, [filters])
 
@@ -71,7 +79,7 @@ export default function LogsPage() {
     fetch('/api/teams').then(r => (r.ok ? r.json() : [])).then(setTeams)
     // Provider names as requests record them; every role that reads logs
     // can filter by them, without reading the organization's configuration.
-    setProviders(PROVIDER_FILTER)
+    setProviders(ps => [...PROVIDER_FILTER, ...ps.filter(p => !PROVIDER_FILTER.some(q => q.slug === p.slug))])
   }, [])
 
   // Debounce model text filter
@@ -97,21 +105,21 @@ export default function LogsPage() {
         <div>
           <h1 className="text-[26px] font-semibold text-strong tracking-tight">Requests</h1>
           <p className="text-sm text-muted mt-0.5">
-            {loading ? 'Cargando…' : `${logs.length} results`}
+            {loading ? 'Cargando…' : `${nf(logs.length)} ${logs.length === 1 ? 'pedido' : 'pedidos'}${logs.length >= filters.limit ? ` (los ${nf(filters.limit)} más recientes)` : ''}`}
             {hasFilters && <span className="text-accent-text font-medium ml-1">· filtrado</span>}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <DateFilter value={filters.range} onChange={r => setFilter('range', r)} />
           <button
             onClick={handleExport}
             disabled={!logs.length}
-            className="flex items-center gap-1.5 text-sm border border-border rounded-lg px-3.5 py-2 bg-card hover:bg-raised transition-colors text-muted font-medium shadow-sm disabled:opacity-40"
+            className="flex items-center gap-1.5 min-h-[40px] text-sm border border-border rounded-md px-3.5 bg-card hover:bg-raised transition-colors text-default font-medium whitespace-nowrap disabled:opacity-40"
           >
             <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
               <path d="M6.5 1v8M3.5 6l3 3 3-3M1 10.5h11" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
-            Export CSV
+            Exportar CSV
           </button>
         </div>
       </div>
@@ -178,7 +186,7 @@ export default function LogsPage() {
               onChange={e => setFilter('limit', parseInt(e.target.value))}
               className="w-full text-sm border border-border rounded-lg px-3 py-2 bg-raised text-default focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/20"
             >
-              {LIMIT_OPTIONS.map(n => <option key={n} value={n}>{n} rows</option>)}
+              {LIMIT_OPTIONS.map(n => <option key={n} value={n}>{n} filas</option>)}
             </select>
           </div>
 
@@ -191,7 +199,7 @@ export default function LogsPage() {
               }}
               className="text-xs text-muted hover:text-err transition-colors pb-0.5"
             >
-              Clear filters
+              Limpiar filtros
             </button>
           )}
         </div>

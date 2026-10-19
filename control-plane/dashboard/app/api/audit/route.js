@@ -21,12 +21,14 @@ export const GET = route('audit.read', async (req, { session, db }) => {
   }
   const limit = Math.min(Math.max(parseInt(sp.get('limit') ?? '100', 10) || 100, 1), 500)
   params.push(limit)
+  // ORDER BY names the column: a bare `id` would resolve to the `id::text`
+  // output column and sort as text, so entry 9 came before entry 10.
   const { rows } = await db.query(
     `SELECT id::text, at, actor_user_id, actor_label, actor_role, action, target_type, target_id,
             result, ip, details
        FROM audit_log
       WHERE ${where.join(' AND ')}
-      ORDER BY id DESC
+      ORDER BY audit_log.id DESC
       LIMIT $${params.length}`,
     params)
   return json({ entries: rows, next: rows.length === limit ? rows[rows.length - 1].id : null })

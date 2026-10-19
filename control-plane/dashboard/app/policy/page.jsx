@@ -2,14 +2,10 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import Modal, { Field, Input, Select, Btn } from '../../components/Modal'
-import { formatCost } from '../../lib/format'
+import { formatCost, formatCostCompact, formatTokens, nf } from '../../lib/format'
 import { namesOf } from '../../lib/catalog'
 import { usePermissions } from '../../components/usePermissions'
 
-const PROVIDER_COLORS = {
-  openai:    'bg-ok-light text-ok border-ok/20',
-  anthropic: 'bg-warn-light text-warn border-warn/20',
-}
 
 // ─── Policy form modal ────────────────────────────────────────────────────────
 function PolicyModal({ policy, allModels, configured, onSave, onClose }) {
@@ -185,22 +181,22 @@ function PolicyModal({ policy, allModels, configured, onSave, onClose }) {
         </Field>
 
         {/* Limits */}
-        <div className="grid grid-cols-3 gap-3">
-          <Field label="Max tokens/req">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <Field label="Máx. tokens por pedido" hint="Todavía no lo aplica el gateway.">
             <Input
               type="number"
               value={form.maxTokensPerRequest}
               onChange={e => set('maxTokensPerRequest', parseInt(e.target.value))}
             />
           </Field>
-          <Field label="Quota mensual (tokens)">
+          <Field label="Cuota mensual (tokens)" hint="La aplica el gateway, por equipo.">
             <Input
               type="number"
               value={form.monthlyTokenQuota}
               onChange={e => set('monthlyTokenQuota', parseInt(e.target.value))}
             />
           </Field>
-          <Field label="Budget mensual (USD)">
+          <Field label="Presupuesto mensual (US$)" hint="Referencia para seguir el gasto; no corta pedidos.">
             <Input
               type="number"
               step="0.01"
@@ -285,13 +281,13 @@ export default function PolicyPage() {
   function handleSave() { setModal(null); load() }
 
   return (
-    <div className="px-4 py-6 md:px-10 md:py-8 max-w-4xl space-y-5">
+    <div className="px-4 py-6 md:px-10 md:py-8 max-w-screen-xl space-y-5">
 
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-[26px] font-semibold text-strong tracking-tight">Políticas</h1>
           <p className="text-sm text-muted mt-0.5">
-            Define qué modelos puede usar cada equipo y con qué límites
+            Qué modelos y proveedores puede usar cada equipo, y cuántos tokens por mes.
           </p>
         </div>
         {canManage && <Btn onClick={() => setModal('create')}>+ Nueva política</Btn>}
@@ -303,10 +299,10 @@ export default function PolicyPage() {
         policies.map(policy => {
           const budget = parseFloat(policy.monthly_budget_usd ?? 0)
           return (
-            <div key={policy.id} className="bg-card border border-border rounded-xl overflow-hidden">
+            <div key={policy.id} className="bg-card border border-border rounded-[10px] overflow-hidden">
 
               {/* Header */}
-              <div className="px-5 py-4 border-b border-border flex items-center justify-between">
+              <div className="px-5 py-4 border-b border-border flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <span className="font-semibold text-strong">{policy.name}</span>
                   <span className="ml-3 text-xs text-muted">
@@ -330,21 +326,21 @@ export default function PolicyPage() {
               </div>
 
               {/* Stats */}
-              <div className="p-5 grid grid-cols-3 gap-5">
+              <div className="p-5 grid grid-cols-1 sm:grid-cols-3 gap-5">
                 <div>
-                  <div className="text-xs text-muted mb-1">Budget mensual</div>
-                  <div className="text-xl font-bold text-strong">${budget.toFixed(0)} USD</div>
-                </div>
-                <div>
-                  <div className="text-xs text-muted mb-1">Quota de tokens</div>
-                  <div className="text-xl font-bold text-strong">
-                    {(policy.monthly_token_quota / 1_000_000).toFixed(1)}M / mes
+                  <div className="text-xs text-muted mb-1">Cuota de tokens por mes</div>
+                  <div className="text-lg font-semibold text-strong tabular">
+                    {policy.monthly_token_quota ? formatTokens(policy.monthly_token_quota) : 'Sin límite'}
                   </div>
                 </div>
                 <div>
-                  <div className="text-xs text-muted mb-1">Max tokens / req</div>
-                  <div className="text-xl font-bold text-strong">
-                    {Number(policy.max_tokens_per_request).toLocaleString()}
+                  <div className="text-xs text-muted mb-1">Presupuesto mensual</div>
+                  <div className="text-lg font-semibold text-strong tabular">{budget > 0 ? formatCostCompact(budget) : '—'}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-muted mb-1">Máx. tokens por pedido</div>
+                  <div className="text-lg font-semibold text-strong tabular">
+                    {policy.max_tokens_per_request ? nf(policy.max_tokens_per_request) : '—'}
                   </div>
                 </div>
               </div>
@@ -358,7 +354,7 @@ export default function PolicyPage() {
                   ) : (
                     <div className="flex flex-wrap gap-2">
                       {policy.allowed_providers.map(p => (
-                        <span key={p} className={`text-xs border rounded-lg px-3 py-1.5 font-mono ${PROVIDER_COLORS[p] ?? 'bg-raised text-default border-border'}`}>{p}</span>
+                        <span key={p} className="text-xs border border-border rounded px-2 py-0.5 font-mono text-default">{p}</span>
                       ))}
                     </div>
                   )}
@@ -371,17 +367,11 @@ export default function PolicyPage() {
                     <span className="text-xs text-err">Ninguno: el gateway rechaza todos los pedidos de este equipo</span>
                   ) : (
                     <div className="flex flex-wrap gap-2">
-                      {policy.allowed_models.map(model => {
-                        const provider = allModels.find(m => namesOf(m).includes(model))?.provider
-                        return (
-                          <span
-                            key={model}
-                            className={`text-xs border rounded-lg px-3 py-1.5 font-mono ${PROVIDER_COLORS[provider] ?? 'bg-raised text-default border-border'}`}
-                          >
-                            {model}
-                          </span>
-                        )
-                      })}
+                      {policy.allowed_models.map(model => (
+                        <span key={model} className="text-xs border border-border rounded px-2 py-0.5 font-mono text-default">
+                          {model}
+                        </span>
+                      ))}
                     </div>
                   )}
                 </div>

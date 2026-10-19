@@ -144,7 +144,7 @@ export default function GatewaysPage() {
   }
 
   return (
-    <div className="px-4 py-6 md:px-10 md:py-8 max-w-6xl">
+    <div className="px-4 py-6 md:px-10 md:py-8 max-w-screen-xl">
       <div className="flex flex-wrap items-end justify-between gap-4 mb-6">
         <div className="max-w-2xl">
           <h1 className="text-[26px] font-semibold text-strong tracking-tight">Gateways</h1>
@@ -169,9 +169,9 @@ export default function GatewaysPage() {
               <tr className="text-left text-xs uppercase tracking-wide text-muted border-b border-border">
                 <th className="px-5 py-3 font-semibold">Gateway</th>
                 <th className="px-4 py-3 font-semibold">Estado</th>
-                <th className="px-4 py-3 font-semibold">Última sincronización</th>
+                <th className="px-4 py-3 font-semibold whitespace-nowrap">Última sincronización</th>
                 <th className="px-4 py-3 font-semibold">Configuración</th>
-                <th className="px-4 py-3 font-semibold">Último uso reportado</th>
+                <th className="px-4 py-3 font-semibold whitespace-nowrap">Último uso reportado</th>
                 <th className="px-5 py-3"><span className="sr-only">Acciones</span></th>
               </tr>
             </thead>
@@ -185,7 +185,7 @@ export default function GatewaysPage() {
                       <div className="font-semibold text-strong">{gw.name}</div>
                       <code className="text-xs text-muted">{gw.id}</code>
                     </td>
-                    <td className={`px-4 py-3.5 text-xs font-semibold ${st.cls}`}>● {st.label}</td>
+                    <td className={`px-4 py-3.5 text-xs font-semibold whitespace-nowrap ${st.cls}`}>● {st.label}</td>
                     <td className="px-4 py-3.5 text-muted">{ago(gw.seconds_since_sync)}</td>
                     <td className="px-4 py-3.5 text-muted">
                       {gw.last_version == null || gw.status === 'never' ? '—' : <>v{gw.last_version} {current ? <span className="text-ok">(actual)</span> : <span className="text-warn">(actual: v{data.current_version})</span>}</>}
@@ -194,8 +194,8 @@ export default function GatewaysPage() {
                     <td className="px-5 py-3.5">
                       {canManage && !gw.disabled && (
                         <div className="flex justify-end gap-1">
-                          <button onClick={() => rotate(gw)} className="text-xs text-muted hover:text-default px-2 py-1 rounded hover:bg-raised">Rotar token</button>
-                          <button onClick={() => disable(gw)} className="text-xs text-err px-2 py-1 rounded hover:bg-raised">Dar de baja</button>
+                          <button onClick={() => rotate(gw)} className="text-xs text-muted hover:text-default px-2 py-1 rounded hover:bg-raised whitespace-nowrap">Rotar token</button>
+                          <button onClick={() => disable(gw)} className="text-xs text-err px-2 py-1 rounded hover:bg-raised whitespace-nowrap">Dar de baja</button>
                         </div>
                       )}
                     </td>

@@ -60,7 +60,7 @@ function ResetPasswordModal({ user, onClose }) {
   }
 
   return (
-    <Modal title={`Resetear contraseña — ${user.name}`} onClose={onClose} width="max-w-sm">
+    <Modal title={`Nueva contraseña — ${user.name}`} onClose={onClose} width="max-w-sm">
       {done ? (
         <div className="space-y-4">
           <p className="text-sm text-ok font-medium">✓ Contraseña actualizada correctamente</p>
@@ -80,7 +80,7 @@ function ResetPasswordModal({ user, onClose }) {
           <div className="flex gap-3">
             <Btn variant="secondary" onClick={onClose} className="flex-1">Cancelar</Btn>
             <Btn onClick={submit} disabled={saving} className="flex-1">
-              {saving ? 'Guardando…' : 'Resetear'}
+              {saving ? 'Guardando…' : 'Guardar contraseña'}
             </Btn>
           </div>
         </div>
@@ -296,9 +296,9 @@ export default function UsersPage() {
   }
 
   return (
-    <div className="px-4 py-6 md:px-10 md:py-8 max-w-6xl">
+    <div className="px-4 py-6 md:px-10 md:py-8 max-w-screen-xl">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-wrap items-end justify-between gap-3 mb-6">
         <div>
           <h1 className="text-[26px] font-semibold text-strong tracking-tight">Usuarios</h1>
           <p className="text-sm text-muted mt-0.5">
@@ -309,13 +309,13 @@ export default function UsersPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex gap-3 mb-4">
+      <div className="flex flex-wrap gap-3 mb-4">
         <input
           type="search"
           placeholder="Buscar por nombre, email o equipo…"
           value={search}
           onChange={e => setSearch(e.target.value)}
-          className="flex-1 bg-raised border border-border rounded-lg px-3.5 py-2 text-sm text-strong placeholder-subtle focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent"
+          className="flex-1 min-w-[200px] bg-raised border border-border rounded-lg px-3.5 py-2 text-sm text-strong placeholder-subtle focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent"
         />
         <select
           value={filter}
@@ -374,38 +374,38 @@ export default function UsersPage() {
                     <div className="flex justify-end gap-1">
                       {canManage && (
                         <button onClick={() => setModal({ user })}
-                          className="text-xs text-muted hover:text-default px-2 py-1 rounded hover:bg-raised transition-colors">
+                          className="text-xs text-muted hover:text-default px-2 py-1 rounded hover:bg-raised transition-colors whitespace-nowrap">
                           Editar
                         </button>
                       )}
                       {canManage && user.has_password && (
                         <button onClick={() => setModal({ reset: user })}
-                          className="text-xs text-muted hover:text-default px-2 py-1 rounded hover:bg-raised transition-colors">
-                          Reset pwd
+                          className="text-xs text-muted hover:text-default px-2 py-1 rounded hover:bg-raised transition-colors whitespace-nowrap">
+                          Nueva contraseña
                         </button>
                       )}
                       {canManage && user.has_mfa && (
                         <button onClick={() => resetMfa(user)}
-                          className="text-xs text-muted hover:text-default px-2 py-1 rounded hover:bg-raised transition-colors">
-                          Reset 2 pasos
+                          className="text-xs text-muted hover:text-default px-2 py-1 rounded hover:bg-raised transition-colors whitespace-nowrap">
+                          Reiniciar 2 pasos
                         </button>
                       )}
                       {canKeys && user.has_api_key && (
                         <button onClick={() => rotateKey(user)}
                           disabled={rotating === user.id || !user.is_active}
-                          className="text-xs text-accent hover:text-accent-hover px-2 py-1 rounded hover:bg-raised transition-colors disabled:opacity-30">
+                          className="text-xs text-accent hover:text-accent-hover px-2 py-1 rounded hover:bg-raised transition-colors whitespace-nowrap disabled:opacity-30">
                           {rotating === user.id ? '…' : 'Rotar key'}
                         </button>
                       )}
                       {canKeys && user.has_api_key && (
                         <button onClick={() => revokeKey(user)}
-                          className="text-xs text-err hover:text-err px-2 py-1 rounded hover:bg-raised transition-colors">
+                          className="text-xs text-err hover:text-err px-2 py-1 rounded hover:bg-raised transition-colors whitespace-nowrap">
                           Revocar key
                         </button>
                       )}
                       {canManage && (
                         <button onClick={() => toggleActive(user)}
-                          className={`text-xs px-2 py-1 rounded hover:bg-raised transition-colors
+                          className={`text-xs px-2 py-1 rounded hover:bg-raised transition-colors whitespace-nowrap
                             ${user.is_active ? 'text-err hover:text-err' : 'text-ok hover:text-ok'}`}>
                           {user.is_active ? 'Desactivar' : 'Activar'}
                         </button>

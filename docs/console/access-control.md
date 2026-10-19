@@ -94,12 +94,14 @@ a summary.
 | Sign in to the console | yes | yes | yes | yes | no (API key only) |
 | People and agents | all | all but owners | own team, members only | read | — |
 | API keys (rotate, revoke) | all | all but owners' | own team | — | — |
-| Teams: name and policy | yes | yes | — | read | — |
+| Teams: create, delete, name and policy | yes | yes | — | read | — |
 | Teams: budget | yes | yes | own team | read | — |
 | Policies | yes | yes | read own team's | read | — |
 | Providers, gateways | yes | yes | — | read | — |
 | Usage and request logs | all | all | own team | all | — |
 | Audit log | yes | yes | — | yes | — |
+
+What a team's policy, quota and budget do: [teams.md](teams.md).
 
 Also:
 
