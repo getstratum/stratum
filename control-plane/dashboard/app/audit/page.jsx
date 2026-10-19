@@ -24,7 +24,9 @@ const ACTIONS = {
   'agent.update':           'Modificó un agente',
   'agent.key.rotate':       'Rotó la key de un agente',
   'agent.key.revoke':       'Revocó la key de un agente',
+  'team.create':            'Creó un equipo',
   'team.update':            'Modificó un equipo',
+  'team.delete':            'Eliminó un equipo',
   'policy.create':          'Creó una política',
   'policy.update':          'Modificó una política',
   'policy.delete':          'Borró una política',
@@ -86,7 +88,7 @@ export default function AuditPage() {
   useEffect(() => { load() }, [load])
 
   return (
-    <div className="px-4 py-6 md:px-10 md:py-8 max-w-6xl">
+    <div className="px-4 py-6 md:px-10 md:py-8 max-w-screen-xl">
       <div className="flex flex-wrap items-end justify-between gap-4 mb-6">
         <div className="max-w-2xl">
           <h1 className="text-[26px] font-semibold text-strong tracking-tight">Auditoría</h1>

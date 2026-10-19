@@ -6,9 +6,11 @@ export const GET = route('usage.read', async (req, { session, db }) => {
   const { rows } = await db.query(`
     SELECT
       t.id, t.name, t.department, t.monthly_budget_usd AS team_budget,
-      p.name AS policy_name, p.allowed_models,
+      p.id AS policy_id, p.name AS policy_name, p.allowed_models, p.allow_all_models,
       p.monthly_token_quota, p.monthly_budget_usd AS policy_budget,
       (SELECT count(*) FROM users u WHERE u.team_id = t.id AND COALESCE(u.is_active, true)) AS total_users,
+      (SELECT count(*) FROM users u WHERE u.team_id = t.id)  AS members,
+      (SELECT count(*) FROM agents a WHERE a.team_id = t.id) AS agents,
       COUNT(r.id)                                        AS requests_month,
       COALESCE(SUM(r.tokens_input + r.tokens_output), 0) AS tokens_month,
       COALESCE(SUM(r.cost_usd), 0)                       AS cost_month
@@ -18,8 +20,8 @@ export const GET = route('usage.read', async (req, { session, db }) => {
                              AND r.org_id = t.org_id
                              AND r.created_at >= date_trunc('month', now())
     WHERE t.org_id = $1 ${team ? 'AND t.id = $2' : ''}
-    GROUP BY t.id, p.name, p.allowed_models, p.monthly_token_quota, p.monthly_budget_usd
-    ORDER BY cost_month DESC
+    GROUP BY t.id, p.id, p.name, p.allowed_models, p.allow_all_models, p.monthly_token_quota, p.monthly_budget_usd
+    ORDER BY cost_month DESC, t.name
   `, team ? [session.orgId, session.teamId] : [session.orgId])
   return json(rows)
 })

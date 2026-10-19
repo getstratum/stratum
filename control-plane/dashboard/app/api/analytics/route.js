@@ -37,14 +37,15 @@ export const GET = route('usage.read', async (req, { session, db }) => {
        LIMIT 10
     `, b.params),
     db.query(`
-      SELECT t.name AS team, r.provider,
+      SELECT COALESCE(t.name, 'Equipo eliminado') AS team, r.provider,
              COALESCE(SUM(r.cost_usd), 0) AS cost,
              COUNT(*) AS requests
         FROM request_logs r
-        JOIN teams t ON t.id = r.team_id AND t.org_id = r.org_id
+        -- A deleted team's requests stay in the totals.
+        LEFT JOIN teams t ON t.id = r.team_id AND t.org_id = r.org_id
        WHERE ${c.where}
-       GROUP BY t.name, r.provider
-       ORDER BY t.name, cost DESC
+       GROUP BY 1, r.provider
+       ORDER BY 1, cost DESC
     `, c.params),
   ])
 

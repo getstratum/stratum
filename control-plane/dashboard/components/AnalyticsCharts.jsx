@@ -33,7 +33,7 @@ function ProviderTooltip({ active, payload }) {
     <div className="bg-card border border-border rounded-lg px-3 py-2.5 shadow-dropdown text-xs">
       <div className="font-semibold text-strong mb-1.5 capitalize">{d.provider}</div>
       <div className="space-y-1 text-muted">
-        <div className="flex justify-between gap-6"><span>Requests</span><span className="text-strong font-mono">{d.requests.toLocaleString()}</span></div>
+        <div className="flex justify-between gap-6"><span>Requests</span><span className="text-strong font-mono">{d.requests.toLocaleString('es-UY')}</span></div>
         <div className="flex justify-between gap-6"><span>Tokens</span><span className="text-strong font-mono">{formatTokens(d.tokens)}</span></div>
         <div className="flex justify-between gap-6"><span>Costo</span><span className="text-accent font-mono font-semibold">{formatCost(d.cost)}</span></div>
         <div className="flex justify-between gap-6"><span>Latencia media</span><span className="text-strong font-mono">{d.avgLatency}ms</span></div>
@@ -121,7 +121,7 @@ export function ProviderChart({ data }) {
                     <span className="font-semibold text-strong capitalize">{d.provider}</span>
                   </div>
                 </td>
-                <td className="px-5 py-3.5 text-right font-mono text-sm tabular-nums">{d.requests.toLocaleString()}</td>
+                <td className="px-5 py-3.5 text-right font-mono text-sm tabular-nums">{d.requests.toLocaleString('es-UY')}</td>
                 <td className="px-5 py-3.5 text-right font-mono text-sm tabular-nums">{formatTokens(d.tokens)}</td>
                 <td className="px-5 py-3.5 text-right font-mono text-sm tabular-nums font-semibold text-accent-text">{formatCost(d.cost)}</td>
                 <td className="px-5 py-3.5 text-right font-mono text-sm tabular-nums text-muted">{d.avgLatency}ms</td>
@@ -149,7 +149,7 @@ function ModelTooltip({ active, payload }) {
       <div className="font-semibold text-strong mb-1.5">{d.model}</div>
       <div className="text-xs text-muted mb-1">{d.provider}</div>
       <div className="space-y-1 text-muted">
-        <div className="flex justify-between gap-6"><span>Requests</span><span className="text-strong font-mono">{d.requests.toLocaleString()}</span></div>
+        <div className="flex justify-between gap-6"><span>Requests</span><span className="text-strong font-mono">{d.requests.toLocaleString('es-UY')}</span></div>
         <div className="flex justify-between gap-6"><span>Tokens de entrada</span><span className="text-strong font-mono">{formatTokens(d.tokensInput)}</span></div>
         <div className="flex justify-between gap-6"><span>Tokens de salida</span><span className="text-strong font-mono">{formatTokens(d.tokensOutput)}</span></div>
         <div className="flex justify-between gap-6"><span>Costo</span><span className="text-accent font-mono font-semibold">{formatCost(d.cost)}</span></div>
@@ -210,7 +210,7 @@ export function ModelChart({ data }) {
                   </div>
                 </td>
                 <td className="px-5 py-3.5 text-xs text-muted capitalize">{d.provider}</td>
-                <td className="px-5 py-3.5 text-right font-mono text-xs tabular-nums">{d.requests.toLocaleString()}</td>
+                <td className="px-5 py-3.5 text-right font-mono text-xs tabular-nums">{d.requests.toLocaleString('es-UY')}</td>
                 <td className="px-5 py-3.5 text-right font-mono text-xs tabular-nums text-muted">{formatTokens(d.tokensInput)}</td>
                 <td className="px-5 py-3.5 text-right font-mono text-xs tabular-nums text-muted">{formatTokens(d.tokensOutput)}</td>
                 <td className="px-5 py-3.5 text-right font-mono text-xs tabular-nums font-semibold text-accent-text">{formatCost(d.cost)}</td>

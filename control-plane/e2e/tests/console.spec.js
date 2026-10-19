@@ -515,7 +515,7 @@ test('two-step: the owner resets the admin\'s second factor', async () => {
   await page.goto('/users')
   const row = page.locator('tr', { hasText: admin.email })
   await expect(row).toContainText('2 pasos')
-  await row.getByRole('button', { name: 'Reset 2 pasos' }).click()
+  await row.getByRole('button', { name: 'Reiniciar 2 pasos' }).click()
   await expect(row).not.toContainText('2 pasos')
 
   // The admin's session ended.
@@ -526,13 +526,33 @@ test('two-step: the owner resets the admin\'s second factor', async () => {
   await page.context().addCookies(ownerCookies)
 })
 
+// --- teams ---------------------------------------------------------------------------
+
+test('teams: create an empty team and delete it; a team with people cannot be deleted', async () => {
+  const name = `${RUN}-team`
+  await page.goto('/teams')
+  await page.getByRole('button', { name: '+ Nuevo equipo' }).click()
+  const d = dialog('Nuevo equipo')
+  await d.getByLabel('Nombre').fill(name)
+  await d.getByRole('button', { name: 'Crear equipo' }).click()
+  const row = page.getByTestId('team-row').filter({ hasText: name })
+  await expect(row).toContainText('Sin política')
+
+  await expect(page.getByTestId('team-row').filter({ hasText: TEAM }).first()
+    .getByRole('button', { name: 'Eliminar' })).toBeDisabled()
+
+  await row.getByRole('button', { name: 'Eliminar' }).click()
+  await expect(row).toHaveCount(0)
+})
+
 // --- audit log -------------------------------------------------------------------------
 
 test('audit log: everything above is recorded, refusals included', async () => {
   await page.goto('/audit')
   for (const text of ['Agregó un proveedor', 'Revocó un proveedor', 'Registró un gateway', 'Rotó el token de un gateway',
     'Dio de baja un gateway', 'Creó una persona', 'Intento sin permiso', 'Cambió su contraseña',
-    'Activó la verificación en dos pasos', 'Reinició la verificación en dos pasos de una persona']) {
+    'Activó la verificación en dos pasos', 'Reinició la verificación en dos pasos de una persona',
+    'Creó un equipo', 'Eliminó un equipo']) {
     await expect(page.getByText(text).first(), text).toBeVisible()
   }
   if (GATEWAY) await expect(page.getByText('Revocó la key de un agente').first()).toBeVisible()

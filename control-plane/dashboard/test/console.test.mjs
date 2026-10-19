@@ -316,3 +316,84 @@ test('models: the catalog lists aliases', { skip }, async () => {
   assert.deepEqual(haiku.aliases, ['claude-haiku-4-5'])
   assert.ok(!r.body.some(m => m.provider === 'google-gemini'), 'Gemini is listed as "gemini", like gateways call it')
 })
+
+// --- teams -----------------------------------------------------------------
+
+test('teams: created from the console, names unique per organization', { skip }, async () => {
+  const r = await call('teams', 'POST', { as: A.owner, body: { name: 'Ventas', department: 'Comercial', monthlyBudgetUsd: '250' } })
+  assert.equal(r.status, 201)
+  assert.equal(r.body.name, 'Ventas')
+  assert.equal(Number(r.body.monthly_budget_usd), 250)
+
+  assert.equal((await call('teams', 'POST', { as: A.owner, body: { name: ' ventas ' } })).status, 409)
+  assert.equal((await call('teams', 'POST', { as: A.owner, body: { name: '  ' } })).status, 400)
+  assert.equal((await call('teams', 'POST', { as: A.owner, body: { name: 'x', monthlyBudgetUsd: -1 } })).status, 400)
+  // Another organization may use the same name; its policies are not ours.
+  assert.equal((await call('teams', 'POST', { as: B.owner, body: { name: 'Ventas' } })).status, 201)
+  const [bPolicy] = await sql(`INSERT INTO policies (org_id, name) VALUES ($1, 'b') RETURNING id`, [B.id])
+  assert.equal((await call('teams', 'POST', { as: A.owner, body: { name: 'y', policyId: bPolicy.id } })).status, 404)
+  // Renaming onto an existing name is refused too.
+  const [other] = await sql(`INSERT INTO teams (org_id, name) VALUES ($1, 'Soporte') RETURNING id`, [A.id])
+  assert.equal((await call('teams/[id]', 'PATCH', { as: A.owner, params: { id: other.id }, body: { name: 'VENTAS' } })).status, 409)
+
+  for (const as of [A.auditor, A.team_manager]) {
+    assert.equal((await call('teams', 'POST', { as, body: { name: 'z' } })).status, 403)
+  }
+  const [entry] = await sql(`SELECT details FROM audit_log WHERE org_id = $1 AND action = 'team.create' ORDER BY id DESC LIMIT 1`, [A.id])
+  assert.equal(entry.details.name, 'Ventas')
+})
+
+test('teams: only an empty team is deleted; its alerts go with it', { skip }, async () => {
+  const [t] = await sql(`INSERT INTO teams (org_id, name) VALUES ($1, 'Temporal') RETURNING id`, [A.id])
+  const [u] = await sql(`INSERT INTO users (org_id, team_id, email, role) VALUES ($1, $2, $3, 'member') RETURNING id`,
+    [A.id, t.id, `tmp-${t.id.slice(0, 8)}@example.com`])
+  const [ag] = await sql(`INSERT INTO agents (org_id, team_id, name) VALUES ($1, $2, 'bot') RETURNING id`, [A.id, t.id])
+  await sql(`INSERT INTO alerts (org_id, team_id, alert_type, threshold_pct, channel, destination)
+             VALUES ($1, $2, 'quota', 80, 'email', 'a@example.com')`, [A.id, t.id])
+
+  let r = await call('teams/[id]', 'DELETE', { as: A.owner, params: { id: t.id } })
+  assert.equal(r.status, 409)
+  assert.match(r.body.message, /1 persona y 1 agente/)
+  assert.equal((await call('teams/[id]', 'DELETE', { as: B.owner, params: { id: t.id } })).status, 404)
+  assert.equal((await call('teams/[id]', 'DELETE', { as: A.team_manager, params: { id: t.id } })).status, 403)
+
+  await sql('DELETE FROM users WHERE id = $1', [u.id])
+  await sql('DELETE FROM agents WHERE id = $1', [ag.id])
+  r = await call('teams/[id]', 'DELETE', { as: A.owner, params: { id: t.id } })
+  assert.equal(r.status, 200)
+  assert.equal((await sql('SELECT 1 FROM teams WHERE id = $1', [t.id])).length, 0)
+  assert.equal((await sql('SELECT 1 FROM alerts WHERE team_id = $1', [t.id])).length, 0)
+  // Gateways learn about it on the next sync.
+  assert.equal((await sql(`SELECT 1 FROM stratum_sync_tombstones WHERE object_id = $1`, [t.id])).length, 1)
+  assert.equal((await call('teams/[id]', 'DELETE', { as: A.owner, params: { id: t.id } })).status, 404)
+})
+
+test('teams-detail: says which policy each team has', { skip }, async () => {
+  const [p] = await sql(`INSERT INTO policies (org_id, name) VALUES ($1, 'detalle') RETURNING id`, [A.id])
+  const [t] = await sql(`INSERT INTO teams (org_id, name, policy_id) VALUES ($1, 'Con política', $2) RETURNING id`, [A.id, p.id])
+  const r = await call('teams-detail', 'GET', { as: A.owner })
+  const row = r.body.find(x => x.id === t.id)
+  assert.equal(row.policy_id, p.id)
+  assert.equal(Number(row.members), 0)
+})
+
+// --- audit -----------------------------------------------------------------
+
+test('audit: newest first by number, not as text', { skip }, async () => {
+  // IDs on both sides of a digit boundary: as text, '9999999999' sorts
+  // after '10000000001'. The log is append-only, so each run takes a
+  // boundary no earlier run used.
+  let k = 10n
+  while ((await sql('SELECT 1 FROM audit_log WHERE id BETWEEN $1 AND $2',
+    [String(10n ** k - 2n), String(10n ** k + 1n)])).length) k++
+  const ids = [-2n, -1n, 0n, 1n].map(d => String(10n ** k + d))
+  for (const id of ids) {
+    await sql(`INSERT INTO audit_log (id, org_id, action, result) OVERRIDING SYSTEM VALUE
+               VALUES ($1, $2, $3, 'ok')`, [id, A.id, `order.${id}`])
+  }
+  const r = await call('audit', 'GET', { as: A.owner, query: '?limit=4' })
+  assert.equal(r.status, 200)
+  assert.deepEqual(r.body.entries.map(e => e.id), [...ids].reverse())
+  const page2 = await call('audit', 'GET', { as: A.owner, query: `?limit=2&before=${ids[2]}` })
+  assert.deepEqual(page2.body.entries.map(e => e.id), [ids[1], ids[0]])
+})

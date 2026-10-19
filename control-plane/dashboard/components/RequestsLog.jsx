@@ -1,13 +1,13 @@
 'use client'
 
 import { useState } from 'react'
-import { formatCost } from '../lib/format'
+import { formatCost, formatDateTime, formatMs, nf } from '../lib/format'
 
 function StatusBadge({ code }) {
   if (!code) return <span className="text-subtle text-xs">—</span>
   const ok = code >= 200 && code < 300
   return (
-    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full font-mono
+    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full tabular
       ${ok ? 'bg-ok-light text-ok' : 'bg-err-light text-err'}`}>
       {code}
     </span>
@@ -15,12 +15,8 @@ function StatusBadge({ code }) {
 }
 
 function ProviderBadge({ provider }) {
-  const styles = {
-    openai:    'bg-green-50 text-green-700 border-green-200',
-    anthropic: 'bg-orange-50 text-orange-700 border-orange-200',
-  }
   return (
-    <span className={`text-xs border rounded-full px-2 py-0.5 font-medium ${styles[provider] ?? 'bg-gray-50 text-gray-600 border-gray-200'}`}>
+    <span className="text-xs text-default border border-border rounded px-2 py-0.5 whitespace-nowrap">
       {provider}
     </span>
   )
@@ -34,8 +30,8 @@ function TraceBar({ label, ms, total, color }) {
       <div className="flex-1 h-1.5 bg-app rounded-full overflow-hidden">
         <div className={`h-full rounded-full ${color}`} style={{ width: `${pct}%` }} />
       </div>
-      <div className="w-12 text-xs text-muted font-mono text-right flex-shrink-0">{ms}ms</div>
-      <div className="w-8 text-xs text-subtle text-right flex-shrink-0">{pct}%</div>
+      <div className="w-16 text-xs text-muted tabular text-right flex-shrink-0">{formatMs(ms)}</div>
+      <div className="w-10 text-xs text-subtle tabular text-right flex-shrink-0">{pct} %</div>
     </div>
   )
 }
@@ -54,8 +50,8 @@ function TraceDetail({ log }) {
         {hasTrace ? (
           <div className="max-w-lg space-y-2.5">
             <div className="text-xs text-muted mb-3">
-              Trace <span className="font-mono text-subtle">{log.trace_id?.slice(0, 8) ?? '—'}</span>
-              {' · '}total <span className="font-semibold text-strong">{total}ms</span>
+              Traza <span className="font-mono text-subtle">{log.trace_id?.slice(0, 8) ?? '—'}</span>
+              {' · '}total <span className="font-semibold text-strong tabular">{formatMs(total)}</span>
             </div>
             <TraceBar label="Auth"     ms={auth}     total={total} color="bg-accent" />
             <TraceBar label="Política"   ms={policy}   total={total} color="bg-accent/60" />
@@ -64,7 +60,7 @@ function TraceDetail({ log }) {
           </div>
         ) : (
           <div className="text-xs text-subtle">
-            Per-stage timing not available for this request.
+            Este pedido no tiene los tiempos por etapa.
           </div>
         )}
       </td>
@@ -87,13 +83,13 @@ export default function RequestsLog({ logs }) {
     <div className="relative bg-card border border-border rounded-[10px] overflow-x-auto">
       <table className="w-full min-w-[640px] text-sm">
         <thead>
-          <tr className="text-xs text-muted uppercase tracking-widest bg-raised border-b border-border">
+          <tr className="text-xs text-muted uppercase tracking-wider bg-raised border-b border-border">
             <th className="px-4 py-3 text-left w-6" />
             <th className="px-4 py-3 text-left font-semibold">Fecha</th>
             <th className="px-4 py-3 text-left font-semibold">Proveedor</th>
             <th className="px-4 py-3 text-left font-semibold">Modelo</th>
             <th className="px-4 py-3 text-left font-semibold">Equipo</th>
-            <th className="px-4 py-3 text-left font-semibold">Origen</th>
+            <th className="px-4 py-3 text-left font-semibold">Quién</th>
             <th className="px-4 py-3 text-right font-semibold">Ent.</th>
             <th className="px-4 py-3 text-right font-semibold">Sal.</th>
             <th className="px-4 py-3 text-right font-semibold">Costo</th>
@@ -113,35 +109,27 @@ export default function RequestsLog({ logs }) {
                 <td className="px-4 py-3.5 text-muted text-xs select-none">
                   {isOpen ? '▾' : '▸'}
                 </td>
-                <td className="px-4 py-3.5 text-xs text-muted font-mono whitespace-nowrap">
-                  {new Date(log.created_at).toLocaleString('en-US', {
-                    month: 'short', day: '2-digit',
-                    hour: '2-digit', minute: '2-digit', second: '2-digit',
-                    hour12: false,
-                  })}
+                <td className="px-4 py-3.5 text-xs text-muted tabular whitespace-nowrap">
+                  {formatDateTime(log.created_at, { seconds: true })}
                 </td>
                 <td className="px-4 py-3.5">
                   <ProviderBadge provider={log.provider} />
                 </td>
-                <td className="px-4 py-3.5 font-mono text-xs text-default">{log.model_id}</td>
+                <td className="px-4 py-3.5 font-mono text-xs text-default whitespace-nowrap">{log.model_id}</td>
                 <td className="px-4 py-3.5 text-xs text-muted">{log.team_name ?? '—'}</td>
-                <td className="px-4 py-3.5 text-xs">
+                <td className="px-4 py-3.5 text-xs max-w-[180px] truncate">
                   {log.agent_name
-                    ? <span className="bg-accent-light text-accent-text text-xs font-medium rounded-full px-2 py-0.5">agente</span>
-                    : <span className="text-muted">persona</span>}
+                    ? <span className="text-default" title="Agente">{log.agent_name}</span>
+                    : <span className="text-muted" title="Persona">{log.user_email ?? 'persona'}</span>}
                 </td>
-                <td className="px-4 py-3.5 text-right text-xs text-muted font-mono tabular-nums">
-                  {parseInt(log.tokens_input).toLocaleString()}
-                </td>
-                <td className="px-4 py-3.5 text-right text-xs text-muted font-mono tabular-nums">
-                  {parseInt(log.tokens_output).toLocaleString()}
-                </td>
-                <td className="px-4 py-3.5 text-right text-xs font-semibold font-mono tabular-nums text-accent-text">
+                <td className="px-4 py-3.5 text-right text-xs text-muted tabular">{nf(log.tokens_input)}</td>
+                <td className="px-4 py-3.5 text-right text-xs text-muted tabular">{nf(log.tokens_output)}</td>
+                <td className="px-4 py-3.5 text-right text-xs text-strong tabular whitespace-nowrap">
                   {formatCost(log.cost_usd)}
                 </td>
-                <td className="px-4 py-3.5 text-right text-xs font-mono tabular-nums">
+                <td className="px-4 py-3.5 text-right text-xs tabular whitespace-nowrap">
                   {log.latency_ms
-                    ? <span className={log.latency_ms > 3000 ? 'text-warn font-semibold' : 'text-muted'}>{log.latency_ms}ms</span>
+                    ? <span className={log.latency_ms > 3000 ? 'text-warn font-semibold' : 'text-muted'}>{formatMs(log.latency_ms)}</span>
                     : <span className="text-subtle">—</span>}
                 </td>
                 <td className="px-4 py-3.5 text-center">

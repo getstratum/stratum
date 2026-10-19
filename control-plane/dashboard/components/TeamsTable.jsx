@@ -1,4 +1,4 @@
-import { formatCost, formatTokens } from '../lib/format'
+import { formatCost, formatCostCompact, formatTokens, nf } from '../lib/format'
 
 function ProgressBar({ pct }) {
   const capped = Math.min(100, pct)
@@ -11,8 +11,8 @@ function ProgressBar({ pct }) {
           style={{ width: `${capped}%` }}
         />
       </div>
-      <span className={`text-xs w-9 text-right tabular-nums font-medium ${warn ? 'text-err' : 'text-muted'}`}>
-        {capped.toFixed(0)}%
+      <span className={`text-xs min-w-[3rem] text-right tabular font-medium ${warn ? 'text-err' : 'text-muted'}`}>
+        {nf(pct)} %
       </span>
     </div>
   )
@@ -38,7 +38,7 @@ export default function TeamsTable({ teams, policies }) {
       </div>
       <table className="w-full min-w-[640px] text-sm">
         <thead>
-          <tr className="text-xs text-muted uppercase tracking-widest bg-raised border-b border-border">
+          <tr className="text-xs text-muted uppercase tracking-wider bg-raised border-b border-border">
             <th className="px-5 py-3 text-left font-semibold">Equipo</th>
             <th className="px-5 py-3 text-right font-semibold">Requests</th>
             <th className="px-5 py-3 text-right font-semibold">Tokens</th>
@@ -50,7 +50,7 @@ export default function TeamsTable({ teams, policies }) {
         <tbody className="divide-y divide-border">
           {teams.map(team => {
             const policy = policyMap[team.team_id]
-            const budget = parseFloat(policy?.monthly_budget_usd ?? team.team_budget ?? 0)
+            const budget = parseFloat(team.team_budget ?? policy?.monthly_budget_usd ?? 0)
             const spent  = parseFloat(team.total_cost ?? 0)
             const pct    = budget > 0 ? (spent / budget) * 100 : 0
 
@@ -62,25 +62,29 @@ export default function TeamsTable({ teams, policies }) {
                     {team.active_users} persona{team.active_users != 1 ? 's' : ''} activa{team.active_users != 1 ? 's' : ''}
                   </div>
                 </td>
-                <td className="px-5 py-4 text-right text-strong tabular-nums font-mono text-sm">
-                  {Number(team.total_requests).toLocaleString()}
+                <td className="px-5 py-4 text-right text-strong tabular text-sm">
+                  {nf(team.total_requests)}
                 </td>
-                <td className="px-5 py-4 text-right text-strong tabular-nums font-mono text-sm">
+                <td className="px-5 py-4 text-right text-strong tabular text-sm">
                   {formatTokens(team.total_tokens)}
                 </td>
-                <td className="px-5 py-4 text-right font-bold tabular-nums font-mono text-sm text-accent-text">
+                <td className="px-5 py-4 text-right font-semibold tabular text-sm text-strong whitespace-nowrap">
                   {formatCost(spent)}
                 </td>
                 <td className="px-5 py-4">
-                  <div className="text-xs text-muted mb-1.5 tabular-nums">
-                    {formatCost(spent)} / ${budget.toFixed(0)}
-                  </div>
-                  <ProgressBar pct={pct} />
+                  {budget > 0 ? (
+                    <>
+                      <div className="text-xs text-muted mb-1.5 tabular">
+                        de {formatCostCompact(budget)}
+                      </div>
+                      <ProgressBar pct={pct} />
+                    </>
+                  ) : <span className="text-xs text-subtle">Sin presupuesto</span>}
                 </td>
                 <td className="px-5 py-4">
                   {policy
-                    ? <span className="text-xs bg-accent-light text-accent-text font-medium rounded-full px-2.5 py-1">{policy.policy_name}</span>
-                    : <span className="text-xs text-subtle">—</span>}
+                    ? <span className="text-xs text-default border border-border rounded px-2 py-0.5 whitespace-nowrap">{policy.policy_name}</span>
+                    : <span className="text-xs text-warn">Sin política</span>}
                 </td>
               </tr>
             )
