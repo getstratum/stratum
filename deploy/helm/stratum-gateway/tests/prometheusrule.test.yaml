@@ -1,0 +1,93 @@
+# promtool test rules for templates/prometheusrule.yaml. CI renders the
+# chart with ci/controlplane-values.yaml (release "stratum", namespace
+# "stratum") into rules.yaml next to this file, then runs:
+#   promtool test rules prometheusrule.test.yaml
+rule_files: [rules.yaml]
+evaluation_interval: 1m
+
+tests:
+  # 1 % of requests fail with the gateway's own 5xx: far past 14.4 × 0.01 %.
+  - interval: 1m
+    input_series:
+      - series: 'stratum_requests_total{namespace="stratum",job="stratum-stratum-gateway-metrics",code="200",provider="openai",reason="ok"}'
+        values: '0+5940x90'
+      - series: 'stratum_requests_total{namespace="stratum",job="stratum-stratum-gateway-metrics",code="503",provider="",reason="overloaded"}'
+        values: '0+60x90'
+      # Client errors are not in the SLO either way.
+      - series: 'stratum_requests_total{namespace="stratum",job="stratum-stratum-gateway-metrics",code="429",provider="openai",reason="quota_exceeded"}'
+        values: '0+600x90'
+    promql_expr_test:
+      - expr: round(stratum:gateway_errors:ratio_rate5m, 0.0001)
+        eval_time: 30m
+        exp_samples:
+          - labels: '{namespace="stratum",job="stratum-stratum-gateway-metrics"}'
+            value: 0.01
+    alert_rule_test:
+      - alertname: StratumGatewayErrorBudgetBurn
+        eval_time: 30m
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              namespace: stratum
+              job: stratum-stratum-gateway-metrics
+            exp_annotations:
+              summary: Stratum gateways are answering with their own errors fast enough to spend the month's error budget in days.
+              description: 5xx produced by the gateway (not passed through from a provider), against an availability target of 0.9999. Look at stratum_requests_total by reason.
+
+  # Half the requests fail at the provider: its errors, not the gateway's.
+  - interval: 1m
+    input_series:
+      - series: 'stratum_requests_total{namespace="stratum",job="stratum-stratum-gateway-metrics",code="200",provider="openai",reason="ok"}'
+        values: '0+3000x90'
+      - series: 'stratum_requests_total{namespace="stratum",job="stratum-stratum-gateway-metrics",code="502",provider="openai",reason="upstream_status"}'
+        values: '0+2000x90'
+      - series: 'stratum_requests_total{namespace="stratum",job="stratum-stratum-gateway-metrics",code="503",provider="openai",reason="provider_unavailable"}'
+        values: '0+1000x90'
+    promql_expr_test:
+      - expr: stratum:gateway_errors:ratio_rate1h
+        eval_time: 60m
+        exp_samples:
+          - labels: 'stratum:gateway_errors:ratio_rate1h{namespace="stratum",job="stratum-stratum-gateway-metrics"}'
+            value: 0
+    alert_rule_test:
+      - alertname: StratumGatewayErrorBudgetBurn
+        eval_time: 60m
+        exp_alerts: []
+
+  # Another release's errors do not count against this one.
+  - interval: 1m
+    input_series:
+      - series: 'stratum_requests_total{namespace="other",job="other-stratum-gateway-metrics",code="500",provider="",reason="internal"}'
+        values: '0+600x90'
+      - series: 'stratum_requests_total{namespace="stratum",job="stratum-stratum-gateway-metrics",code="200",provider="openai",reason="ok"}'
+        values: '0+600x90'
+    alert_rule_test:
+      - alertname: StratumGatewayErrorBudgetBurn
+        eval_time: 60m
+        exp_alerts: []
+
+  # Health: configuration not confirmed for 30 minutes, dropped usage.
+  - interval: 1m
+    input_series:
+      - series: 'stratum_snapshot_age_seconds{namespace="stratum",job="stratum-stratum-gateway-metrics",pod="gw-0"}'
+        values: '60+60x40'
+      - series: 'stratum_usage_records_dropped_total{namespace="stratum",job="stratum-stratum-gateway-metrics",pod="gw-0"}'
+        values: '0x20 5x20'
+    alert_rule_test:
+      - alertname: StratumGatewayConfigurationStale
+        eval_time: 25m
+        exp_alerts:
+          - exp_labels: { severity: warning, namespace: stratum, job: stratum-stratum-gateway-metrics }
+            exp_annotations:
+              summary: A Stratum gateway has not confirmed its configuration with the control plane for a while.
+              description: It keeps serving the last configuration it has (ADR-0005); changes made in the console do not reach it. Check the control plane and the network to it.
+      - alertname: StratumGatewayConfigurationStale
+        eval_time: 15m
+        exp_alerts: []
+      - alertname: StratumGatewayUsageDropped
+        eval_time: 25m
+        exp_alerts:
+          - exp_labels: { severity: warning, namespace: stratum, job: stratum-stratum-gateway-metrics }
+            exp_annotations:
+              summary: A Stratum gateway dropped usage records.
+              description: Its buffer filled while the control plane was unreachable, or the control plane refused a batch. The console's usage and spend are missing those requests.

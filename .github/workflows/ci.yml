@@ -267,9 +267,23 @@ jobs:
             for v in "$chart"/ci/*-values.yaml; do
               helm template stratum "$chart" -f "$v" \
                 | "$(go env GOPATH)/bin/kubeconform" -strict -summary \
-                    -kubernetes-version 1.29.0 -skip ServiceMonitor
+                    -kubernetes-version 1.29.0 -skip ServiceMonitor \
+                    -schema-location default \
+                    -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'
             done
           done
+      # The gateway's alerting rules: valid PromQL, and they fire when they
+      # should (deploy/helm/stratum-gateway/tests).
+      - name: alerting rules
+        run: |
+          scripts/install-promtool.sh "$RUNNER_TEMP/bin"
+          cp deploy/helm/stratum-gateway/tests/prometheusrule.test.yaml "$RUNNER_TEMP/"
+          helm template stratum deploy/helm/stratum-gateway -n stratum \
+              -f deploy/helm/stratum-gateway/ci/controlplane-values.yaml -s templates/prometheusrule.yaml \
+            | sed -n '/^spec:/,$p' | sed '1d; s/^  //' > "$RUNNER_TEMP/rules.yaml"
+          cd "$RUNNER_TEMP"
+          bin/promtool check rules rules.yaml
+          bin/promtool test rules prometheusrule.test.yaml
       # The chart refuses values that would fail at run time.
       - name: control plane chart refuses incomplete values
         run: |
