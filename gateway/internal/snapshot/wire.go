@@ -68,6 +68,19 @@ type SyncResponse struct {
 	// counted it. Sent with every sync, full or delta, since it is not
 	// versioned; absent from control planes before 0.3.
 	MonthUsage *WireMonthUsage `json:"month_usage,omitempty"`
+	// People is the directory of people a delegating key may act for
+	// (X-Stratum-User). Versioned like keys; absent from control planes
+	// before 0.4, and then nobody can be acted for.
+	People []WirePerson `json:"people,omitempty"`
+}
+
+// WirePerson is one entry of the people directory: an id the control plane
+// knows and the team whose policy applies to requests made for them.
+type WirePerson struct {
+	ID      string `json:"id"`
+	TeamID  string `json:"team_id"`
+	Version Int64  `json:"version"`
+	Revoked bool   `json:"revoked"`
 }
 
 // WireMonthUsage is the organization's usage in the current UTC month, per
@@ -119,6 +132,9 @@ type WireAPIKey struct {
 	// Agent keys only: every request of the key goes to this model.
 	DefaultProvider string `json:"default_provider,omitempty"`
 	DefaultModel    string `json:"default_model,omitempty"`
+	// Delegates lets the key send X-Stratum-User: the request then follows
+	// that person's team policy and its usage is reported as theirs.
+	Delegates bool `json:"delegates,omitempty"`
 }
 
 // WireProviderConfig carries the customer's own provider credentials.

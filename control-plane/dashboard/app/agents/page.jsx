@@ -48,7 +48,7 @@ function KeyReveal({ apiKey, onClose }) {
 }
 
 // ─── Create / Edit modal ──────────────────────────────────────────────────────
-function AgentModal({ agent, teams, models, onSave, onClose }) {
+function AgentModal({ agent, teams, models, canDelegate, onSave, onClose }) {
   const isEdit = !!agent
   const [form, setForm] = useState({
     name:            agent?.name             ?? '',
@@ -56,6 +56,7 @@ function AgentModal({ agent, teams, models, onSave, onClose }) {
     teamId:          agent?.team_id          ?? '',
     defaultModel:    agent?.default_model    ?? '',
     defaultProvider: agent?.default_provider ?? '',
+    delegates:       agent?.delegates        ?? false,
   })
   const [saving, setSaving] = useState(false)
   const [error,  setError]  = useState('')
@@ -165,6 +166,29 @@ function AgentModal({ agent, teams, models, onSave, onClose }) {
           </p>
         )}
 
+        {(canDelegate || form.delegates) && (
+          <div className="flex items-start gap-2.5 text-sm text-default">
+            <input
+              id="agent-delegates"
+              type="checkbox"
+              className="mt-0.5 h-4 w-4"
+              checked={form.delegates}
+              disabled={!canDelegate}
+              aria-describedby="agent-delegates-hint"
+              onChange={e => set('delegates', e.target.checked)}
+            />
+            <div>
+              <label htmlFor="agent-delegates">Actúa por personas</label>
+              <p id="agent-delegates-hint" className="text-xs text-muted mt-0.5">
+                Para aplicaciones como un portal de chat: con el header{' '}
+                <code className="text-default font-mono">X-Stratum-User</code> cada pedido sigue la política del
+                equipo de esa persona y su consumo queda registrado como suyo. La key puede actuar por cualquier
+                persona de la organización: guardala como un secreto del servidor, nunca en un navegador.
+              </p>
+            </div>
+          </div>
+        )}
+
         {!isEdit && (
           <div className="bg-raised border border-border rounded-md p-3 text-xs text-muted">
             Se genera una key con prefijo <code className="text-default font-mono">aig_agt_</code>, que se muestra
@@ -196,8 +220,9 @@ function Metric({ label, children }) {
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function AgentsPage() {
-  const { can } = usePermissions()
+  const { can, scope } = usePermissions()
   const canManage = can('keys.manage')
+  const canDelegate = scope('keys.manage') === 'org'
   const canUsage  = can('usage.read')
   const [agents,    setAgents]    = useState([])
   const [teams,     setTeams]     = useState([])
@@ -304,6 +329,11 @@ export default function AgentsPage() {
                   ) : (
                     <span className="text-xs text-muted">el agente elige el modelo</span>
                   )}
+                  {agent.delegates && (
+                    <span className="text-xs text-accent border border-accent/40 rounded px-2 py-0.5" title="Su key puede actuar en nombre de personas (X-Stratum-User)">
+                      actúa por personas
+                    </span>
+                  )}
                   {!agent.is_active && <span className="text-xs text-warn">desactivado</span>}
                 </div>
                 <div className="flex flex-wrap items-center gap-1">
@@ -357,8 +387,8 @@ export default function AgentsPage() {
         </div>
       </section>
 
-      {modal === 'create' && <AgentModal teams={teams} models={models} onSave={handleSave} onClose={() => setModal(null)} />}
-      {modal?.agent && <AgentModal agent={modal.agent} teams={teams} models={models} onSave={handleSave} onClose={() => setModal(null)} />}
+      {modal === 'create' && <AgentModal teams={teams} models={models} canDelegate={canDelegate} onSave={handleSave} onClose={() => setModal(null)} />}
+      {modal?.agent && <AgentModal agent={modal.agent} teams={teams} models={models} canDelegate={canDelegate} onSave={handleSave} onClose={() => setModal(null)} />}
       {revealKey && <KeyReveal apiKey={revealKey} onClose={() => setRevealKey(null)} />}
     </div>
   )

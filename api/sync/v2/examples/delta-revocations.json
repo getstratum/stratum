@@ -47,6 +47,10 @@
       "revoked": true
     }
   ],
+  "people": [
+    { "id": "user_dev", "team_id": "", "version": 53, "revoked": true },
+    { "id": "user_writer", "team_id": "team_engineering", "version": 54, "revoked": false }
+  ],
   "provider_configs": [
     {
       "id": "pc_openai_prod",

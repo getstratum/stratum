@@ -56,7 +56,21 @@
       "revoked": false,
       "default_provider": "openai",
       "default_model": "gpt-4o-mini"
+    },
+    {
+      "id": "agent:2b0e6f7c-5d41-4a8e-9c3b-7a1d2e4f6b80",
+      "key_hash": "a3c1e5b7d9f02468ace13579bdf02468ace13579bdf02468ace13579bdf02468",
+      "team_id": "team_engineering",
+      "label": "chat-portal",
+      "version": 42,
+      "revoked": false,
+      "delegates": true
     }
+  ],
+  "people": [
+    { "id": "user_dev", "team_id": "team_engineering", "version": 28, "revoked": false },
+    { "id": "user_writer", "team_id": "team_marketing", "version": 39, "revoked": false },
+    { "id": "user_former", "team_id": "team_marketing", "version": 40, "revoked": true }
   ],
   "provider_configs": [
     {

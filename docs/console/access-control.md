@@ -117,6 +117,16 @@ Also:
   organization), so creating an account with an email used in another
   organization fails.
 - Provider credentials are never returned by any route, to any role.
+- Only an Owner or an Admin marks an agent as one that **acts for people**
+  (its key may send `X-Stratum-User`, see the README). Such a key reaches
+  every person's policy in the organization, beyond its own team. A team
+  manager can edit that agent if it is in their team, and turn the flag
+  off, but not on.
+- **Access to applications** is per person and on by default. Taking it
+  away (People → Quitar aplicaciones) makes every gateway refuse requests
+  made on their behalf within one sync interval, without touching their
+  console access or their own API key. Deactivating a person, or leaving
+  them without a team, does the same.
 
 ## Enforcement
 

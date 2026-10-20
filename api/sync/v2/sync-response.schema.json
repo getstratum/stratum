@@ -26,7 +26,12 @@
       "type": "array",
       "items": { "$ref": "#/$defs/providerConfig" }
     },
-    "month_usage": { "$ref": "#/$defs/monthUsage" }
+    "month_usage": { "$ref": "#/$defs/monthUsage" },
+    "people": {
+      "description": "The people directory: who a key with delegates = true may act for (X-Stratum-User), and under which team. Ids only. A full sync sends every person of the organization; a delta, the ones that changed. Control planes before 0.4 do not send it, and then no person can be acted for.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/person" }
+    }
   },
   "$defs": {
     "integer": {
@@ -98,7 +103,19 @@
         "revoked": { "type": "boolean" },
         "key_revoked_at": { "type": ["string", "null"] },
         "default_provider": { "type": ["string", "null"], "description": "Agent keys only, optional. With default_model: every request of this key goes to this provider." },
-        "default_model": { "type": ["string", "null"], "description": "Agent keys only, optional. Every request of this key goes to this model, whatever model it asks for. Gateways that predate this field ignore it." }
+        "default_model": { "type": ["string", "null"], "description": "Agent keys only, optional. Every request of this key goes to this model, whatever model it asks for. Gateways that predate this field ignore it." },
+        "delegates": { "type": "boolean", "description": "Optional, false when absent. The key may send X-Stratum-User with the id of a person in the people directory: the request then follows that person's team policy and its usage is reported as theirs. Gateways before 0.4 ignore it and refuse nothing, since they do not read the header." }
+      }
+    },
+    "person": {
+      "description": "A person a key that delegates may act for. revoked = true (deactivated, without a team, without access to applications, or deleted) makes the gateway refuse requests on their behalf; a deleted person arrives with an empty team_id.",
+      "type": "object",
+      "required": ["id", "team_id", "version", "revoked"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "team_id": { "type": "string" },
+        "version": { "$ref": "#/$defs/integer" },
+        "revoked": { "type": "boolean" }
       }
     },
     "providerConfig": {

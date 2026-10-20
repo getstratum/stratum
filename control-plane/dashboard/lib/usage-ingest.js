@@ -3,7 +3,9 @@
  *
  * A batch is stored in one statement. Ownership is never taken from the
  * gateway: the organization is the reporting instance's, and a team, user
- * or agent ID that is not in that organization is stored as NULL. The cost
+ * or agent ID that is not in that organization is stored as NULL. A record
+ * of a key that acted for a person (user_id, from 0.4) is that person's
+ * usage, made through the agent of the key. The cost
  * is computed here from the model catalog (ai_models, by model ID or
  * alias) at the organization's own price when it set one, not sent by
  * gateways.
@@ -49,6 +51,7 @@ export function normalizeRecord(r, now = Date.now()) {
     ts: new Date(ts).toISOString(),
     request_id: text(r.request_id, 128) || null,
     key_id: r.key_id,
+    user_id: typeof r.user_id === 'string' && UUID_RE.test(r.user_id) ? r.user_id.toLowerCase() : null,
     team_id: typeof r.team_id === 'string' && UUID_RE.test(r.team_id) ? r.team_id.toLowerCase() : null,
     provider: text(r.provider, 50),
     model: text(r.model, 100),
@@ -75,9 +78,10 @@ export async function ingest(db, instance, records) {
     `WITH r AS (
        SELECT * FROM unnest(
          $3::uuid[], $4::timestamptz[], $5::text[], $6::text[], $7::text[], $8::text[], $9::text[],
-         $10::int[], $11::text[], $12::bool[], $13::int[], $14::int[], $15::int[], $16::int[], $17::text[]
+         $10::int[], $11::text[], $12::bool[], $13::int[], $14::int[], $15::int[], $16::int[], $17::text[],
+         $18::text[]
        ) AS t(id, ts, request_id, key_id, team_id, provider, model,
-              status, reason, stream, duration_ms, upstream_ms, tokens_in, tokens_out, flags)
+              status, reason, stream, duration_ms, upstream_ms, tokens_in, tokens_out, flags, user_id)
      )
      INSERT INTO request_logs (
        id, created_at, org_id, team_id, user_id, agent_id, provider, model_id,
@@ -95,7 +99,9 @@ export async function ingest(db, instance, records) {
             COALESCE(string_to_array(NULLIF(r.flags, ''), ','), '{}'), $2, r.request_id
        FROM r
        LEFT JOIN teams tm  ON tm.id::text = r.team_id AND tm.org_id = $1::uuid
-       LEFT JOIN users u   ON r.key_id NOT LIKE 'agent:%' AND u.id::text = r.key_id AND u.org_id = $1::uuid
+       -- The person: the one a delegating key acted for, else the key's owner.
+       LEFT JOIN users u   ON u.id::text = COALESCE(r.user_id, CASE WHEN r.key_id NOT LIKE 'agent:%' THEN r.key_id END)
+                          AND u.org_id = $1::uuid
        LEFT JOIN agents a  ON r.key_id LIKE 'agent:%' AND a.id::text = substr(r.key_id, 7) AND a.org_id = $1::uuid
        -- The model by its ID or an alias (migration 023), the ID first, at
        -- the organization's price when it set one (migration 024); then a
@@ -120,7 +126,7 @@ export async function ingest(db, instance, records) {
      col(records, 'id'), col(records, 'ts'), col(records, 'request_id'), col(records, 'key_id'),
      col(records, 'team_id'), col(records, 'provider'), col(records, 'model'), col(records, 'status'),
      col(records, 'reason'), col(records, 'stream'), col(records, 'duration_ms'), col(records, 'upstream_ms'),
-     col(records, 'tokens_in'), col(records, 'tokens_out'), col(records, 'flags')])
+     col(records, 'tokens_in'), col(records, 'tokens_out'), col(records, 'flags'), col(records, 'user_id')])
   await db.query('UPDATE data_plane_instances SET last_usage_at = now() WHERE id = $1', [instance.id])
   return rowCount
 }

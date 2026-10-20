@@ -37,6 +37,7 @@ type Record struct {
 	Time         time.Time `json:"ts"`
 	RequestID    string    `json:"request_id,omitempty"`
 	KeyID        string    `json:"key_id"`
+	UserID       string    `json:"user_id,omitempty"` // the person a delegating key acted for
 	TeamID       string    `json:"team_id,omitempty"`
 	Provider     string    `json:"provider,omitempty"`
 	Model        string    `json:"model,omitempty"`

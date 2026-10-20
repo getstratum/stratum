@@ -102,6 +102,18 @@ need not send one), still within the team's policy. The response carries
 (Anthropic Messages against an OpenAI-compatible model, or the other way
 around) is refused with `agent_model_mismatch`.
 
+An application built on the gateway (a chat portal, an internal assistant)
+can act **on behalf of people**. Its agent is marked in the console as one
+that acts for people, and each request names the person with
+`X-Stratum-User: <person id>`: the gateway then applies that person's team
+policy, quota and budget, and reports the usage as theirs. The ids come from
+the people directory each gateway gets in its sync, so the header resolves
+without calling the control plane. A key that does not delegate and sends the
+header is refused with `delegation_not_allowed`; a person who is not in the
+directory, is deactivated, has no team or had access to applications taken
+away gets `unknown_user`. Keep such a key on a server, never in a browser:
+it can act for anyone in the organization.
+
 ## Gateway configuration
 
 | Variable | Default | Purpose |

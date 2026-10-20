@@ -114,10 +114,10 @@ const dialog = (name) => page.getByRole('dialog', { name })
 const nav = () => page.getByRole('navigation')
 
 /** POST to the gateway's chat endpoint with `key`; the HTTP status. */
-async function callGateway(key) {
+async function callGateway(key, headers = {}) {
   const res = await fetch(`${GATEWAY}/v1/chat/completions`, {
     method: 'POST',
-    headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
+    headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json', ...headers },
     body: JSON.stringify({ model: MODEL, max_tokens: 8, messages: [{ role: 'user', content: 'ping' }] }),
     signal: AbortSignal.timeout(30_000),
   })
@@ -366,6 +366,47 @@ test('agents: a new key works through the gateway, and stops working when revoke
   const t1 = Date.now()
   await eventually(() => callGateway(key), 401, SYNC_MS, 'the revoked key through the gateway')
   console.log(`  key refused ${((Date.now() - t1) / 1000).toFixed(1)} s after revocation`)
+})
+
+test('agents: an agent that acts for people follows each person, and stops for one whose access is taken away', async () => {
+  test.skip(!GATEWAY, 'no STRATUM_E2E_GATEWAY_URL')
+  const name = `${RUN}-portal`
+  created.agentNames.push(name)
+  await page.goto('/agents')
+  await page.getByRole('button', { name: '+ Nuevo agente' }).click()
+  const d = dialog('Nuevo agente')
+  await d.getByLabel('Nombre').fill(name)
+  const team = d.getByLabel('Equipo')
+  await team.selectOption(await team.locator('option', { hasText: TEAM }).first().getAttribute('value'))
+  await d.getByLabel('Actúa por personas').check()
+  await d.getByRole('button', { name: 'Crear agente' }).click()
+  const reveal = dialog('Key del agente generada')
+  const key = (await reveal.getByTestId('revealed-key').textContent()).trim()
+  await reveal.getByRole('button', { name: /cerrar/ }).click()
+  await expect(page.getByTestId('agent-row').filter({ hasText: name }).getByText('actúa por personas')).toBeVisible()
+
+  // Someone of the team the model is allowed for.
+  const people = (await api('GET', '/api/users')).body ?? []
+  const person = people.find((u) => u.is_active && u.team_name === TEAM && u.app_access !== false)
+  expect(person, `an active person in ${TEAM}`).toBeTruthy()
+  const as = { 'X-Stratum-User': person.id }
+
+  await eventually(() => callGateway(key, as), 200, SYNC_MS, 'a request on behalf of a person')
+  expect(await callGateway(key, { 'X-Stratum-User': '00000000-0000-4000-8000-000000000000' }), 'a person who does not exist').toBe(403)
+
+  // The request is the person's in the console.
+  await eventually(async () => {
+    const row = await api('GET', `/api/consumption?by=user&agent=${(((await api('GET', '/api/agents')).body ?? []).find((a) => a.name === name) ?? {}).id}`)
+    return (row.body?.rows ?? []).some((r) => r.key === person.id) ? 'theirs' : 'not yet'
+  }, 'theirs', SYNC_MS, "the delegated request in the person's usage")
+
+  // Taking their access to applications away reaches the gateway.
+  expect((await api('PATCH', `/api/users/${person.id}`, { appAccess: false })).status).toBe(200)
+  try {
+    await eventually(() => callGateway(key, as), 403, SYNC_MS, 'a person without access to applications')
+  } finally {
+    await api('PATCH', `/api/users/${person.id}`, { appAccess: true })
+  }
 })
 
 // --- people, roles, my account -------------------------------------------------------

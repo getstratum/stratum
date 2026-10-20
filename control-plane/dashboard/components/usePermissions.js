@@ -8,7 +8,8 @@ import { useEffect, useState } from 'react'
  * again (lib/route.js).
  *
  *   const { can } = usePermissions()
- *   can('users.manage')  // false until the session has loaded
+ *   can('users.manage')    // false until the session has loaded
+ *   scope('keys.manage')   // 'org' | 'team' | 'self' | null
  */
 export function usePermissions() {
   const [perms, setPerms] = useState(null)
@@ -20,5 +21,9 @@ export function usePermissions() {
       .catch(() => { if (live) setPerms({}) })
     return () => { live = false }
   }, [])
-  return { ready: perms !== null, can: permission => Boolean(perms?.[permission]) }
+  return {
+    ready: perms !== null,
+    can: permission => Boolean(perms?.[permission]),
+    scope: permission => perms?.[permission] ?? null,
+  }
 }

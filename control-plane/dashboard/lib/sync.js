@@ -11,6 +11,8 @@
  *     empty key_hash), never left out;
  *   - policies, per team: the policy changed, or the team got another policy
  *     or none (sent as revoked: the team is disabled);
+ *   - the people directory (migration 028): who a key that delegates may
+ *     act for, and with which team;
  *   - provider configs;
  *   - deletions, from stratum_sync_tombstones.
  *
@@ -43,7 +45,7 @@ export async function buildSyncResponse(client, { orgId, sinceVersion, syncInter
   const q = async (sql, params) => (await client.query(sql, params)).rows
 
   await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY')
-  let version, policies, apiKeys, providerConfigs, tombstones, usage, usageMonth
+  let version, policies, apiKeys, people, providerConfigs, tombstones, usage, usageMonth
   try {
     ;[{ v: version }] = await q('SELECT stratum_sync_version($1)::bigint AS v', [orgId])
 
@@ -93,7 +95,8 @@ export async function buildSyncResponse(client, { orgId, sinceVersion, syncInter
           OR u.team_id IS NULL)                     AS revoked,
         u.key_revoked_at,
         NULL::text                                  AS default_provider,
-        NULL::text                                  AS default_model
+        NULL::text                                  AS default_model,
+        false                                       AS delegates
       FROM users u
       WHERE u.org_id = $2
         AND u.key_version > $1
@@ -114,7 +117,9 @@ export async function buildSyncResponse(client, { orgId, sinceVersion, syncInter
           OR a.team_id IS NULL)                     AS revoked,
         a.key_revoked_at,
         NULLIF(a.default_provider, '')              AS default_provider,
-        NULLIF(a.default_model, '')                 AS default_model
+        NULLIF(a.default_model, '')                 AS default_model,
+        -- Its key may act for a person (X-Stratum-User, migration 028).
+        COALESCE(a.delegates, false)                AS delegates
       FROM agents a
       WHERE a.org_id = $2
         AND a.key_version > $1
@@ -123,6 +128,22 @@ export async function buildSyncResponse(client, { orgId, sinceVersion, syncInter
                  AND ($1 > 0 OR a.key_revoked_at > now() - make_interval(days => $3))))
       ORDER BY version ASC
     `, [since, orgId, FULL_SYNC_TOMBSTONE_DAYS])
+
+    // The people directory (migration 028): who keys that delegate may act
+    // for, and under which team. Ids only, never names or emails. A full
+    // sync sends everyone; a delta, whoever changed (users.key_version
+    // moves with team_id, is_active and app_access).
+    people = await q(`
+      SELECT u.id::text                              AS id,
+             COALESCE(u.team_id::text, '')           AS team_id,
+             u.key_version                           AS version,
+             (NOT COALESCE(u.is_active, true)
+               OR NOT COALESCE(u.app_access, true)
+               OR u.team_id IS NULL)                 AS revoked
+        FROM users u
+       WHERE u.org_id = $2 AND u.key_version > $1
+       ORDER BY version ASC
+    `, [since, orgId])
 
     providerConfigs = await q(`
       SELECT id::text AS id, provider, display_name, api_key_encrypted, base_url,
@@ -171,6 +192,7 @@ export async function buildSyncResponse(client, { orgId, sinceVersion, syncInter
       max_tokens_per_request: num(p.max_tokens_per_request),
     })),
     api_keys: apiKeys.map(k => ({ ...k, version: num(k.version) })),
+    people: people.map(p => ({ ...p, version: num(p.version) })),
     provider_configs: providerConfigs.map(pc => {
       let apiKey = null
       if (!pc.revoked && pc.enabled) {
@@ -210,6 +232,8 @@ export async function buildSyncResponse(client, { orgId, sinceVersion, syncInter
         max_tokens_per_request: null,
         pii_action: 'off', dlp_action: 'off', allowed_providers: null, revoked: true,
       })
+    } else if (t.kind === 'person') {
+      out.people.push({ id: t.object_id, team_id: '', version: v, revoked: true })
     } else if (t.kind === 'provider_config') {
       out.provider_configs.push({
         id: t.object_id, provider: t.provider || 'unknown', display_name: null, api_key: null,

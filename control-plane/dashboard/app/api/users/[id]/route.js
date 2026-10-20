@@ -48,6 +48,12 @@ export const PATCH = route('users.manage', async (req, { session, db: pool, para
       if (target.role === 'owner' && !body.isActive) await assertAnotherOwner(db, session.orgId, target.id)
       set('is_active', body.isActive, 'isActive')
     }
+    if (body.appAccess !== undefined) {
+      // Applications built on the gateway (migration 028): taking access
+      // away reaches gateways in the next sync.
+      if (typeof body.appAccess !== 'boolean') throw badRequest('appAccess tiene que ser true o false.')
+      set('app_access', body.appAccess, 'appAccess')
+    }
     if (body.name !== undefined) {
       if (typeof body.name !== 'string' || !body.name.trim()) throw badRequest('Nombre inválido.')
       set('name', body.name.trim().slice(0, 255), 'name')
@@ -88,6 +94,7 @@ export const PATCH = route('users.manage', async (req, { session, db: pool, para
         ...(changed.role ? { role: { from: target.role, to: body.role } } : {}),
         ...(changed.isActive ? { isActive: body.isActive } : {}),
         ...(changed.teamId ? { teamId: body.teamId || null } : {}),
+        ...(changed.appAccess ? { appAccess: body.appAccess } : {}),
       },
     })
     return target.id
