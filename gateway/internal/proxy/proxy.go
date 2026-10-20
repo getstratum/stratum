@@ -235,6 +235,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			body["stream_options"] = map[string]any{"include_usage": true}
 		}
 	}
+	// The policy's maximum output tokens per request (from 0.3).
+	if polFound && pol.MaxTokensPerRequest != nil && *pol.MaxTokensPerRequest > 0 {
+		if capOutputTokens(body, upstreamPath, slug, kind, *pol.MaxTokensPerRequest) {
+			w.Header().Set("X-Stratum-Max-Tokens", strconv.FormatInt(*pol.MaxTokensPerRequest, 10))
+		}
+	}
 	final, err := json.Marshal(body)
 	if err != nil {
 		h.fail(w, rec, &policy.Violation{Status: http.StatusInternalServerError, Code: "internal", Message: "could not encode request"})

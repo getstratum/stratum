@@ -111,34 +111,9 @@ func serve() int {
 			"so a gateway that starts while the control plane is unreachable cannot serve")
 	}
 
-	// 2. Configuration source.
-	switch cfg.Mode {
-	case config.ModeStatic:
-		if err := loadStatic(cfg, holder, m, log); err != nil {
-			log.Error("cannot load configuration file", "path", cfg.ConfigFile, "err", err)
-			return 1
-		}
-		go reloadOnSIGHUP(ctx, cfg, holder, m, log)
-	case config.ModeControlPlane:
-		cp := &syncer.ControlPlane{
-			URL: cfg.CPURL, Token: cfg.SyncToken, InstanceID: cfg.InstanceID,
-			UserAgent: userAgent(), Interval: cfg.SyncInterval, FullEvery: cfg.FullResyncInterval,
-			MaxDropRatio: cfg.SnapshotMaxDropRatio, GuardMinKeys: cfg.SnapshotGuardMinKeys,
-			Holder: holder, Client: &http.Client{Timeout: 30 * time.Second},
-			Log: log.With("component", "sync"), Metrics: m,
-		}
-		if cfg.PersistenceEnabled() || shared != nil {
-			cp.Persist = persister(ctx, cfg, shared, m, log)
-		}
-		base := holder.State() // nil, or the snapshot restored from disk
-		go cp.Run(ctx)
-		if shared != nil {
-			go bootstrapFromShared(ctx, cfg, holder, base, shared, m, log)
-		}
-	}
-
-	// 3. Quotas: shared counters in Valkey when configured, local otherwise.
-	//    Valkey is never on the request path (ADR-0004).
+	// 2. Quotas: shared counters in Valkey when configured, local otherwise.
+	//    Valkey is never on the request path (ADR-0004). Before the
+	//    configuration source, which feeds them the control plane's count.
 	var enforcer quota.Enforcer = quota.NewLocal()
 	quotaDone := make(chan struct{})
 	if cfg.ValkeyURL != "" {
@@ -155,6 +130,33 @@ func serve() int {
 	} else {
 		close(quotaDone)
 		log.Info("quotas use local counters (set STRATUM_VALKEY_URL to share them across replicas)")
+	}
+
+	// 3. Configuration source.
+	switch cfg.Mode {
+	case config.ModeStatic:
+		if err := loadStatic(cfg, holder, m, log); err != nil {
+			log.Error("cannot load configuration file", "path", cfg.ConfigFile, "err", err)
+			return 1
+		}
+		go reloadOnSIGHUP(ctx, cfg, holder, m, log)
+	case config.ModeControlPlane:
+		cp := &syncer.ControlPlane{
+			URL: cfg.CPURL, Token: cfg.SyncToken, InstanceID: cfg.InstanceID,
+			UserAgent: userAgent(), Interval: cfg.SyncInterval, FullEvery: cfg.FullResyncInterval,
+			MaxDropRatio: cfg.SnapshotMaxDropRatio, GuardMinKeys: cfg.SnapshotGuardMinKeys,
+			Holder: holder, Client: &http.Client{Timeout: 30 * time.Second},
+			Log: log.With("component", "sync"), Metrics: m,
+			MonthUsage: func(u *snapshot.WireMonthUsage) { enforcer.SetReported(quota.FromWire(u)) },
+		}
+		if cfg.PersistenceEnabled() || shared != nil {
+			cp.Persist = persister(ctx, cfg, shared, m, log)
+		}
+		base := holder.State() // nil, or the snapshot restored from disk
+		go cp.Run(ctx)
+		if shared != nil {
+			go bootstrapFromShared(ctx, cfg, holder, base, shared, m, log)
+		}
 	}
 
 	// 4. Usage reported to the control plane, off the request path (ADR-0009).

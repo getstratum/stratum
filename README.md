@@ -134,9 +134,12 @@ around) is refused with `agent_model_mismatch`.
 
 ## Quotas across replicas
 
-Monthly token quotas are enforced per team. With one replica, local counters
-are exact. With several, set `STRATUM_VALKEY_URL` so they share one counter
-per team in Valkey (or Redis 6.2+):
+Monthly token quotas are enforced per team. Each sync also brings the
+control plane's count of the team's usage this month, from every gateway, and
+the gateway never counts less than that: a restart or a replica on its own
+does not reset the month, though it lags by about a minute. With one
+replica, local counters are exact. With several, set `STRATUM_VALKEY_URL` so
+they share one counter per team in Valkey (or Redis 6.2+):
 
 - Valkey is **never on the request path**. Each replica checks against an
   in-memory total and flushes its usage once per second in a single atomic,

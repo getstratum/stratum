@@ -54,6 +54,10 @@ type Metrics struct {
 	UsageDropped      atomic.Int64 // records lost: buffer full, or a batch the control plane refused
 	UsageBuffered     atomic.Int64 // records waiting to be sent
 	UsagePushFailures atomic.Int64 // sends that failed and will be retried
+
+	// The control plane's count of each team's usage this month, used by
+	// quotas and budgets: unix seconds of the last one received.
+	MonthUsageReported atomic.Int64
 }
 
 type reqKey struct {
@@ -151,6 +155,12 @@ func (m *Metrics) WriteTo(w io.Writer, now time.Time) {
 		gauge(&b, "stratum_usage_records_buffered", "Usage records waiting to be sent to the control plane.", m.UsageBuffered.Load())
 		counter(&b, "stratum_usage_push_failures_total", "Usage sends that failed and will be retried.", m.UsagePushFailures.Load())
 	}
+
+	rage := int64(-1)
+	if s := m.MonthUsageReported.Load(); s > 0 {
+		rage = now.Unix() - s
+	}
+	gauge(&b, "stratum_month_usage_age_seconds", "Seconds since the control plane last reported the month's usage per team, which quotas and budgets use (-1 = never; budgets are not enforced until it arrives).", rage)
 
 	io.WriteString(w, b.String())
 }

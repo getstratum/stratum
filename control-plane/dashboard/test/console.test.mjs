@@ -348,6 +348,45 @@ test('policies: providers and "all models" are set explicitly, and travel to gat
   assert.equal((await call('policies/[id]', 'PATCH', { as: B.owner, params: { id }, body: { allowAllModels: false } })).status, 404)
 })
 
+test('policies: budgets that cut and the maximum tokens per request', { skip }, async () => {
+  const created = await call('policies', 'POST', { as: A.owner, body: { name: 'Con tope', allowAllModels: true } })
+  assert.equal(created.status, 201)
+  assert.equal(created.body.max_tokens_per_request, null, 'no limit unless one is set')
+  assert.equal(created.body.budget_enforced, false, 'a budget is a reference unless the policy cuts at it')
+  const id = created.body.id
+
+  let r = await call('policies/[id]', 'PATCH', { as: A.owner, params: { id }, body: { maxTokensPerRequest: 2048, budgetEnforced: true, monthlyBudgetUsd: 100 } })
+  assert.equal(r.status, 200)
+  assert.equal(r.body.max_tokens_per_request, 2048)
+  assert.equal(r.body.budget_enforced, true)
+  // Absent fields stay; null clears the limit; 0 and junk are refused.
+  r = await call('policies/[id]', 'PATCH', { as: A.owner, params: { id }, body: { name: 'Con tope 2' } })
+  assert.equal(r.body.max_tokens_per_request, 2048)
+  assert.equal(r.body.budget_enforced, true)
+  r = await call('policies/[id]', 'PATCH', { as: A.owner, params: { id }, body: { maxTokensPerRequest: null } })
+  assert.equal(r.body.max_tokens_per_request, null)
+  for (const body of [{ maxTokensPerRequest: 0 }, { maxTokensPerRequest: 1.5 }, { budgetEnforced: 'yes' }]) {
+    assert.equal((await call('policies/[id]', 'PATCH', { as: A.owner, params: { id }, body })).status, 400, JSON.stringify(body))
+  }
+
+  // With the budget enforced, a team manager may lower their team's budget,
+  // not raise it past the policy's; an Owner may.
+  const [{ team_id: team }] = await sql(`SELECT team_id FROM users WHERE org_id = $1 AND role = 'team_manager'`, [A.id])
+  await sql('UPDATE teams SET policy_id = $1 WHERE id = $2', [id, team])
+  const budget = (as, v) => call('teams/[id]', 'PATCH', { as, params: { id: team }, body: { monthlyBudgetUsd: v } })
+  assert.equal((await budget(A.team_manager, 60)).status, 200)
+  assert.equal((await budget(A.team_manager, 100)).status, 200)
+  assert.equal((await budget(A.team_manager, 150)).status, 403)
+  assert.equal((await budget(A.team_manager, null)).status, 200)
+  assert.equal((await budget(A.owner, 150)).status, 200)
+  await call('policies/[id]', 'PATCH', { as: A.owner, params: { id }, body: { budgetEnforced: false } })
+  assert.equal((await budget(A.team_manager, 500)).status, 200, 'a reference budget is the team\'s to set')
+  await sql('UPDATE teams SET policy_id = NULL WHERE id = $1', [team])
+
+  const detail = (await call('teams-detail', 'GET', { as: A.owner })).body.find(t => t.id === team)
+  assert.equal(detail.budget_enforced, false)
+})
+
 test('models: the catalog lists aliases', { skip }, async () => {
   const r = await call('models', 'GET', { as: A.auditor })
   assert.equal(r.status, 200)

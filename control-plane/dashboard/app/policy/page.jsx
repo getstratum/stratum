@@ -15,9 +15,10 @@ function PolicyModal({ policy, allModels, configured, onSave, onClose }) {
     allowAllModels:      policy?.allow_all_models        ?? false,
     allowedModels:       policy?.allowed_models          ?? [],
     allowedProviders:    policy?.allowed_providers?.length ? policy.allowed_providers : null,
-    maxTokensPerRequest: policy?.max_tokens_per_request  ?? 4096,
+    maxTokensPerRequest: policy?.max_tokens_per_request  ?? '',
     monthlyTokenQuota:   policy?.monthly_token_quota     ?? 1000000,
     monthlyBudgetUsd:    policy?.monthly_budget_usd      ?? 100,
+    budgetEnforced:      policy?.budget_enforced         ?? false,
   })
   const [saving, setSaving] = useState(false)
   const [error,  setError]  = useState('')
@@ -182,11 +183,11 @@ function PolicyModal({ policy, allModels, configured, onSave, onClose }) {
 
         {/* Limits */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <Field label="Máx. tokens por pedido" hint="Todavía no lo aplica el gateway.">
+          <Field label="Máx. tokens por pedido" hint="De respuesta. El gateway baja a este número los pedidos que piden más. Vacío: sin límite.">
             <Input
-              type="number"
-              value={form.maxTokensPerRequest}
-              onChange={e => set('maxTokensPerRequest', parseInt(e.target.value))}
+              type="number" min="1" placeholder="Sin límite"
+              value={form.maxTokensPerRequest ?? ''}
+              onChange={e => set('maxTokensPerRequest', e.target.value === '' ? null : parseInt(e.target.value))}
             />
           </Field>
           <Field label="Cuota mensual (tokens)" hint="La aplica el gateway, por equipo.">
@@ -196,7 +197,9 @@ function PolicyModal({ policy, allModels, configured, onSave, onClose }) {
               onChange={e => set('monthlyTokenQuota', parseInt(e.target.value))}
             />
           </Field>
-          <Field label="Presupuesto mensual (US$)" hint="Referencia para seguir el gasto; no corta pedidos.">
+          <Field label="Presupuesto mensual (US$)" hint={form.budgetEnforced
+            ? 'El gateway corta al llegar, con el gasto que calcula el control plane.'
+            : 'Referencia para seguir el gasto; no corta pedidos.'}>
             <Input
               type="number"
               step="0.01"
@@ -205,6 +208,18 @@ function PolicyModal({ policy, allModels, configured, onSave, onClose }) {
             />
           </Field>
         </div>
+
+        <label className="flex items-start gap-2.5 text-sm text-default">
+          <input type="checkbox" className="accent-accent mt-0.5" checked={form.budgetEnforced}
+                 onChange={e => set('budgetEnforced', e.target.checked)} />
+          <span>
+            Cortar los pedidos al llegar al presupuesto
+            <span className="block text-xs text-muted mt-0.5">
+              Para cada equipo, con su presupuesto propio si tiene uno. El gasto llega a los gateways con cada
+              sincronización, así que puede pasarse por lo que se gaste en ese minuto. Gateways 0.3 o posterior.
+            </span>
+          </span>
+        </label>
 
         {error && <p className="text-xs text-err">{error}</p>}
 
@@ -336,11 +351,14 @@ export default function PolicyPage() {
                 <div>
                   <div className="text-xs text-muted mb-1">Presupuesto mensual</div>
                   <div className="text-lg font-semibold text-strong tabular">{budget > 0 ? formatCostCompact(budget) : '—'}</div>
+                  {budget > 0 && (
+                    <div className="text-xs text-muted mt-0.5">{policy.budget_enforced ? 'Corta al llegar' : 'Referencia'}</div>
+                  )}
                 </div>
                 <div>
                   <div className="text-xs text-muted mb-1">Máx. tokens por pedido</div>
                   <div className="text-lg font-semibold text-strong tabular">
-                    {policy.max_tokens_per_request ? nf(policy.max_tokens_per_request) : '—'}
+                    {policy.max_tokens_per_request ? nf(policy.max_tokens_per_request) : 'Sin límite'}
                   </div>
                 </div>
               </div>

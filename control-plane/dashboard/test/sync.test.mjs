@@ -308,3 +308,56 @@ test('a change to a model\'s IDs is a new version of the policies that name it; 
     client.release()
   }
 })
+
+test('month_usage: each team\'s tokens and cost this month, with every sync', { skip }, async () => {
+  const f = await fixture()
+  const log = (team, tokensIn, tokensOut, cost, at = 'now()') => sql(
+    `INSERT INTO request_logs (id, created_at, org_id, team_id, tokens_input, tokens_output, cost_usd, provider, model_id, status_code)
+     VALUES ($1, ${at}, $2, $3, $4, $5, $6, 'openai', 'gpt-4o', 200)`, [randomUUID(), f.org, team, tokensIn, tokensOut, cost])
+
+  let body = await sync(f.org, 0)
+  const month = new Date().toISOString().slice(0, 7)
+  assert.deepEqual(body.month_usage, { month, teams: [] })
+
+  await log(f.team, 1000, 250, 1.5)
+  await log(f.team, 10, 5, 0.25)
+  await log(f.empty, 7, 3, 0)
+  // Last month does not count; a request without a team is not a team's.
+  await log(f.team, 99999, 0, 99, "date_trunc('month', now()) - interval '1 day'")
+  await log(null, 5, 5, 1)
+
+  const full = await sync(f.org, 0)
+  const delta = await sync(f.org, full.current_version) // nothing changed: still sent
+  for (const b of [full, delta]) {
+    assert.equal(b.month_usage.month, month)
+    const byTeam = Object.fromEntries(b.month_usage.teams.map(t => [t.team_id, t]))
+    assert.deepEqual(byTeam[f.team], { team_id: f.team, tokens: 1265, cost_usd: 1.75 })
+    assert.deepEqual(byTeam[f.empty], { team_id: f.empty, tokens: 10, cost_usd: 0 })
+    assert.equal(b.month_usage.teams.length, 2)
+  }
+  assert.equal(delta.policies.length, 0)
+
+  // Usage is per organization.
+  const other = await fixture()
+  assert.deepEqual((await sync(other.org, 0)).month_usage.teams, [])
+})
+
+test('budgets: sent only when the policy cuts at them; the team\'s own budget wins', { skip }, async () => {
+  const f = await fixture()
+  await sql('UPDATE policies SET monthly_budget_usd = 100 WHERE id = $1', [f.p1])
+  let body = await sync(f.org, 0)
+  assert.equal(policyOf(body, f.team).monthly_budget_usd, null, 'a reference budget is not sent')
+
+  await sql('UPDATE policies SET budget_enforced = true WHERE id = $1', [f.p1])
+  body = await sync(f.org, 0)
+  assert.equal(policyOf(body, f.team).monthly_budget_usd, 100)
+
+  // The team's own budget replaces the policy's, and changing it reaches
+  // gateways in a delta.
+  const v = body.current_version
+  await sql('UPDATE teams SET monthly_budget_usd = 40 WHERE id = $1', [f.team])
+  const delta = await sync(f.org, v)
+  assert.equal(delta.policies.length, 1)
+  assert.equal(policyOf(delta, f.team).monthly_budget_usd, 40)
+  assert.equal(policyOf(body, f.empty).monthly_budget_usd, 100)
+})

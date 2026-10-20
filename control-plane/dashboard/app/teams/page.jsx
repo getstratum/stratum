@@ -63,7 +63,11 @@ function TeamModal({ team, policies, canManage, onSave, onClose }) {
         )}
         <Field
           label="Presupuesto mensual del equipo (US$)"
-          hint="Vacío: se toma el de la política. Es una referencia para seguir el gasto; el gateway corta por la cuota de tokens."
+          hint={team?.budget_enforced
+            ? (canManage
+                ? 'Vacío: se toma el de la política. La política corta al llegar al presupuesto.'
+                : 'Vacío: se toma el de la política. La política corta al llegar: podés bajarlo, no subirlo por encima del de la política.')
+            : 'Vacío: se toma el de la política. Es una referencia para seguir el gasto; no corta pedidos salvo que la política lo indique.'}
         >
           <Input
             type="number" min="0" step="1" inputMode="decimal" placeholder="Ej.: 500"
@@ -234,7 +238,10 @@ export default function TeamsPage() {
                     )}
                     {budget > 0 && (
                       <Meter label={own ? 'Presupuesto del equipo' : 'Presupuesto de la política'} used={spent} limit={budget}
-                             format={formatCost} formatLimit={formatCostCompact} note="Referencia para seguir el gasto; no corta pedidos." />
+                             format={formatCost} formatLimit={formatCostCompact}
+                             note={team.budget_enforced
+                               ? 'La aplica el gateway: al llegar al 100 % rechaza los pedidos hasta el mes siguiente.'
+                               : 'Referencia para seguir el gasto; no corta pedidos.'} />
                     )}
                   </div>
                 )}

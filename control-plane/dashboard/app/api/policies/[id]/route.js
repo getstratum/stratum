@@ -10,16 +10,18 @@ export const PATCH = route('policies.manage', async (req, { session, db, params 
     UPDATE policies SET
       name                   = COALESCE($1, name),
       allowed_models         = COALESCE($2, allowed_models),
-      max_tokens_per_request = COALESCE($3, max_tokens_per_request),
+      max_tokens_per_request = CASE WHEN $12 THEN $3::int ELSE max_tokens_per_request END,
       monthly_token_quota    = COALESCE($4, monthly_token_quota),
       monthly_budget_usd     = COALESCE($5, monthly_budget_usd),
       allow_all_models       = COALESCE($8, allow_all_models),
-      allowed_providers      = CASE WHEN $9 THEN $10::text[] ELSE allowed_providers END
+      allowed_providers      = CASE WHEN $9 THEN $10::text[] ELSE allowed_providers END,
+      budget_enforced        = COALESCE($11, budget_enforced)
     WHERE id = $6 AND org_id = $7
     RETURNING *
   `, [f.name ?? null, f.allowedModels ?? null, f.maxTokensPerRequest ?? null,
       f.monthlyTokenQuota ?? null, f.monthlyBudgetUsd ?? null, id, session.orgId,
-      f.allowAllModels ?? null, 'allowedProviders' in f, f.allowedProviders ?? null])
+      f.allowAllModels ?? null, 'allowedProviders' in f, f.allowedProviders ?? null,
+      f.budgetEnforced ?? null, 'maxTokensPerRequest' in f])
   if (!rows[0]) throw notFound('Política no encontrada.')
   await audit(db, { req, session, action: 'policy.update', targetType: 'policy', targetId: id, details: f })
   return json(rows[0])
