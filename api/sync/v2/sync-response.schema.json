@@ -27,6 +27,11 @@
       "items": { "$ref": "#/$defs/providerConfig" }
     },
     "month_usage": { "$ref": "#/$defs/monthUsage" },
+    "models": {
+      "description": "The models the organization can use: catalog models it has not turned off, and models a provider listed for it, of providers it configured. Not versioned: sent with every sync, full or delta; a response that carries it replaces the list. Gateways answer GET /v1/models with the ones the caller's policy allows. Control planes before 0.4 do not send it.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/model" }
+    },
     "people": {
       "description": "The people directory: who a key with delegates = true may act for (X-Stratum-User), and under which team. Ids only. A full sync sends every person of the organization; a delta, the ones that changed. Control planes before 0.4 do not send it, and then no person can be acted for.",
       "type": "array",
@@ -105,6 +110,15 @@
         "default_provider": { "type": ["string", "null"], "description": "Agent keys only, optional. With default_model: every request of this key goes to this provider." },
         "default_model": { "type": ["string", "null"], "description": "Agent keys only, optional. Every request of this key goes to this model, whatever model it asks for. Gateways that predate this field ignore it." },
         "delegates": { "type": "boolean", "description": "Optional, false when absent. The key may send X-Stratum-User with the id of a person in the people directory: the request then follows that person's team policy and its usage is reported as theirs. Gateways before 0.4 ignore it and refuse nothing, since they do not read the header." }
+      }
+    },
+    "model": {
+      "type": "object",
+      "required": ["provider", "id"],
+      "properties": {
+        "provider": { "type": "string", "minLength": 1 },
+        "id": { "type": "string", "minLength": 1, "description": "The model's ID at the provider, as a request names it." },
+        "name": { "type": "string", "description": "Display name, when the catalog has one." }
       }
     },
     "person": {

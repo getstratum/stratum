@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"slices"
 )
 
 // State is the accumulated configuration as received from the source
@@ -16,6 +17,7 @@ type State struct {
 	APIKeys   map[string]WireAPIKey         `json:"api_keys"`  // by id
 	Providers map[string]WireProviderConfig `json:"providers"` // by id
 	People    map[string]WirePerson         `json:"people"`    // by id (from 0.4)
+	Models    []WireModel                   `json:"models"`    // the last list received (from 0.4)
 }
 
 // NewState returns an empty state.
@@ -35,6 +37,7 @@ func (s *State) clone() *State {
 		APIKeys:   maps.Clone(s.APIKeys),
 		Providers: maps.Clone(s.Providers),
 		People:    maps.Clone(s.People),
+		Models:    s.Models,
 	}
 	if c.People == nil { // a state saved by a gateway before 0.4
 		c.People = map[string]WirePerson{}
@@ -91,6 +94,11 @@ func (s *State) Apply(resp *SyncResponse, full bool) (*State, error) {
 			continue
 		}
 		next.Providers[pc.ID] = pc
+	}
+
+	// Not versioned: each response that carries the list replaces it.
+	if resp.Models != nil {
+		next.Models = slices.Clone(resp.Models)
 	}
 
 	next.Version = int64(resp.CurrentVersion)

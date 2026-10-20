@@ -72,6 +72,19 @@ type SyncResponse struct {
 	// (X-Stratum-User). Versioned like keys; absent from control planes
 	// before 0.4, and then nobody can be acted for.
 	People []WirePerson `json:"people,omitempty"`
+	// Models the organization can use, for GET /v1/models: catalog models
+	// it has not turned off, of providers it configured. Not versioned:
+	// sent with every sync, full or delta, and replaces what the gateway
+	// had. Absent from control planes before 0.4.
+	Models []WireModel `json:"models,omitempty"`
+}
+
+// WireModel is one model the organization can use. Each policy shows the
+// ones it allows, as the gateway decides it for a request.
+type WireModel struct {
+	Provider string `json:"provider"`
+	ID       string `json:"id"`
+	Name     string `json:"name,omitempty"`
 }
 
 // WirePerson is one entry of the people directory: an id the control plane

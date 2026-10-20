@@ -67,6 +67,12 @@
       "delegates": true
     }
   ],
+  "models": [
+    { "provider": "anthropic", "id": "claude-sonnet-4", "name": "Claude Sonnet 4" },
+    { "provider": "openai", "id": "gpt-4o", "name": "GPT-4o" },
+    { "provider": "openai", "id": "gpt-4o-mini", "name": "GPT-4o mini" },
+    { "provider": "openai", "id": "o3", "name": "o3" }
+  ],
   "people": [
     { "id": "user_dev", "team_id": "team_engineering", "version": 28, "revoked": false },
     { "id": "user_writer", "team_id": "team_marketing", "version": 39, "revoked": false },

@@ -58,6 +58,7 @@ type Snapshot struct {
 	policiesByTeam  map[string]Policy
 	providersBySlug map[string][]Provider
 	people          map[string]string // person id → team id; active people only
+	models          []WireModel       // the organization's, sorted by provider and id
 	activeKeys      int
 }
 
@@ -83,6 +84,16 @@ func Build(st *State, syncedAt time.Time) *Snapshot {
 			Delegates: k.Delegates}
 	}
 	s.activeKeys = len(s.keysByHash)
+
+	for _, m := range st.Models {
+		if m.Provider = strings.ToLower(strings.TrimSpace(m.Provider)); m.Provider != "" && strings.TrimSpace(m.ID) != "" {
+			s.models = append(s.models, m)
+		}
+	}
+	slices.SortFunc(s.models, func(a, b WireModel) int {
+		return strings.Compare(a.Provider+"/"+a.ID, b.Provider+"/"+b.ID)
+	})
+	s.models = slices.CompactFunc(s.models, func(a, b WireModel) bool { return a.Provider == b.Provider && a.ID == b.ID })
 
 	for id, p := range st.People {
 		if !p.Revoked && p.TeamID != "" {
@@ -155,6 +166,11 @@ func (s *Snapshot) Person(id string) (teamID string, ok bool) {
 	teamID, ok = s.people[id]
 	return teamID, ok
 }
+
+// Models returns the models the organization can use, sorted. Nil when the
+// control plane sent no list (before 0.4, or a standalone config file
+// without one). Callers must not modify it.
+func (s *Snapshot) Models() []WireModel { return s.models }
 
 // PolicyForTeam returns the team's policy.
 func (s *Snapshot) PolicyForTeam(teamID string) (Policy, bool) {

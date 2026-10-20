@@ -21,6 +21,7 @@ import (
 
 type Options struct {
 	Proxy          http.Handler
+	Models         http.Handler // GET /v1/models; optional
 	Health         *health.Health
 	Metrics        *metrics.Metrics
 	Log            *slog.Logger
@@ -34,6 +35,9 @@ func Public(o Options) http.Handler {
 	mux.HandleFunc("GET /livez", o.Health.Live)
 	mux.HandleFunc("GET /readyz", o.Health.Ready)
 	limited := limit(o.Proxy, o.MaxInflight, o.Metrics)
+	if o.Models != nil {
+		mux.Handle("GET /v1/models", limit(o.Models, o.MaxInflight, o.Metrics))
+	}
 	mux.Handle("/v1/", limited)
 	mux.Handle("/proxy/", limited)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -133,7 +137,7 @@ func cors(allowed []string, next http.Handler) http.Handler {
 			h.Set("Access-Control-Allow-Origin", origin)
 			h.Add("Vary", "Origin")
 			h.Set("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Api-Key, Anthropic-Version, Anthropic-Beta, X-Request-Id")
-			h.Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+			h.Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 			h.Set("Access-Control-Expose-Headers", "X-Stratum-Request-Id")
 			if r.Method == http.MethodOptions {
 				w.WriteHeader(http.StatusNoContent)

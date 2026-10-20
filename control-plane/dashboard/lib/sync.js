@@ -14,6 +14,8 @@
  *   - the people directory (migration 028): who a key that delegates may
  *     act for, and with which team;
  *   - provider configs;
+ *   - with every sync, unversioned: the models the organization can use
+ *     (GET /v1/models) and each team's usage this month;
  *   - deletions, from stratum_sync_tombstones.
  *
  * All reads run in one REPEATABLE READ transaction, so current_version and
@@ -45,7 +47,7 @@ export async function buildSyncResponse(client, { orgId, sinceVersion, syncInter
   const q = async (sql, params) => (await client.query(sql, params)).rows
 
   await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY')
-  let version, policies, apiKeys, people, providerConfigs, tombstones, usage, usageMonth
+  let version, policies, apiKeys, people, providerConfigs, tombstones, usage, usageMonth, models
   try {
     ;[{ v: version }] = await q('SELECT stratum_sync_version($1)::bigint AS v', [orgId])
 
@@ -171,6 +173,36 @@ export async function buildSyncResponse(client, { orgId, sinceVersion, syncInter
        ORDER BY team_id
     `, [orgId])
 
+    // The models the organization can use, for GET /v1/models on gateways:
+    // catalog models it did not turn off, and models a provider listed for
+    // it that the catalog lacks, of providers it configured. Sent with
+    // every sync (not versioned); each gateway lists the ones a policy
+    // allows.
+    models = await q(`
+      SELECT m.provider, m.model_id AS id, m.display_name AS name
+        FROM ai_models m
+        LEFT JOIN org_model_settings s
+          ON s.org_id = $1 AND s.provider = m.provider AND s.model_id = m.model_id
+       WHERE COALESCE(m.is_active, true) AND COALESCE(s.enabled, true)
+         AND (m.deprecated_on IS NULL OR m.deprecated_on > now()::date)
+         AND EXISTS (SELECT 1 FROM provider_configs pc
+                      WHERE pc.org_id = $1 AND pc.provider = m.provider
+                        AND COALESCE(pc.enabled, false) AND NOT COALESCE(pc.revoked, false))
+      UNION ALL
+      SELECT pm.provider, pm.model_id, NULL
+        FROM provider_models pm
+        LEFT JOIN org_model_settings s
+          ON s.org_id = pm.org_id AND s.provider = pm.provider AND s.model_id = pm.model_id
+       WHERE pm.org_id = $1 AND COALESCE(s.enabled, true)
+         AND NOT EXISTS (SELECT 1 FROM ai_models m
+                          WHERE m.provider = pm.provider
+                            AND (m.model_id = pm.model_id OR pm.model_id = ANY(m.aliases)))
+         AND EXISTS (SELECT 1 FROM provider_configs pc
+                      WHERE pc.org_id = $1 AND pc.provider = pm.provider
+                        AND COALESCE(pc.enabled, false) AND NOT COALESCE(pc.revoked, false))
+       ORDER BY 1, 2
+    `, [orgId])
+
     await client.query('COMMIT')
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {})
@@ -215,6 +247,7 @@ export async function buildSyncResponse(client, { orgId, sinceVersion, syncInter
         revoked:      pc.revoked,
       }
     }).filter(Boolean),
+    models: models.map(m => (m.name ? m : { provider: m.provider, id: m.id })),
     month_usage: {
       month: usageMonth,
       teams: usage.map(u => ({ team_id: u.team_id, tokens: num(u.tokens), cost_usd: num(u.cost_usd) })),
