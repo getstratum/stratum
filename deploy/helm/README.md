@@ -134,6 +134,31 @@ gateways need to start lives where they run. Without Valkey (or with
 `snapshot.shared=false`), a pod that starts during an outage stays unready
 until the control plane is back; pods that keep running are unaffected.
 
+## Alerting rules (SLO)
+
+`metrics.prometheusRule.enabled=true` installs a `PrometheusRule` (Prometheus
+Operator) for this release's gateways:
+
+| Alert | Severity | When |
+|---|---|---|
+| `StratumGatewayErrorBudgetBurn` | critical | The gateway's own 5xx spend the availability error budget fast: 14.4× the allowed rate over 1 h and 5 min, or 6× over 6 h and 30 min |
+| `StratumGatewayErrorBudgetBurnSlow` | warning | 3× over 1 day and 2 h, or 1× over 3 days and 6 h |
+| `StratumGatewayConfigurationStale` | warning | A gateway has not confirmed its configuration for `snapshotMaxAgeSeconds` (900) |
+| `StratumGatewayUsageDropped` | warning | Usage records were lost in the last 15 minutes |
+| `StratumGatewayQuotaStoreDown` | warning | The shared quota store (Valkey) has not answered for a minute |
+
+The SLI is the one in [docs/architecture/overview.md](../../docs/architecture/overview.md):
+requests, 4xx left out, not answered with a 5xx of the gateway's own. A 5xx
+whose reason is in `providerReasons` (`upstream_status`, `upstream_timeout`,
+`provider_unavailable`, ...) is the provider's and does not count. The
+target is `availabilityTarget` (0.9999). Recording rules
+`stratum:gateway_errors:ratio_rate{5m,30m,1h,2h,6h,1d,3d}` keep the ratio
+per namespace and job for dashboards. By default the rules select the
+namespace and the job Prometheus gives the metrics Service
+(`<release>-stratum-gateway-metrics`); set `selector` to other PromQL label
+matchers if you scrape it differently. CI checks the rules with `promtool`
+and tests them with synthetic series (`tests/prometheusrule.test.yaml`).
+
 ## Single-zone and development clusters
 
 ```sh

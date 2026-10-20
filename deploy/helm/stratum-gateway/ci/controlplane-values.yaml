@@ -4,6 +4,8 @@ existingSecret: stratum-gateway
 metrics:
   serviceMonitor:
     enabled: true
+  prometheusRule:
+    enabled: true
 quota:
   valkey:
     url: rediss://valkey.stratum.svc:6379/0

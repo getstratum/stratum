@@ -119,6 +119,23 @@ metrics:
     enabled: false
     interval: 30s
     labels: {}
+  # Alerting rules (PrometheusRule, Prometheus Operator CRDs): burn-rate
+  # alerts on the availability SLO, and gateway health. See README.
+  prometheusRule:
+    enabled: false
+    labels: {}
+    # 99.99 % of requests, 4xx left out, without a 5xx of the gateway's own.
+    availabilityTarget: 0.9999
+    # Reasons of 5xx that come from the provider, not the gateway.
+    providerReasons: upstream_status|upstream_timeout|upstream_unreachable|upstream_aborted|stream_idle_timeout|provider_unavailable
+    # Seconds without the control plane confirming the configuration.
+    snapshotMaxAgeSeconds: 900
+    severity:
+      fast: critical
+      slow: warning
+    # PromQL label matchers for this release's gateways. Empty: the
+    # namespace and the job Prometheus gives the metrics Service.
+    selector: ""
 
 podDisruptionBudget:
   enabled: true

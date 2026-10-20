@@ -53,7 +53,7 @@ Tracks what is done and what still blocks the first public release.
       Ingress and HPA, native sidecars (Cloud SQL Auth Proxy). deploy/gcp installs it with this chart.
 - [x] GCP reference deployment (deploy/gcp): Terraform, Autopilot, global LB + Cloud Armor, Cloud SQL HA, Memorystore with TLS and token auth, failure tests. Three real runs; the last one, 0 Stratum errors in 52,805 requests (docs/testing/gcp-2026-10-18.md)
 - [ ] Load test in CI: rolling deploy under constant load with zero errors, streams included
-- [ ] SLO burn-rate alert rules (PrometheusRule) shipped with the chart
+- [x] SLO burn-rate alert rules (PrometheusRule) shipped with the gateway chart, checked and tested with promtool in CI
 
 ## Phase 1 — static stability (started)
 

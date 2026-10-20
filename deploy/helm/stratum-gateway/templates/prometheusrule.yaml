@@ -1,0 +1,100 @@
+{{- if and .Values.metrics.enabled .Values.metrics.prometheusRule.enabled }}
+{{- $r := .Values.metrics.prometheusRule }}
+{{- /* This release's gateways, as Prometheus labels them when it scrapes the metrics Service. */}}
+{{- $sel := printf "namespace=%q,job=%q" .Release.Namespace (printf "%s-metrics" (include "stratum-gateway.fullname" .)) }}
+{{- with $r.selector }}{{ $sel = . }}{{ end }}
+{{- $budget := printf "(1 - %v)" $r.availabilityTarget }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "stratum-gateway.fullname" . }}
+  labels:
+    {{- include "stratum-gateway.labels" . | nindent 4 }}
+    {{- with $r.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  groups:
+    # Availability SLO (docs/architecture/overview.md): the share of requests,
+    # 4xx left out, not answered with a 5xx of the gateway's own. 5xx that
+    # come from the provider (providerReasons) are the provider's.
+    - name: stratum-gateway-slo
+      rules:
+        {{- range $w := list "5m" "30m" "1h" "2h" "6h" "1d" "3d" }}
+        - record: stratum:gateway_errors:ratio_rate{{ $w }}
+          # "or ... * 0": 0 instead of no value while there are no errors.
+          expr: |
+            (
+              sum by (namespace, job) (rate(stratum_requests_total{ {{- $sel }},code=~"5..",reason!~"{{ $r.providerReasons }}"}[{{ $w }}]))
+              or
+              sum by (namespace, job) (rate(stratum_requests_total{ {{- $sel }}}[{{ $w }}])) * 0
+            )
+            /
+            sum by (namespace, job) (rate(stratum_requests_total{ {{- $sel }},code!~"4.."}[{{ $w }}]))
+        {{- end }}
+        # Multiwindow, multi-burn-rate alerts (Google SRE workbook): fast
+        # burns page, slow burns open a ticket.
+        - alert: StratumGatewayErrorBudgetBurn
+          expr: |
+            (
+              stratum:gateway_errors:ratio_rate1h{ {{- $sel }}} > (14.4 * {{ $budget }})
+              and
+              stratum:gateway_errors:ratio_rate5m{ {{- $sel }}} > (14.4 * {{ $budget }})
+            )
+            or
+            (
+              stratum:gateway_errors:ratio_rate6h{ {{- $sel }}} > (6 * {{ $budget }})
+              and
+              stratum:gateway_errors:ratio_rate30m{ {{- $sel }}} > (6 * {{ $budget }})
+            )
+          for: 2m
+          labels:
+            severity: {{ $r.severity.fast }}
+          annotations:
+            summary: Stratum gateways are answering with their own errors fast enough to spend the month's error budget in days.
+            description: 5xx produced by the gateway (not passed through from a provider), against an availability target of {{ $r.availabilityTarget }}. Look at stratum_requests_total by reason.
+        - alert: StratumGatewayErrorBudgetBurnSlow
+          expr: |
+            (
+              stratum:gateway_errors:ratio_rate1d{ {{- $sel }}} > (3 * {{ $budget }})
+              and
+              stratum:gateway_errors:ratio_rate2h{ {{- $sel }}} > (3 * {{ $budget }})
+            )
+            or
+            (
+              stratum:gateway_errors:ratio_rate3d{ {{- $sel }}} > {{ $budget }}
+              and
+              stratum:gateway_errors:ratio_rate6h{ {{- $sel }}} > {{ $budget }}
+            )
+          for: 15m
+          labels:
+            severity: {{ $r.severity.slow }}
+          annotations:
+            summary: Stratum gateways are spending their error budget faster than the month allows.
+            description: 5xx produced by the gateway, against an availability target of {{ $r.availabilityTarget }}. Look at stratum_requests_total by reason.
+    - name: stratum-gateway-health
+      rules:
+        - alert: StratumGatewayConfigurationStale
+          expr: max by (namespace, job) (stratum_snapshot_age_seconds{ {{- $sel }}}) > {{ $r.snapshotMaxAgeSeconds }}
+          for: 5m
+          labels:
+            severity: {{ $r.severity.slow }}
+          annotations:
+            summary: A Stratum gateway has not confirmed its configuration with the control plane for a while.
+            description: It keeps serving the last configuration it has (ADR-0005); changes made in the console do not reach it. Check the control plane and the network to it.
+        - alert: StratumGatewayUsageDropped
+          expr: sum by (namespace, job) (increase(stratum_usage_records_dropped_total{ {{- $sel }}}[15m])) > 0
+          labels:
+            severity: {{ $r.severity.slow }}
+          annotations:
+            summary: A Stratum gateway dropped usage records.
+            description: Its buffer filled while the control plane was unreachable, or the control plane refused a batch. The console's usage and spend are missing those requests.
+        - alert: StratumGatewayQuotaStoreDown
+          expr: max by (namespace, job) (stratum_quota_store_age_seconds{ {{- $sel }}}) > 60
+          for: 5m
+          labels:
+            severity: {{ $r.severity.slow }}
+          annotations:
+            summary: Stratum gateways cannot reach the shared quota store (Valkey).
+            description: Each replica counts on its own meanwhile (ADR-0004), or, with STRATUM_QUOTA_FAIL_MODE=closed, teams with a quota are refused.
+{{- end }}
