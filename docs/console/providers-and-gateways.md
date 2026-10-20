@@ -90,6 +90,9 @@ an agent's fixed model replaces it in the URL.
 
 ## Upgrading
 
+Order and release notes: [docs/upgrading.md](../upgrading.md). What the
+console's own changes mean for an organization:
+
 - **Agent keys start working** on gateways after migration 017: until then
   gateways refused every agent key, because the sync never sent them. Before
   upgrading, review the agents of each organization and revoke the keys

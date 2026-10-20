@@ -21,7 +21,8 @@ encrypted to disk, and never calls the control plane, a database or Redis on the
 request path. See [docs/architecture](docs/architecture/overview.md).
 
 > **Status: pre-release (0.x).** APIs and configuration may still change.
-> See the [release checklist](docs/release-checklist.md).
+> See the [release checklist](docs/release-checklist.md). Upgrading from an
+> earlier release: [docs/upgrading.md](docs/upgrading.md).
 
 ## Quick start: standalone gateway
 
