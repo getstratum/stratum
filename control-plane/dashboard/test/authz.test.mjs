@@ -360,7 +360,12 @@ test('alerts: org-level ones are listed and every field edit is applied', { skip
   const [a] = await sql(`INSERT INTO alerts (org_id, alert_type, destination) VALUES ($1, 'quota', 'o@example.com') RETURNING id`, [A.id])
   const list = (await call('alerts', 'GET', { as: S.owner })).body
   assert.ok(list.some(x => x.id === a.id))
-  const r = await call('alerts/[id]', 'PATCH', { as: S.owner, params: { id: a.id }, body: { channel: 'slack', destination: 'https://hooks.example/x' } })
+  const r = await call('alerts/[id]', 'PATCH', { as: S.owner, params: { id: a.id }, body: { channel: 'slack', destination: 'https://hooks.slack.com/services/T0/B0/x' } })
   assert.equal(r.status, 200)
   assert.equal(r.body.channel, 'slack')
+  // Webhooks go only to the hosts the operator allows; a channel change is
+  // checked against the destination already stored.
+  for (const body of [{ destination: 'https://169.254.169.254/latest' }, { destination: 'http://hooks.slack.com/x' }, { channel: 'email' }]) {
+    assert.equal((await call('alerts/[id]', 'PATCH', { as: S.owner, params: { id: a.id }, body })).status, 400, JSON.stringify(body))
+  }
 })

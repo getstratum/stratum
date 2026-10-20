@@ -103,6 +103,18 @@ spec:
             - name: STRATUM_MODEL_CATALOG_URL
               value: {{ . | quote }}
             {{- end }}
+            {{- with .Values.console.publicUrl }}
+            - name: STRATUM_CONSOLE_URL
+              value: {{ . | quote }}
+            {{- end }}
+            - name: STRATUM_ALERTS_INTERVAL_S
+              value: {{ .Values.console.alerts.intervalSeconds | toString | quote }}
+            - name: STRATUM_ALERT_WEBHOOK_HOSTS
+              value: {{ .Values.console.alerts.webhookHosts | quote }}
+            {{- with .Values.console.alerts.from }}
+            - name: STRATUM_ALERT_FROM
+              value: {{ . | quote }}
+            {{- end }}
             {{- with .Values.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

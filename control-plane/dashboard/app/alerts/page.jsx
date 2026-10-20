@@ -20,7 +20,7 @@ const CHANNEL_LABEL = { email: 'Email', slack: 'Slack' }
 const THRESHOLDS = [50, 70, 80, 90, 100]
 
 // ─── Create modal ─────────────────────────────────────────────────────────────
-function AlertModal({ teams, onSave, onClose }) {
+function AlertModal({ teams, delivery, onSave, onClose }) {
   const [form, setForm] = useState({
     teamId:       '',
     alertType:    'quota',
@@ -84,8 +84,10 @@ function AlertModal({ teams, onSave, onClose }) {
         <Field
           label={form.channel === 'email' ? 'Dirección de email' : 'URL del webhook de Slack'}
           hint={form.channel === 'slack'
-            ? 'En Slack: tu espacio de trabajo → Apps → Incoming Webhooks.'
-            : 'Una persona o una lista del equipo.'}
+            ? `En Slack: tu espacio de trabajo → Apps → Incoming Webhooks. Este control plane envía solo a ${(delivery?.webhook_hosts ?? ['hooks.slack.com']).join(', ')}.`
+            : delivery && !delivery.email
+              ? 'Una persona o una lista del equipo. Ojo: este control plane todavía no tiene email configurado (STRATUM_SMTP_URL).'
+              : 'Una persona o una lista del equipo.'}
         >
           <Input
             type={form.channel === 'email' ? 'email' : 'url'}
@@ -121,9 +123,11 @@ function AlertModal({ teams, onSave, onClose }) {
 }
 
 // ─── Alert row ────────────────────────────────────────────────────────────────
-function AlertRow({ alert, canManage, onToggle, onDelete, onReset }) {
-  const firedToday = alert.last_fired_at
-    && new Date(alert.last_fired_at).toDateString() === new Date().toDateString()
+const monthOf = d => new Date(d).toISOString().slice(0, 7)
+
+function AlertRow({ alert, canManage, onToggle, onDelete, onReset, onTest, testing, testResult }) {
+  // One message per alert and month (UTC, like the usage it measures).
+  const firedThisMonth = alert.last_fired_at && monthOf(alert.last_fired_at) === monthOf(Date.now())
   const action = 'min-h-[36px] px-2.5 rounded-md text-[13px] text-accent hover:bg-accent-light whitespace-nowrap'
 
   return (
@@ -135,20 +139,34 @@ function AlertRow({ alert, canManage, onToggle, onDelete, onReset }) {
       <td className="px-4 py-3 text-xs text-muted font-mono max-w-[240px] truncate" title={alert.destination}>
         {alert.destination}
       </td>
-      <td className="px-4 py-3 text-sm whitespace-nowrap">
-        {firedToday
-          ? <span className="text-warn">Hoy</span>
-          : alert.last_fired_at
-            ? <span className="text-muted tabular">{formatDateTime(alert.last_fired_at)}</span>
+      <td className="px-4 py-3 text-sm">
+        <div className="whitespace-nowrap">
+          {alert.last_fired_at
+            ? <span className={`tabular ${firedThisMonth ? 'text-warn' : 'text-muted'}`}>{formatDateTime(alert.last_fired_at)}</span>
             : <span className="text-subtle">Nunca</span>}
-        {!alert.is_active && <span className="text-xs text-warn ml-2">desactivada</span>}
+          {!alert.is_active && <span className="text-xs text-warn ml-2">desactivada</span>}
+        </div>
+        {alert.last_error && (
+          <div className="text-xs text-err mt-0.5 min-w-[180px] max-w-[260px]" title={alert.last_error}>
+            No se pudo enviar: {alert.last_error}
+          </div>
+        )}
+        {testResult && (
+          <div role="status" className={`text-xs mt-0.5 min-w-[180px] max-w-[260px] ${testResult.ok ? 'text-ok' : 'text-err'}`}>
+            {testResult.ok ? 'Prueba enviada.' : testResult.message}
+          </div>
+        )}
       </td>
       {canManage && (
         <td className="px-4 py-2">
           <div className="flex items-center gap-1 justify-end">
-            {firedToday && (
+            <button type="button" onClick={() => onTest(alert)} disabled={testing} className={`${action} disabled:opacity-50`}
+                    title="Envía un mensaje de prueba ahora">
+              {testing ? 'Enviando…' : 'Probar'}
+            </button>
+            {firedThisMonth && (
               <button type="button" onClick={() => onReset(alert)} className={action}
-                      title="Permite que vuelva a avisar hoy">
+                      title="Permite que vuelva a avisar este mes">
                 Reiniciar
               </button>
             )}
@@ -173,14 +191,18 @@ export default function AlertsPage() {
   const [teams,   setTeams]   = useState([])
   const [loading, setLoading] = useState(true)
   const [modal,   setModal]   = useState(false)
+  const [delivery, setDelivery] = useState(null)
+  const [testing, setTesting] = useState('')
+  const [tests,   setTests]   = useState({})
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [a, t] = await Promise.all([
+    const [a, t, d] = await Promise.all([
       fetch('/api/alerts').then(r => (r.ok ? r.json() : [])),
       fetch('/api/teams').then(r => (r.ok ? r.json() : [])),
+      fetch('/api/alerts/delivery').then(r => (r.ok ? r.json() : null)).catch(() => null),
     ])
-    setAlerts(Array.isArray(a) ? a : []); setTeams(Array.isArray(t) ? t : []); setLoading(false)
+    setAlerts(Array.isArray(a) ? a : []); setTeams(Array.isArray(t) ? t : []); setDelivery(d); setLoading(false)
   }, [])
 
   useEffect(() => { load() }, [load])
@@ -197,6 +219,14 @@ export default function AlertsPage() {
     if (!window.confirm(`¿Eliminar la alerta de ${alert.team_name ?? 'toda la organización'}?`)) return
     await fetch(`/api/alerts/${alert.id}`, { method: 'DELETE' })
     load()
+  }
+
+  async function test(alert) {
+    setTesting(alert.id)
+    const res = await fetch(`/api/alerts/${alert.id}/test`, { method: 'POST' }).catch(() => null)
+    const body = res ? await res.json().catch(() => ({})) : { message: 'No se pudo conectar con la consola.' }
+    setTests(t => ({ ...t, [alert.id]: res?.ok ? { ok: true } : { ok: false, message: body.message ?? 'No se pudo enviar.' } }))
+    setTesting('')
   }
 
   async function reset(alert) {
@@ -219,10 +249,17 @@ export default function AlertsPage() {
         {canManage && <Btn onClick={() => setModal(true)}>+ Nueva alerta</Btn>}
       </div>
 
-      <div className="bg-warn-light border border-warn/30 rounded-md px-4 py-3 text-sm text-warn">
-        Esta versión guarda las alertas pero todavía no las envía: ningún aviso sale por email ni por Slack.
-        Para seguir el consumo mientras tanto, usá Consumo y la cuota de cada equipo en Equipos.
-      </div>
+      {delivery && !delivery.email && alerts.some(a => a.channel === 'email' && a.is_active) && (
+        <div role="status" className="bg-warn-light border border-warn/30 rounded-md px-4 py-3 text-sm text-warn">
+          Hay alertas por email, pero este control plane no tiene un servidor de correo configurado
+          (STRATUM_SMTP_URL): no van a salir hasta que se configure.
+        </div>
+      )}
+      {delivery && delivery.interval_s === 0 && (
+        <div role="status" className="bg-warn-light border border-warn/30 rounded-md px-4 py-3 text-sm text-warn">
+          La revisión de alertas está apagada en este control plane (STRATUM_ALERTS_INTERVAL_S=0).
+        </div>
+      )}
 
       {loading ? (
         <p className="text-sm text-muted">Cargando…</p>
@@ -237,7 +274,7 @@ export default function AlertsPage() {
         </div>
       ) : (
         <div className="bg-card border border-border rounded-[10px] overflow-x-auto">
-          <table className="w-full min-w-[720px]">
+          <table className="w-full min-w-[900px]">
             <thead>
               <tr className="text-xs text-muted uppercase tracking-wider bg-raised border-b border-border">
                 <th className="px-4 py-3 text-left font-semibold">Equipo</th>
@@ -245,7 +282,7 @@ export default function AlertsPage() {
                 <th className="px-4 py-3 text-right font-semibold">Umbral</th>
                 <th className="px-4 py-3 text-left font-semibold">Canal</th>
                 <th className="px-4 py-3 text-left font-semibold">Destino</th>
-                <th className="px-4 py-3 text-left font-semibold">Último aviso</th>
+                <th className="px-4 py-3 text-left font-semibold whitespace-nowrap">Último aviso</th>
                 {canManage && <th className="px-4 py-3" />}
               </tr>
             </thead>
@@ -258,6 +295,9 @@ export default function AlertsPage() {
                   onToggle={toggle}
                   onDelete={del}
                   onReset={reset}
+                  onTest={test}
+                  testing={testing === alert.id}
+                  testResult={tests[alert.id]}
                 />
               ))}
             </tbody>
@@ -278,7 +318,8 @@ export default function AlertsPage() {
           </div>
           <div className="space-y-1">
             <div className="text-strong font-medium">3. El aviso</div>
-            Está previsto revisar el consumo y avisar una vez por día como máximo por alerta. Esta versión todavía no envía.
+            El control plane revisa el consumo cada {delivery ? Math.round(delivery.interval_s / 60) || 5 : 5} minutos y
+            avisa una vez por mes por alerta, al llegar al umbral. Probar envía un mensaje ahora.
           </div>
         </div>
       </section>
@@ -286,6 +327,7 @@ export default function AlertsPage() {
       {modal && (
         <AlertModal
           teams={teams}
+          delivery={delivery}
           onSave={() => { setModal(false); load() }}
           onClose={() => setModal(false)}
         />

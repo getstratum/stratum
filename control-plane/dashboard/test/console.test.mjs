@@ -475,3 +475,27 @@ test('audit: newest first by number, not as text', { skip }, async () => {
   const page2 = await call('audit', 'GET', { as: A.owner, query: `?limit=2&before=${ids[2]}` })
   assert.deepEqual(page2.body.entries.map(e => e.id), [ids[1], ids[0]])
 })
+
+// --- alerts ----------------------------------------------------------------
+
+test('alerts: a test message now, at most one a minute', { skip }, async () => {
+  const [{ team_id: team }] = await sql(`SELECT team_id FROM users WHERE org_id = $1 AND role = 'team_manager'`, [A.id])
+  const created = await call('alerts', 'POST', { as: A.owner, body: { teamId: team, alertType: 'quota', channel: 'email', destination: 'fin@acme.com' } })
+  assert.equal(created.status, 201)
+  const id = created.body.id
+  // No SMTP server in the tests: the send fails and says why.
+  const r = await call('alerts/[id]/test', 'POST', { as: A.owner, params: { id } })
+  assert.equal(r.status, 502)
+  assert.match(r.body.message, /STRATUM_SMTP_URL/)
+  assert.equal((await call('alerts/[id]/test', 'POST', { as: A.owner, params: { id } })).status, 429)
+  assert.equal((await call('alerts/[id]/test', 'POST', { as: A.auditor, params: { id } })).status, 403)
+  assert.equal((await call('alerts/[id]/test', 'POST', { as: B.owner, params: { id } })).status, 404)
+
+  const d = await call('alerts/delivery', 'GET', { as: A.auditor })
+  assert.deepEqual(d.body, { email: false, webhook_hosts: ['hooks.slack.com'], interval_s: 300 })
+  for (const body of [{ teamId: team, alertType: 'quota', channel: 'email', destination: 'not-an-email' },
+                      { teamId: team, alertType: 'quota', channel: 'slack', destination: 'https://example.com/hook' }]) {
+    assert.equal((await call('alerts', 'POST', { as: A.owner, body })).status, 400, JSON.stringify(body))
+  }
+  await sql('DELETE FROM alerts WHERE id = $1', [id])
+})

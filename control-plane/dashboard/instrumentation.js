@@ -3,7 +3,7 @@
  * (Next.js). Keeps request_logs' monthly partitions created two years ahead
  * (migration 019): now and every 24 hours. Failures are logged, never fatal:
  * the default partition still takes the rows. Also keeps the model catalog
- * current from its feed.
+ * current from its feed, and sends alerts.
  */
 export async function register() {
   if (process.env.NEXT_RUNTIME !== 'nodejs' || !process.env.DATABASE_URL) return
@@ -31,5 +31,29 @@ export async function register() {
     }
     setTimeout(refresh, 60 * 1000).unref()
     setInterval(refresh, 24 * 60 * 60 * 1000).unref()
+  }
+
+  // Alerts (lib/alert-delivery.js): every STRATUM_ALERTS_INTERVAL_S (300 s),
+  // the first round up to two minutes after the start. Replicas coordinate
+  // per alert.
+  const { evaluateAlerts, alertConfig } = await import('./lib/alert-delivery.js')
+  const { intervalS } = alertConfig()
+  if (intervalS > 0) {
+    let running = false
+    const round = async () => {
+      if (running) return
+      running = true
+      try {
+        const results = await evaluateAlerts(getDb())
+        const sent = results.filter(r => r.sent).length
+        if (sent) console.log(`[alerts] ${sent} sent`)
+      } catch (err) {
+        console.error(`[alerts] round failed: ${err.message}`)
+      } finally {
+        running = false
+      }
+    }
+    setTimeout(round, Math.min(120, intervalS) * 1000).unref()
+    setInterval(round, intervalS * 1000).unref()
   }
 }

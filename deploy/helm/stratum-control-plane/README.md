@@ -78,6 +78,21 @@ kubectl -n stratum run stratum-migrate --rm -it --restart=Never \
   --env="DATABASE_URL=postgresql://..."
 ```
 
+## Alerts
+
+The console checks alerts every `console.alerts.intervalSeconds` and posts
+webhooks only to `console.alerts.webhookHosts` (Slack's by default). For
+email, add the SMTP server to the secret:
+
+```sh
+kubectl -n stratum create secret generic stratum-control-plane ... \
+  --from-literal=STRATUM_SMTP_URL='smtp://alerts%40example.com:PASSWORD@smtp.example.com:587'
+```
+
+`smtp://` requires STARTTLS; `smtps://` (port 465) is TLS from the start.
+Set `console.publicUrl` for a link to the console in the messages. See
+[docs/console/teams.md](../../../docs/console/teams.md#alerts).
+
 ## Behind a proxy or a cloud load balancer
 
 `console.trustedProxyHops` is how many proxies append to `X-Forwarded-For`
