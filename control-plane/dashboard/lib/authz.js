@@ -42,6 +42,9 @@ export const PERMISSIONS = {
   'providers.manage':  { owner: 'org', admin: 'org' },
   'gateways.read':     { owner: 'org', admin: 'org', auditor: 'org' },
   'gateways.manage':   { owner: 'org', admin: 'org' },
+  // Applications that sign people in with their console account (OIDC)
+  'apps.read':         { owner: 'org', admin: 'org', auditor: 'org' },
+  'apps.manage':       { owner: 'org', admin: 'org' },
   'models.read':       ALL,
   'models.manage':     { owner: 'org', admin: 'org' },
 

@@ -79,5 +79,5 @@ Sending, configured on the control plane:
 | `STRATUM_SMTP_URL` (in the secret) | none: email alerts are not sent, and Alertas says so | `smtp://user:password@host:587` (STARTTLS, required) or `smtps://user:password@host:465` |
 | `STRATUM_ALERT_FROM` (`console.alerts.from`) | `alertas@<SMTP host>` | Sender address |
 | `STRATUM_ALERT_WEBHOOK_HOSTS` (`console.alerts.webhookHosts`) | `hooks.slack.com` | Hosts the control plane posts webhooks to. A URL typed into the console must not reach the control plane's own network (cloud metadata, internal services), so other hosts are refused when the alert is saved and when it is sent. Add another chat tool's host only if it takes Slack's `{"text": ...}` |
-| `STRATUM_CONSOLE_URL` (`console.publicUrl`) | none | Link to the console in the messages |
+| `STRATUM_CONSOLE_URL` (`console.publicUrl`) | none | Link to the console in the messages (also the OIDC issuer, see [applications.md](applications.md)) |
 | `STRATUM_ALERTS_INTERVAL_S` (`console.alerts.intervalSeconds`) | `300` | Seconds between checks; 0 turns them off |

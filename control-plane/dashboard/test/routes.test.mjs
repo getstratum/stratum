@@ -21,6 +21,15 @@ const PUBLIC = {
   'session/route.js:POST': 'sign-in',
   'session/route.js:DELETE': 'sign-out (works without a valid session)',
   'session/mfa/route.js:POST': 'second step of the sign-in: the challenge from the password and a code',
+  // The console as an OpenID Connect provider (lib/oidc.js): each checks
+  // the interaction, the client credentials or the token itself.
+  'oidc/authorize/route.js:GET':   'an application starts a sign-in',
+  'oidc/interaction/route.js:GET': 'the sign-in page shows which application',
+  'oidc/login/route.js:POST':      'password step of a sign-in to an application',
+  'oidc/login/mfa/route.js:POST':  'second step of a sign-in to an application',
+  'oidc/token/route.js:POST':      'an application redeems a code with its client secret',
+  'oidc/userinfo/route.js:GET':    'an application reads who signed in, with an access token',
+  'oidc/jwks/route.js:GET':        'public keys of the ID tokens',
 }
 // Routes a session that must set up the second factor first may use.
 const DURING_ENROLLMENT = new Set([

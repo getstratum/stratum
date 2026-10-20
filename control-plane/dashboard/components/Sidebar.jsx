@@ -15,6 +15,7 @@ const NAV = [
     { href: '/providers', label: 'Proveedores', permission: 'providers.read' },
     { href: '/models',    label: 'Modelos',     permission: 'models.read' },
     { href: '/gateways',  label: 'Gateways',    permission: 'gateways.read' },
+    { href: '/apps',      label: 'Aplicaciones', permission: 'apps.read' },
   ] },
   { group: 'Acceso', items: [
     { href: '/users',     label: 'Usuarios',    permission: 'users.read' },

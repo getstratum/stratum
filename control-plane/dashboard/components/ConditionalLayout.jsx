@@ -4,7 +4,7 @@ import { useEffect } from 'react'
 import { usePathname } from 'next/navigation'
 import Sidebar from './Sidebar'
 
-const NO_SIDEBAR_PATHS = ['/login']
+const NO_SIDEBAR_PATHS = ['/login', '/oidc']
 
 // Any console API answer of 401 means the session is gone (expired, revoked,
 // signed out elsewhere): send the browser to the sign-in page. A 403 that
