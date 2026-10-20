@@ -94,7 +94,9 @@ type record struct {
 	upstreamMs int64
 	usage      Usage
 	piiTypes   []string
-	providerOK bool // rec.provider is a configured provider
+	providerOK bool   // rec.provider is a configured provider
+	operation  string // gen_ai.operation.name, from the path
+	sent       bool   // the request went to the provider
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -280,6 +282,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	upStart := time.Now()
+	rec.sent, rec.operation = true, operationName(upstreamPath, kind)
 	res, att, err := h.send(ctx, prov.ID, build)
 	rec.upstreamMs = time.Since(upStart).Milliseconds()
 	if err != nil {
@@ -454,6 +457,17 @@ func (h *Handler) finish(r *http.Request, rec *record) {
 		label = ""
 	}
 	h.Metrics.Request(rec.status, label, rec.reason)
+	if rec.sent {
+		op := metrics.GenAIOp{Operation: rec.operation, Provider: rec.provider, Model: usage.Clip(rec.model, 100),
+			Seconds: time.Since(rec.start).Seconds(), TokensIn: rec.usage.Input, TokensOut: rec.usage.Output}
+		switch {
+		case rec.reason == "upstream_status":
+			op.ErrorType = strconv.Itoa(rec.status) // the provider's HTTP status, as the conventions do
+		case rec.reason != "ok":
+			op.ErrorType = rec.reason
+		}
+		h.Metrics.GenAI(op)
+	}
 	duration := time.Since(rec.start).Milliseconds()
 	var requestID string
 	if h.RequestID != nil {
@@ -485,6 +499,24 @@ func (h *Handler) finish(r *http.Request, rec *record) {
 		attrs = append(attrs, "content_flags", rec.piiTypes)
 	}
 	h.Log.Info("request", attrs...)
+}
+
+// operationName is gen_ai.operation.name for a provider path.
+func operationName(upstreamPath string, kind provider.Kind) string {
+	p := strings.TrimSuffix(upstreamPath, "/")
+	switch {
+	case kind == provider.KindAnthropic && strings.HasSuffix(p, "messages"):
+		return "chat"
+	case strings.HasSuffix(p, "chat/completions"), strings.HasSuffix(p, "responses"):
+		return "chat"
+	case strings.HasSuffix(p, "completions"):
+		return "text_completion"
+	case strings.HasSuffix(p, "embeddings"):
+		return "embeddings"
+	case strings.Contains(p, ":generateContent"), strings.Contains(p, ":streamGenerateContent"):
+		return "generate_content"
+	}
+	return "other"
 }
 
 // cutDeployment splits an Azure path around its deployment name:

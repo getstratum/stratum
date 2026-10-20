@@ -18,6 +18,7 @@ import (
 
 	"github.com/getstratum/stratum/gateway/internal/auth"
 	"github.com/getstratum/stratum/gateway/internal/metrics"
+	"github.com/getstratum/stratum/gateway/internal/provider"
 	"github.com/getstratum/stratum/gateway/internal/quota"
 	"github.com/getstratum/stratum/gateway/internal/resilience"
 	"github.com/getstratum/stratum/gateway/internal/snapshot"
@@ -650,5 +651,47 @@ func TestLineSplitterHandlesSplitsAndOverflow(t *testing.T) {
 	want := []string{"data: abc", "data: d", "ok"}
 	if fmt.Sprint(got) != fmt.Sprint(want) {
 		t.Fatalf("got %q want %q", got, want)
+	}
+}
+
+func TestGenAIMetrics(t *testing.T) {
+	e := newEnv(t, `{"id":"p","team_id":"t1","version":1,"allowed_models":["gpt-4o"]}`, time.Minute)
+	if res := e.post("/v1/chat/completions", devKey, `{"model":"openai/gpt-4o","messages":[]}`); res.StatusCode != 200 {
+		t.Fatalf("status %d", res.StatusCode)
+	}
+	// Refused before reaching a provider: not a GenAI operation.
+	if res := e.post("/v1/chat/completions", devKey, `{"model":"openai/o3","messages":[]}`); res.StatusCode != 403 {
+		t.Fatalf("status %d", res.StatusCode)
+	}
+	var b strings.Builder
+	e.m.WriteTo(&b, time.Now())
+	out := b.String()
+	for _, want := range []string{
+		`gen_ai_client_token_usage_sum{gen_ai_operation_name="chat",gen_ai_provider_name="openai",gen_ai_request_model="gpt-4o",gen_ai_token_type="input"} 11`,
+		`gen_ai_client_token_usage_sum{gen_ai_operation_name="chat",gen_ai_provider_name="openai",gen_ai_request_model="gpt-4o",gen_ai_token_type="output"} 7`,
+		`gen_ai_client_operation_duration_seconds_count{gen_ai_operation_name="chat",gen_ai_provider_name="openai",gen_ai_request_model="gpt-4o"} 1`,
+	} {
+		if !strings.Contains(out, want+"\n") {
+			t.Errorf("missing %s", want)
+		}
+	}
+	if strings.Contains(out, `gen_ai_request_model="o3"`) {
+		t.Error("a request the policy refused is not a provider operation")
+	}
+}
+
+func TestOperationName(t *testing.T) {
+	for path, want := range map[string]string{
+		"v1/chat/completions": "chat", "v1/messages": "chat", "v1/responses": "chat",
+		"v1/completions": "text_completion", "v1/embeddings": "embeddings",
+		"v1beta/models/gemini-2.5-flash:generateContent": "generate_content", "v1/models": "other",
+	} {
+		kind := provider.KindOpenAI
+		if path == "v1/messages" {
+			kind = provider.KindAnthropic
+		}
+		if got := operationName(path, kind); got != want {
+			t.Errorf("%s: %s, want %s", path, got, want)
+		}
 	}
 }
