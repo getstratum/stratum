@@ -2,6 +2,10 @@ version: 2
 # Major version upgrades (Next.js, React, Tailwind, Node...) need a planned
 # migration and are done by hand in their own PR; Dependabot only proposes
 # minor and patch updates, plus security fixes.
+#
+# A release must be two weeks old before it is proposed (cooldown), so a
+# compromised or broken release has time to be noticed. Security updates
+# are not held back by it.
 updates:
   - package-ecosystem: gomod
     directory: /gateway
@@ -11,6 +15,8 @@ updates:
   - package-ecosystem: docker
     directories: [/gateway, /control-plane/dashboard, /control-plane/migrations, /deploy/gcp/mock-llm]
     schedule: { interval: weekly }
+    cooldown:
+      default-days: 14
     ignore:
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
@@ -22,12 +28,16 @@ updates:
   - package-ecosystem: docker-compose
     directory: /deploy/compose
     schedule: { interval: weekly }
+    cooldown:
+      default-days: 14
     ignore:
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
   - package-ecosystem: npm
     directory: /control-plane/dashboard
     schedule: { interval: weekly }
+    cooldown:
+      default-days: 14
     ignore:
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
@@ -37,12 +47,13 @@ updates:
   - package-ecosystem: npm
     directory: /control-plane/e2e
     schedule: { interval: weekly }
+    cooldown:
+      default-days: 14
     ignore:
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
   # Actions are pinned by commit SHA (with the version in a comment, which
-  # Dependabot keeps updated). A release must be two weeks old before it is
-  # proposed, so a compromised or broken release has time to be noticed.
+  # Dependabot keeps updated).
   - package-ecosystem: github-actions
     directory: /
     schedule: { interval: weekly }
