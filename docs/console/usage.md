@@ -1,7 +1,7 @@
 # Consumption
 
 **Consumo** shows what gateways reported (ADR-0009), grouped by one
-dimension: team, agent, person, model or provider.
+dimension: team, agent, person, model, provider or label.
 
 - **Totals:** estimated cost, requests (share with an error, and how many a
   policy refused), tokens in and out, and p50/p95 latency.
@@ -9,16 +9,21 @@ dimension: team, agent, person, model or provider.
   the rest add up as "Otros". Days are UTC.
 - **Table:** the same numbers per group, with the last request. A row opens
   its detail: a team by agent, an agent or person by model, a model by agent,
-  a provider by model. The address keeps the selection
+  a provider by model, a label by person. The address keeps the selection
   (`/usage?agent=<id>&by=model`), and **Agentes** links each agent to its own.
 - **Agents and people apart:** "por agente" counts only agent traffic and
   "por persona" only people's keys; teams, models and providers count both.
+- **Labels:** what applications put on their requests with the
+  `X-Stratum-Labels` header (a chat portal, the topic of each message; an
+  agent, the feature that made the call). A request with two labels counts
+  in both rows, so the rows can add up to more than the totals, which count
+  each labelled request once. Labels are kept apart from PII findings.
 - **Who sees what:** the same as the rest of the usage views. A team manager
   sees their team only.
 
-API: `GET /api/consumption?by=team|agent|user|model|provider` with the period
-(`from`/`to` or `period`) and at most one filter (`team`, `agent`, `user`,
-`model` as `provider/model`, `provider`). Permission `usage.read`.
+API: `GET /api/consumption?by=team|agent|user|model|provider|label` with the
+period (`from`/`to` or `period`) and at most one filter (`team`, `agent`,
+`user`, `model` as `provider/model`, `provider`, `label`). Permission `usage.read`.
 
 Errors are 4xx and 5xx answers, refusals included. Refused by policy:
 `no_policy`, `team_disabled`, `provider_not_allowed`, `model_not_allowed`,

@@ -95,9 +95,10 @@ type record struct {
 	upstreamMs int64
 	usage      Usage
 	piiTypes   []string
-	providerOK bool   // rec.provider is a configured provider
-	operation  string // gen_ai.operation.name, from the path
-	sent       bool   // the request went to the provider
+	labels     []string // X-Stratum-Labels, validated
+	providerOK bool     // rec.provider is a configured provider
+	operation  string   // gen_ai.operation.name, from the path
+	sent       bool     // the request went to the provider
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -122,6 +123,15 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rec.teamID, rec.userID = teamID, userID
+
+	// ── Labels from the application ─────────────────────────────────────
+	labels, valid := parseLabels(r.Header.Values("X-Stratum-Labels"))
+	rec.labels = labels
+	if !valid {
+		h.fail(w, rec, &policy.Violation{Status: http.StatusBadRequest, Code: "invalid_labels",
+			Message: "X-Stratum-Labels takes up to 8 comma-separated labels of lowercase letters, digits and _ (1 to 40 each)"})
+		return
+	}
 
 	// ── Route ───────────────────────────────────────────────────────────
 	slug, upstreamPath, explicit, ok := splitRoute(r.URL.Path)
@@ -512,7 +522,7 @@ func (h *Handler) finish(r *http.Request, rec *record) {
 			KeyID: rec.keyID, UserID: rec.userID, TeamID: rec.teamID, Provider: usage.Clip(rec.provider, 50), Model: usage.Clip(rec.model, 100),
 			Status: rec.status, Reason: rec.reason, Stream: rec.stream,
 			DurationMs: duration, UpstreamMs: rec.upstreamMs,
-			TokensIn: rec.usage.Input, TokensOut: rec.usage.Output, ContentFlags: rec.piiTypes,
+			TokensIn: rec.usage.Input, TokensOut: rec.usage.Output, ContentFlags: rec.piiTypes, Labels: rec.labels,
 		})
 	}
 	attrs := []any{
@@ -530,6 +540,9 @@ func (h *Handler) finish(r *http.Request, rec *record) {
 	}
 	if len(rec.piiTypes) > 0 {
 		attrs = append(attrs, "content_flags", rec.piiTypes)
+	}
+	if len(rec.labels) > 0 {
+		attrs = append(attrs, "labels", rec.labels)
 	}
 	h.Log.Info("request", attrs...)
 }

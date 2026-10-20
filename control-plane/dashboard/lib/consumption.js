@@ -1,6 +1,11 @@
 /**
  * lib/consumption.js — consumption grouped by one dimension (team, agent,
- * person, model or provider), from request_logs, for the Consumo page.
+ * person, model, provider or label), from request_logs, for the Consumo
+ * page.
+ *
+ * Labels are the application's (X-Stratum-Labels, migration 029): a request
+ * with two labels counts in both rows, so per-label rows can add up to more
+ * than the totals, which cover requests with any label.
  *
  * Totals and per-group rows carry requests, errors, requests refused by a
  * policy, tokens, estimated cost and latency percentiles; the daily series
@@ -11,7 +16,7 @@
 import { badRequest, isUuid } from './route.js'
 import { logsScope } from './usage.js'
 
-export const DIMENSIONS = ['team', 'agent', 'user', 'model', 'provider']
+export const DIMENSIONS = ['team', 'agent', 'user', 'model', 'provider', 'label']
 
 // Reasons a gateway refuses a request because of the team's policy or quota,
 // not because something failed.
@@ -27,12 +32,22 @@ const KEY = {
   // Refused before a provider was chosen: no provider (NULL, "Sin asignar").
   model:    `NULLIF(r.provider, '') || '/' || r.model_id`,
   provider: `NULLIF(r.provider, '')`,
+  label:    `l.label`,
 }
+
+// The rows to group: one per label of each request when grouping by label.
+const FROM = {
+  label: `request_logs r CROSS JOIN LATERAL unnest(r.labels) AS l(label)`,
+}
+const source = by => FROM[by] ?? 'request_logs r'
+
+const LABEL_RE = /^[a-z0-9_]{1,40}$/
 
 // Rows that belong to the dimension at all: agent and person traffic are
 // apart, so "por agente" never mixes in people.
 const PRESENT = {
   team: 'TRUE', agent: 'r.agent_id IS NOT NULL', user: 'r.user_id IS NOT NULL', model: 'TRUE', provider: 'TRUE',
+  label: 'cardinality(r.labels) > 0',
 }
 
 /**
@@ -49,6 +64,7 @@ export function parseQuery(searchParams) {
     if (filter) throw badRequest('Filtrá por una sola cosa a la vez.')
     if (['team', 'agent', 'user'].includes(kind) && !isUuid(v)) throw badRequest(`${kind} inválido.`)
     if (v.length > 200) throw badRequest(`${kind} inválido.`)
+    if (kind === 'label' && !LABEL_RE.test(v)) throw badRequest('label inválido.')
     filter = { kind, value: v }
   }
   return { by, filter }
@@ -62,7 +78,9 @@ function where(session, { from, to, by, filter }, params) {
     logsScope(session, 'r', params), PRESENT[by]]
   if (filter) {
     params.push(filter.value)
-    parts.push(`${KEY[filter.kind]} = $${params.length}`)
+    parts.push(filter.kind === 'label'
+      ? `$${params.length} = ANY(r.labels)`
+      : `${KEY[filter.kind]} = $${params.length}`)
   }
   return parts.join(' AND ')
 }
@@ -130,7 +148,7 @@ export async function consumption(db, session, { from, to, by, filter }) {
     db.query(`SELECT ${at} FROM request_logs r WHERE ${wt}`, pt),
     db.query(`
       SELECT ${KEY[by]} AS key, ${ar}
-        FROM request_logs r
+        FROM ${source(by)}
        WHERE ${wr}
        GROUP BY 1
        ORDER BY cost DESC, requests DESC
@@ -141,7 +159,7 @@ export async function consumption(db, session, { from, to, by, filter }) {
              COUNT(*)                                     AS requests,
              COALESCE(SUM(r.tokens_input + r.tokens_output), 0) AS tokens,
              COALESCE(SUM(r.cost_usd), 0)                 AS cost
-        FROM request_logs r
+        FROM ${source(by)}
        WHERE ${wd}
        GROUP BY 1, 2
        ORDER BY 1`, pd),
