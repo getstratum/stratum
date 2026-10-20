@@ -3,9 +3,11 @@
  */
 
 import { badRequest } from './route.js'
+import { webhookProblem } from './alert-delivery.js'
 
 const TYPES = new Set(['budget', 'quota', 'policy_violation'])
 const CHANNELS = new Set(['email', 'slack'])
+const EMAIL_RE = /^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/
 
 export function alertFields(body, { create = false } = {}) {
   const out = {}
@@ -28,4 +30,17 @@ export function alertFields(body, { create = false } = {}) {
     out.thresholdPct = n
   }
   return out
+}
+
+/**
+ * Checks the destination against the channel, once both are known (a PATCH
+ * may change only one of them). Webhooks go only to the hosts the operator
+ * allows (lib/alert-delivery.js).
+ */
+export function checkDestination(channel, destination) {
+  if (channel === 'email' && !EMAIL_RE.test(destination)) throw badRequest('La dirección de email no es válida.')
+  if (channel === 'slack') {
+    const problem = webhookProblem(destination)
+    if (problem) throw badRequest(`El webhook ${problem}.`)
+  }
 }

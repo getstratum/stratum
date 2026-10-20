@@ -65,6 +65,9 @@ services:
       STRATUM_ENCRYPTION_KEY: "${STRATUM_ENCRYPTION_KEY:?set STRATUM_ENCRYPTION_KEY in .env (openssl rand -hex 32)}"
       STRATUM_SYNC_INTERVAL_S: "30"
       GATEWAY_INTERNAL_URL: "http://gateway:20128"
+      # Alerts by email (docs/console/teams.md): smtp://user:password@host:587
+      STRATUM_SMTP_URL: "${STRATUM_SMTP_URL:-}"
+      STRATUM_CONSOLE_URL: "http://localhost:3000"
     ports:
       - "3000:3000"
     depends_on:

@@ -54,7 +54,30 @@ enforce budgets.
 
 ## Alerts
 
-Alerts (a team, a threshold on its token quota or budget, an email address or
-a Slack webhook) are stored and listed, but this version does not evaluate or
-send them. The console says so on the Alertas page. Until then, follow the
-quota and budget bars on **Equipos** and the figures in **Consumo**.
+An alert is a team, a threshold (a percentage of its monthly token quota or
+of its budget) and where to send the message: an email address, or a Slack
+incoming webhook.
+
+- The control plane checks every 5 minutes (`STRATUM_ALERTS_INTERVAL_S`; 0
+  turns it off) the team's usage this month, UTC, against the quota of its
+  policy or the budget (the team's own, or the policy's). The budget alert
+  works whether or not the policy cuts at the budget.
+- **One message per alert and month**, when the threshold is reached.
+  *Reiniciar* lets it send again this month. With several control plane
+  replicas each alert is claimed in the database before it is sent, so it
+  goes out once.
+- A send that fails is shown on the alert (*No se pudo enviar: ...*) and is
+  tried again in the next round.
+- **Probar** sends a test message now, with the team's usage so far (one per
+  alert and minute).
+- Team managers manage their own team's alerts.
+
+Sending, configured on the control plane:
+
+| Variable (chart value) | Default | |
+|---|---|---|
+| `STRATUM_SMTP_URL` (in the secret) | none: email alerts are not sent, and Alertas says so | `smtp://user:password@host:587` (STARTTLS, required) or `smtps://user:password@host:465` |
+| `STRATUM_ALERT_FROM` (`console.alerts.from`) | `alertas@<SMTP host>` | Sender address |
+| `STRATUM_ALERT_WEBHOOK_HOSTS` (`console.alerts.webhookHosts`) | `hooks.slack.com` | Hosts the control plane posts webhooks to. A URL typed into the console must not reach the control plane's own network (cloud metadata, internal services), so other hosts are refused when the alert is saved and when it is sent. Add another chat tool's host only if it takes Slack's `{"text": ...}` |
+| `STRATUM_CONSOLE_URL` (`console.publicUrl`) | none | Link to the console in the messages |
+| `STRATUM_ALERTS_INTERVAL_S` (`console.alerts.intervalSeconds`) | `300` | Seconds between checks; 0 turns them off |

@@ -60,6 +60,16 @@ console:
   # project's feed, a URL of your own, or "off" without internet access
   # (then: stratum-admin catalog-update --file).
   modelCatalogUrl: ""
+  # Address of the console, for the links in alert messages (optional).
+  publicUrl: ""
+  # Alerts (docs/console/teams.md): checked every intervalSeconds (0 turns
+  # them off). Webhooks are posted only to webhookHosts (comma-separated).
+  # Email needs STRATUM_SMTP_URL in existingSecret
+  # (smtp://user:password@host:587 with STARTTLS, or smtps://...:465).
+  alerts:
+    intervalSeconds: 300
+    webhookHosts: hooks.slack.com
+    from: ""
 
 extraEnv: []
 extraEnvFrom: []
