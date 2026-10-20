@@ -72,6 +72,9 @@ func TestRevocationsDelta(t *testing.T) {
 	if k, ok := before.KeyByHash("a3c1e5b7d9f02468ace13579bdf02468ace13579bdf02468ace13579bdf02468"); !ok || !k.Delegates {
 		t.Fatalf("a key that delegates says so: %+v %v", k, ok)
 	}
+	if m := before.Models(); len(m) != 4 || m[0].Provider != "anthropic" || m[1].Name != "GPT-4o" {
+		t.Fatalf("the organization's models, sorted: %+v", m)
+	}
 	if team, ok := before.Person("user_writer"); !ok || team != "team_marketing" {
 		t.Fatalf("people directory: %q %v", team, ok)
 	}
@@ -92,6 +95,9 @@ func TestRevocationsDelta(t *testing.T) {
 	}
 	if p, _ := snap.PolicyForTeam("team_engineering"); p.ID != "pol_restricted" {
 		t.Fatalf("a team moved to another policy must use it, got %q", p.ID)
+	}
+	if len(snap.Models()) != 4 {
+		t.Fatalf("a delta without models keeps the list: %+v", snap.Models())
 	}
 	if _, ok := snap.Person("user_dev"); ok {
 		t.Fatal("a person revoked by a delta must stop being found")

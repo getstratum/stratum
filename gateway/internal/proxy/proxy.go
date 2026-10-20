@@ -114,40 +114,14 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// ── Authenticate ────────────────────────────────────────────────────
-	key, err := auth.Resolve(snap, auth.ExtractKey(r))
-	if err != nil {
-		code := "invalid_api_key"
-		if errors.Is(err, auth.ErrMissingKey) {
-			code = "missing_api_key"
-		}
-		h.fail(w, rec, &policy.Violation{Status: http.StatusUnauthorized, Code: code, Message: err.Error()})
+	// ── Authenticate, and whose policy applies ──────────────────────────
+	key, teamID, userID, v := h.caller(r, snap)
+	rec.keyID = key.ID // empty when the key is not valid: the request is nobody's
+	if v != nil {
+		h.fail(w, rec, v)
 		return
 	}
-	rec.keyID = key.ID
-
-	// ── Acting for a person ─────────────────────────────────────────────
-	// A key that delegates (an application such as a chat portal) names the
-	// person it acts for; the request then follows that person's team
-	// policy and its usage is theirs. Any other key sending the header is
-	// refused rather than ignored, so a misconfigured application cannot
-	// spend under its own team without noticing.
-	teamID := key.TeamID
-	if person := r.Header.Get("X-Stratum-User"); person != "" {
-		if !key.Delegates {
-			h.fail(w, rec, &policy.Violation{Status: http.StatusForbidden, Code: "delegation_not_allowed",
-				Message: "this key cannot act on behalf of a person"})
-			return
-		}
-		team, ok := snap.Person(person)
-		if !ok {
-			h.fail(w, rec, &policy.Violation{Status: http.StatusForbidden, Code: "unknown_user",
-				Message: "the person in X-Stratum-User does not exist or may not use applications"})
-			return
-		}
-		teamID, rec.userID = team, person
-	}
-	rec.teamID = teamID
+	rec.teamID, rec.userID = teamID, userID
 
 	// ── Route ───────────────────────────────────────────────────────────
 	slug, upstreamPath, explicit, ok := splitRoute(r.URL.Path)
@@ -352,6 +326,38 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.Quota.Add(teamID, total)
 		h.Metrics.UpstreamTokens.Add(total)
 	}
+}
+
+// caller authenticates the request's key and resolves whose policy applies:
+// the key's team, or, for a key that delegates (an application such as a
+// chat portal), the team of the person named in X-Stratum-User, whose usage
+// the request then is. Any other key sending the header is refused rather
+// than ignored, so a misconfigured application cannot spend under its own
+// team without noticing. key.ID is set whenever the key is valid, refused
+// or not, so the refusal is reported under it.
+func (h *Handler) caller(r *http.Request, snap *snapshot.Snapshot) (key snapshot.Key, teamID, userID string, v *policy.Violation) {
+	key, err := auth.Resolve(snap, auth.ExtractKey(r))
+	if err != nil {
+		code := "invalid_api_key"
+		if errors.Is(err, auth.ErrMissingKey) {
+			code = "missing_api_key"
+		}
+		return snapshot.Key{}, "", "", &policy.Violation{Status: http.StatusUnauthorized, Code: code, Message: err.Error()}
+	}
+	person := r.Header.Get("X-Stratum-User")
+	if person == "" {
+		return key, key.TeamID, "", nil
+	}
+	if !key.Delegates {
+		return key, "", "", &policy.Violation{Status: http.StatusForbidden, Code: "delegation_not_allowed",
+			Message: "this key cannot act on behalf of a person"}
+	}
+	team, ok := snap.Person(person)
+	if !ok {
+		return key, "", "", &policy.Violation{Status: http.StatusForbidden, Code: "unknown_user",
+			Message: "the person in X-Stratum-User does not exist or may not use applications"}
+	}
+	return key, team, person, nil
 }
 
 // splitRoute maps a public path to (provider, upstream path).
