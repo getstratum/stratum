@@ -49,6 +49,12 @@
           "type": "array",
           "maxItems": 20,
           "items": { "type": "string", "pattern": "^[a-z0-9_]{1,40}$" }
+        },
+        "labels": {
+          "description": "Optional, from 0.4. Labels the application put on the request (X-Stratum-Labels), such as a topic. Apart from content_flags: never counted as a finding.",
+          "type": "array",
+          "maxItems": 8,
+          "items": { "type": "string", "pattern": "^[a-z0-9_]{1,40}$" }
         }
       }
     }

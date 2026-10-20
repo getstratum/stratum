@@ -96,6 +96,12 @@ tests against it, see [deploy/gcp](deploy/gcp/README.md).
 
 Developers authenticate with `Authorization: Bearer <key>` or `x-api-key: <key>`.
 
+Any request may carry `X-Stratum-Labels: topic_legal, feature_summaries`: up
+to 8 labels of lowercase letters, digits and `_`, which travel with its usage
+record and group it in the console's Consumo. A malformed label is refused
+with `invalid_labels` rather than dropped, so a typo does not quietly skew
+the reports.
+
 An agent can have a **fixed model**, set in the console: every request of
 its key goes to that provider and model, whatever model it asks for (it
 need not send one), still within the team's policy. The response carries

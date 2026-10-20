@@ -49,6 +49,8 @@ type Record struct {
 	TokensIn     int64     `json:"tokens_in"`
 	TokensOut    int64     `json:"tokens_out"`
 	ContentFlags []string  `json:"content_flags,omitempty"`
+	// Labels the application put on the request (X-Stratum-Labels).
+	Labels []string `json:"labels,omitempty"`
 }
 
 // Batch is the body of POST /api/internal/usage (api/usage/v1).

@@ -16,10 +16,11 @@ const DIMS = [
   { id: 'user',     label: 'Personas',    one: 'Persona' },
   { id: 'model',    label: 'Modelos',     one: 'Modelo' },
   { id: 'provider', label: 'Proveedores', one: 'Proveedor' },
+  { id: 'label',    label: 'Etiquetas',   one: 'Etiqueta' },
 ]
 const dimOf = id => DIMS.find(d => d.id === id)
 // Clicking a row narrows to it and groups by the next useful dimension.
-const NEXT = { team: 'agent', agent: 'model', user: 'model', model: 'agent', provider: 'model' }
+const NEXT = { team: 'agent', agent: 'model', user: 'model', model: 'agent', provider: 'model', label: 'user' }
 
 const METRICS = [
   { id: 'cost',     label: 'Costo' },
@@ -189,7 +190,7 @@ export default function UsagePage() {
               </button>
             </p>
           ) : (
-            <p className="text-sm text-muted">Por equipo, agente, persona, modelo o proveedor. Tocá una fila para ver su detalle.</p>
+            <p className="text-sm text-muted">Por equipo, agente, persona, modelo, proveedor o etiqueta. Tocá una fila para ver su detalle.</p>
           )}
         </div>
         <div className="flex flex-col gap-1">
@@ -298,7 +299,7 @@ export default function UsagePage() {
                           {swatch && <span className="w-2.5 h-2.5 rounded-sm flex-none" style={{ background: swatch }} aria-hidden="true" />}
                           {r.key ? (
                             <button type="button" onClick={() => { setFilter({ kind: by, value: r.key }); setBy(NEXT[by]) }}
-                              className={`text-left text-accent hover:text-accent-hover ${by === 'model' ? 'font-mono text-[13px]' : ''}`}>
+                              className={`text-left text-accent hover:text-accent-hover ${by === 'model' || by === 'label' ? 'font-mono text-[13px]' : ''}`}>
                               {r.label}
                             </button>
                           ) : <span className="text-muted">{r.label}</span>}

@@ -44,6 +44,8 @@ export function normalizeRecord(r, now = Date.now()) {
   if (typeof reason !== 'string' || !REASON_RE.test(reason)) return null
   const flags = r.content_flags ?? []
   if (!Array.isArray(flags) || flags.length > 20 || !flags.every(f => typeof f === 'string' && FLAG_RE.test(f))) return null
+  const labels = r.labels ?? []
+  if (!Array.isArray(labels) || labels.length > 8 || !labels.every(l => typeof l === 'string' && FLAG_RE.test(l))) return null
   const text = (v, max) => (typeof v === 'string' ? v.slice(0, max) : '')
 
   return {
@@ -63,6 +65,7 @@ export function normalizeRecord(r, now = Date.now()) {
     tokens_in: clampInt(r.tokens_in),
     tokens_out: clampInt(r.tokens_out),
     flags: [...new Set(flags)].join(','),
+    labels: [...new Set(labels)].sort().join(','),
   }
 }
 
@@ -79,14 +82,14 @@ export async function ingest(db, instance, records) {
        SELECT * FROM unnest(
          $3::uuid[], $4::timestamptz[], $5::text[], $6::text[], $7::text[], $8::text[], $9::text[],
          $10::int[], $11::text[], $12::bool[], $13::int[], $14::int[], $15::int[], $16::int[], $17::text[],
-         $18::text[]
+         $18::text[], $19::text[]
        ) AS t(id, ts, request_id, key_id, team_id, provider, model,
-              status, reason, stream, duration_ms, upstream_ms, tokens_in, tokens_out, flags, user_id)
+              status, reason, stream, duration_ms, upstream_ms, tokens_in, tokens_out, flags, user_id, labels)
      )
      INSERT INTO request_logs (
        id, created_at, org_id, team_id, user_id, agent_id, provider, model_id,
        tokens_input, tokens_output, cost_usd, status_code, latency_ms, provider_ms,
-       is_stream, error_message, pii_flagged, pii_types, instance_id, request_id)
+       is_stream, error_message, pii_flagged, pii_types, instance_id, request_id, labels)
      SELECT r.id, r.ts, $1::uuid, tm.id, u.id, a.id, r.provider, r.model,
             r.tokens_in, r.tokens_out,
             -- request_logs.cost_usd is DECIMAL(10,6): a cost past it would
@@ -96,7 +99,8 @@ export async function ingest(db, instance, records) {
                   9999.999999),
             r.status, r.duration_ms, r.upstream_ms,
             r.stream, NULLIF(r.reason, 'ok'), r.flags <> '',
-            COALESCE(string_to_array(NULLIF(r.flags, ''), ','), '{}'), $2, r.request_id
+            COALESCE(string_to_array(NULLIF(r.flags, ''), ','), '{}'), $2, r.request_id,
+            COALESCE(string_to_array(NULLIF(r.labels, ''), ','), '{}')
        FROM r
        LEFT JOIN teams tm  ON tm.id::text = r.team_id AND tm.org_id = $1::uuid
        -- The person: the one a delegating key acted for, else the key's owner.
@@ -126,7 +130,8 @@ export async function ingest(db, instance, records) {
      col(records, 'id'), col(records, 'ts'), col(records, 'request_id'), col(records, 'key_id'),
      col(records, 'team_id'), col(records, 'provider'), col(records, 'model'), col(records, 'status'),
      col(records, 'reason'), col(records, 'stream'), col(records, 'duration_ms'), col(records, 'upstream_ms'),
-     col(records, 'tokens_in'), col(records, 'tokens_out'), col(records, 'flags'), col(records, 'user_id')])
+     col(records, 'tokens_in'), col(records, 'tokens_out'), col(records, 'flags'), col(records, 'user_id'),
+     col(records, 'labels')])
   await db.query('UPDATE data_plane_instances SET last_usage_at = now() WHERE id = $1', [instance.id])
   return rowCount
 }

@@ -16,7 +16,8 @@
       "upstream_ms": 310,
       "tokens_in": 60,
       "tokens_out": 40,
-      "content_flags": ["email"]
+      "content_flags": ["email"],
+      "labels": ["feature_code_review", "topic_code"]
     },
     {
       "id": "0b9a8c7d-6e5f-4a3b-8c2d-1e0f9a8b7c6d",
