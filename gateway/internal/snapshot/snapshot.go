@@ -28,9 +28,12 @@ type Policy struct {
 	DeniedModels      map[string]struct{} // turned off for the organization; wins over the allowlist
 	MonthlyTokenQuota *int64
 	MonthlyBudgetUSD  *float64
-	PIIAction         string // off | log | redact | block
-	DLPAction         string // off | log | redact | block
-	Revoked           bool
+	// MaxTokensPerRequest caps the output tokens a request may ask for
+	// (nil: no cap). Requests above it are lowered; see proxy.capOutputTokens.
+	MaxTokensPerRequest *int64
+	PIIAction           string // off | log | redact | block
+	DLPAction           string // off | log | redact | block
+	Revoked             bool
 }
 
 // Provider is an enabled upstream provider configuration.
@@ -94,6 +97,10 @@ func Build(st *State, syncedAt time.Time) *Snapshot {
 		if p.MonthlyBudgetUSD != nil {
 			v := float64(*p.MonthlyBudgetUSD)
 			pol.MonthlyBudgetUSD = &v
+		}
+		if p.MaxTokensPerRequest != nil && *p.MaxTokensPerRequest > 0 {
+			v := int64(*p.MaxTokensPerRequest)
+			pol.MaxTokensPerRequest = &v
 		}
 		s.policiesByTeam[teamID] = pol
 	}

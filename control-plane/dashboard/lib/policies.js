@@ -29,6 +29,12 @@ export function policyFields(body) {
     if (typeof body.allowAllModels !== 'boolean') throw badRequest('allowAllModels tiene que ser true o false.')
     out.allowAllModels = body.allowAllModels
   }
+  // Gateways refuse the teams' requests once the month's spend reaches the
+  // budget (from 0.3); off, the budget is a reference.
+  if (body.budgetEnforced !== undefined) {
+    if (typeof body.budgetEnforced !== 'boolean') throw badRequest('budgetEnforced tiene que ser true o false.')
+    out.budgetEnforced = body.budgetEnforced
+  }
   // null: every provider configured in the organization.
   if (body.allowedProviders !== undefined) {
     if (body.allowedProviders === null) {
@@ -41,7 +47,10 @@ export function policyFields(body) {
       out.allowedProviders = [...new Set(body.allowedProviders)]
     }
   }
-  out.maxTokensPerRequest = optionalNumber(body.maxTokensPerRequest, 'Máximo de tokens por request', { integer: true })
+  // null: no limit. Gateways lower requests that ask for more (from 0.3).
+  out.maxTokensPerRequest = body.maxTokensPerRequest === null || body.maxTokensPerRequest === ''
+    ? null : optionalNumber(body.maxTokensPerRequest, 'Máximo de tokens por pedido', { integer: true })
+  if (out.maxTokensPerRequest === 0) throw badRequest('Máximo de tokens por pedido inválido: vacío para no limitar.')
   out.monthlyTokenQuota   = optionalNumber(body.monthlyTokenQuota, 'Cuota mensual de tokens', { integer: true })
   out.monthlyBudgetUsd    = optionalNumber(body.monthlyBudgetUsd, 'Presupuesto mensual')
   for (const k of Object.keys(out)) if (out[k] === undefined) delete out[k]  // null stays: it means "all"

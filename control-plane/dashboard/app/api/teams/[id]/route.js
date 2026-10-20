@@ -37,6 +37,17 @@ export const PATCH = route('teams.budget', async (req, { session, db, params }) 
   if (body.monthlyBudgetUsd !== undefined) {
     const v = body.monthlyBudgetUsd === null ? null : Number(body.monthlyBudgetUsd)
     if (v !== null && !(Number.isFinite(v) && v >= 0)) throw badRequest('Presupuesto inválido.')
+    // When the policy cuts at the budget, the budget is a limit set by
+    // administration: a team manager may lower it, not raise it past the
+    // policy's.
+    if (v !== null && scopeFor(session.role, 'teams.manage') !== 'org') {
+      const { rows: [p] } = await db.query(`
+        SELECT p.monthly_budget_usd FROM teams t JOIN policies p ON p.id = t.policy_id
+         WHERE t.id = $1 AND t.org_id = $2 AND p.budget_enforced`, [id, session.orgId])
+      if (p && (p.monthly_budget_usd == null || v > Number(p.monthly_budget_usd))) {
+        throw forbidden('La política corta al llegar al presupuesto: solo administración puede subirlo por encima del de la política.')
+      }
+    }
     set('monthly_budget_usd', v)
   }
   if (!fields.length) throw badRequest('Nada para actualizar.')

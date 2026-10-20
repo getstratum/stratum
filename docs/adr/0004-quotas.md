@@ -66,5 +66,8 @@ field in the sync contract and no adopter has asked for mixed modes yet.
 - Sentinel discovery is not implemented: point `STRATUM_VALKEY_URL` at a
   stable endpoint (a managed service, or a Kubernetes Service in front of the
   current primary).
-- USD budgets are still not enforced: the gateway needs a model price table
-  from the control plane first.
+- USD budgets are enforced from 0.3 without a price table in the gateway:
+  the control plane sends each team's spend this month with every sync
+  (`month_usage`), and the same report is a floor for the token count, so
+  a Valkey that lost its data or a replica without Valkey no longer resets
+  the month (docs/console/teams.md).

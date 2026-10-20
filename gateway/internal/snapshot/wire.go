@@ -64,6 +64,25 @@ type SyncResponse struct {
 	Policies          []WirePolicy         `json:"policies"`
 	APIKeys           []WireAPIKey         `json:"api_keys"`
 	ProviderConfigs   []WireProviderConfig `json:"provider_configs"`
+	// MonthUsage is each team's usage this month as the control plane
+	// counted it. Sent with every sync, full or delta, since it is not
+	// versioned; absent from control planes before 0.3.
+	MonthUsage *WireMonthUsage `json:"month_usage,omitempty"`
+}
+
+// WireMonthUsage is the organization's usage in the current UTC month, per
+// team, from every gateway's usage reports. Teams without usage are left out.
+type WireMonthUsage struct {
+	Month string          `json:"month"` // "2006-01", UTC
+	Teams []WireTeamUsage `json:"teams"`
+}
+
+// WireTeamUsage is one team's usage this month: tokens in and out, and the
+// cost the control plane computed with the organization's prices.
+type WireTeamUsage struct {
+	TeamID  string  `json:"team_id"`
+	Tokens  Int64   `json:"tokens"`
+	CostUSD Float64 `json:"cost_usd"`
 }
 
 // WirePolicy is a team policy. One row per team: the control plane joins
@@ -80,9 +99,12 @@ type WirePolicy struct {
 	DeniedModels      []string `json:"denied_models,omitempty"`
 	MonthlyTokenQuota *Int64   `json:"monthly_token_quota"`
 	MonthlyBudgetUSD  *Float64 `json:"monthly_budget_usd"`
-	PIIAction         string   `json:"pii_action,omitempty"`
-	DLPAction         string   `json:"dlp_action,omitempty"`
-	Revoked           bool     `json:"revoked"`
+	// MaxTokensPerRequest caps the output tokens of each request; absent
+	// from control planes before 0.3.
+	MaxTokensPerRequest *Int64 `json:"max_tokens_per_request,omitempty"`
+	PIIAction           string `json:"pii_action,omitempty"`
+	DLPAction           string `json:"dlp_action,omitempty"`
+	Revoked             bool   `json:"revoked"`
 }
 
 // WireAPIKey is a developer API key. Only the SHA-256 hex digest travels;

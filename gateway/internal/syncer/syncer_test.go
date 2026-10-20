@@ -177,3 +177,41 @@ func TestLoadStatic(t *testing.T) {
 		t.Fatal("unknown field (typo) must fail")
 	}
 }
+
+func TestMonthUsageIsHandedOnEverySync(t *testing.T) {
+	withUsage := func(s string) string {
+		return strings.TrimSuffix(s, "}") + `,"month_usage":{"month":"2026-10","teams":[{"team_id":"t1","tokens":"1200","cost_usd":"3.25"}]}}`
+	}
+	f := &fakeCP{full: withUsage(keysJSON(5, "a1", "b1")), delta: keysJSON(5)}
+	c, _, _ := newCP(t, f)
+	var got []*snapshot.WireMonthUsage
+	c.MonthUsage = func(u *snapshot.WireMonthUsage) { got = append(got, u) }
+
+	if _, _, err := c.SyncOnce(context.Background(), false); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Month != "2026-10" || got[0].Teams[0].Tokens != 1200 || got[0].Teams[0].CostUSD != 3.25 {
+		t.Fatalf("full sync: %+v", got)
+	}
+	if c.Metrics.MonthUsageReported.Load() == 0 {
+		t.Fatal("the time of the report is exported")
+	}
+	// A control plane before 0.3 sends no month_usage: nothing is handed on,
+	// so the last report stays.
+	if _, _, err := c.SyncOnce(context.Background(), false); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("a sync without month_usage must not call MonthUsage: %d calls", len(got))
+	}
+	// A delta with no configuration change still carries it.
+	f.mu.Lock()
+	f.delta = withUsage(keysJSON(5))
+	f.mu.Unlock()
+	if _, _, err := c.SyncOnce(context.Background(), false); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("delta: %d calls", len(got))
+	}
+}

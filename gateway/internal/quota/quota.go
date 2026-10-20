@@ -10,8 +10,12 @@
 //     refreshes, and when Valkey is unreachable the gateway keeps counting
 //     locally and catches up when it returns (docs/adr/0004).
 //
-// Budget in USD is not enforced yet: the gateway needs a model price table
-// from the control plane first.
+// Both also take the usage the control plane reports with each sync
+// (Reported): a team's tokens are the larger of what this gateway counted
+// and what the control plane counted, so a restart, a replica that counts on
+// its own or another gateway of the organization does not reset the month.
+// The monthly budget in USD is enforced with the reported spend only: the
+// control plane prices usage, the gateway does not.
 package quota
 
 import (
@@ -29,6 +33,7 @@ type Enforcer interface {
 	Check(teamID string, pol snapshot.Policy) *policy.Violation
 	// Add records tokens consumed by a finished request.
 	Add(teamID string, tokens int64)
+	ReportedSetter
 }
 
 var exceeded = &policy.Violation{Status: http.StatusTooManyRequests, Code: "quota_exceeded",
@@ -39,6 +44,7 @@ func Month(t time.Time) string { return t.UTC().Format("2006-01") }
 
 // Local counts in process memory.
 type Local struct {
+	reported
 	mu     sync.Mutex
 	month  string
 	tokens map[string]int64
@@ -49,17 +55,19 @@ func NewLocal() *Local { return &Local{tokens: map[string]int64{}, now: time.Now
 
 // Check returns a violation when the team has used up its monthly tokens.
 func (l *Local) Check(teamID string, pol snapshot.Policy) *policy.Violation {
-	if pol.MonthlyTokenQuota == nil {
+	if pol.MonthlyTokenQuota == nil && pol.MonthlyBudgetUSD == nil {
 		return nil
 	}
 	l.mu.Lock()
 	l.rollover()
 	used := l.tokens[teamID]
+	month := l.month
 	l.mu.Unlock()
-	if used >= *pol.MonthlyTokenQuota {
+	rep, known := l.get(month, teamID)
+	if pol.MonthlyTokenQuota != nil && max(used, rep.Tokens) >= *pol.MonthlyTokenQuota {
 		return exceeded
 	}
-	return nil
+	return checkBudget(rep, known, pol)
 }
 
 // Add records tokens consumed by a finished request.
@@ -73,12 +81,15 @@ func (l *Local) Add(teamID string, tokens int64) {
 	l.mu.Unlock()
 }
 
-// Used returns the tokens a team has consumed this month.
+// Used returns the tokens a team has consumed this month: the larger of this
+// gateway's count and the control plane's.
 func (l *Local) Used(teamID string) int64 {
 	l.mu.Lock()
-	defer l.mu.Unlock()
 	l.rollover()
-	return l.tokens[teamID]
+	used, month := l.tokens[teamID], l.month
+	l.mu.Unlock()
+	rep, _ := l.get(month, teamID)
+	return max(used, rep.Tokens)
 }
 
 func (l *Local) rollover() {

@@ -23,11 +23,34 @@ may use, and how many tokens per month.
 | Setting | Where | Enforced by the gateway |
 |---|---|---|
 | Allowed providers and models | Policy | yes, on every request |
-| Monthly token quota | Policy, per team | yes: past 100 % the team's requests are refused until the next month (ADR-0004) |
-| Monthly budget (US$) | Policy, or the team's own | no: a reference the console compares spending against |
-| Max tokens per request | Policy | no: stored, not sent to gateways yet |
+| Monthly token quota | Policy, per team | yes: past 100 % the team's requests are refused until the next month (`quota_exceeded`, 429; ADR-0004) |
+| Monthly budget (US$) | Policy, or the team's own | when the policy says so (*Cortar los pedidos al llegar al presupuesto*): past 100 % the team's requests are refused until the next month (`budget_exceeded`, 429). Otherwise a reference the console compares spending against |
+| Max tokens per request | Policy | yes: a request that asks for more output tokens is lowered to the limit, and one that asks for none gets it (`X-Stratum-Max-Tokens` in the response says so). Empty: no limit |
 
-A team's own budget, when set, takes the place of its policy's.
+A team's own budget, when set, takes the place of its policy's. When the
+policy cuts at the budget, a team manager may lower the team's budget but
+not raise it past the policy's.
+
+### The month's usage, from the control plane
+
+Gateways count tokens themselves, but one gateway does not see another's
+traffic, a replica without Valkey counts on its own, and a restart starts
+from zero. So with every sync the control plane sends each team's usage this
+month as it counted it from every gateway's reports (`month_usage`, from
+`team_usage_monthly`), and gateways use:
+
+- for the token quota, the larger of their own count and the control
+  plane's;
+- for the budget, the control plane's spend: it prices usage with the
+  organization's rates, gateways do not.
+
+The control plane's count arrives about a minute late (usage is reported
+every 10 s, synced every 30 s), so a team can go past a limit by what it
+spends in that time. Until a gateway gets its first report of the month,
+it does not enforce budgets (`stratum_month_usage_age_seconds` is -1).
+Gateways before 0.3 enforce only their own token count; standalone gateways
+(a configuration file, no control plane) never get a report, so they do not
+enforce budgets.
 
 ## Alerts
 

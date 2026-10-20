@@ -48,9 +48,12 @@ type ControlPlane struct {
 	// state it replaced (nil on the first sync) and whether next came from a
 	// full resync, i.e. is the control plane's complete current state.
 	Persist func(prev, next *snapshot.State, full bool)
-	Client  *http.Client
-	Log     *slog.Logger
-	Metrics *metrics.Metrics
+	// MonthUsage is optional; it is called with the usage the control plane
+	// reports in each successful sync (quotas and budgets use it).
+	MonthUsage func(*snapshot.WireMonthUsage)
+	Client     *http.Client
+	Log        *slog.Logger
+	Metrics    *metrics.Metrics
 
 	now      func() time.Time
 	lastFull time.Time
@@ -116,6 +119,11 @@ func (c *ControlPlane) SyncOnce(ctx context.Context, forceFull bool) (time.Durat
 		c.Log.Warn("control plane version went backwards; forcing a full resync",
 			"local_version", prev.Version, "remote_version", int64(resp.CurrentVersion))
 		return 0, true, nil
+	}
+
+	if resp.MonthUsage != nil && c.MonthUsage != nil {
+		c.MonthUsage(resp.MonthUsage)
+		c.Metrics.MonthUsageReported.Store(now.Unix())
 	}
 
 	next, err := prev.Apply(resp, full)

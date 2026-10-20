@@ -25,7 +25,8 @@
     "provider_configs": {
       "type": "array",
       "items": { "$ref": "#/$defs/providerConfig" }
-    }
+    },
+    "month_usage": { "$ref": "#/$defs/monthUsage" }
   },
   "$defs": {
     "integer": {
@@ -68,7 +69,14 @@
         },
         "allowed_providers": { "type": ["array", "null"], "items": { "type": "string" } },
         "monthly_token_quota": { "anyOf": [{ "$ref": "#/$defs/integer" }, { "type": "null" }] },
-        "monthly_budget_usd": { "anyOf": [{ "$ref": "#/$defs/decimal" }, { "type": "null" }] },
+        "monthly_budget_usd": {
+          "description": "The team's own monthly budget when it has one, the policy's otherwise. Gateways from 0.3 refuse the team's requests (budget_exceeded) once month_usage reports that much spend.",
+          "anyOf": [{ "$ref": "#/$defs/decimal" }, { "type": "null" }]
+        },
+        "max_tokens_per_request": {
+          "description": "Most output tokens a request may ask for; null or absent: no limit. Gateways from 0.3 lower requests that ask for more, and set it on requests that ask for nothing.",
+          "anyOf": [{ "$ref": "#/$defs/integer" }, { "type": "null" }]
+        },
         "pii_action": { "$ref": "#/$defs/action" },
         "dlp_action": { "$ref": "#/$defs/action" },
         "revoked": { "type": "boolean", "description": "True disables the whole team." }
@@ -107,6 +115,26 @@
         "enabled": { "type": "boolean" },
         "version": { "$ref": "#/$defs/integer" },
         "revoked": { "type": "boolean" }
+      }
+    },
+    "monthUsage": {
+      "description": "Each team's usage in the current UTC month, as the control plane counted it from every gateway's usage reports, with the cost it computed at the organization's prices. Not versioned: sent with every sync, full or delta. Gateways use the tokens as a floor for monthly_token_quota (their own count may have been reset or cover only one replica) and the cost for monthly_budget_usd. Teams without usage are left out. Control planes before 0.3 do not send it.",
+      "type": "object",
+      "required": ["month", "teams"],
+      "properties": {
+        "month": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}$" },
+        "teams": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["team_id", "tokens", "cost_usd"],
+            "properties": {
+              "team_id": { "type": "string", "minLength": 1 },
+              "tokens": { "$ref": "#/$defs/integer" },
+              "cost_usd": { "$ref": "#/$defs/decimal" }
+            }
+          }
+        }
       }
     }
   }

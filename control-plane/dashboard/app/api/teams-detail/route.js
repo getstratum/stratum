@@ -8,6 +8,7 @@ export const GET = route('usage.read', async (req, { session, db }) => {
       t.id, t.name, t.department, t.monthly_budget_usd AS team_budget,
       p.id AS policy_id, p.name AS policy_name, p.allowed_models, p.allow_all_models,
       p.monthly_token_quota, p.monthly_budget_usd AS policy_budget,
+      COALESCE(p.budget_enforced, false) AS budget_enforced,
       (SELECT count(*) FROM users u WHERE u.team_id = t.id AND COALESCE(u.is_active, true)) AS total_users,
       (SELECT count(*) FROM users u WHERE u.team_id = t.id)  AS members,
       (SELECT count(*) FROM agents a WHERE a.team_id = t.id) AS agents,

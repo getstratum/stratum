@@ -89,6 +89,7 @@ type SharedOptions struct {
 // consumed that Valkey has not confirmed yet. Check and Add only touch
 // memory. Run flushes local deltas and refreshes totals every Interval.
 type Shared struct {
+	reported
 	o       SharedOptions
 	replica string
 	now     func() time.Time
@@ -144,24 +145,33 @@ func NewShared(o SharedOptions) *Shared {
 }
 
 func (s *Shared) Check(teamID string, pol snapshot.Policy) *policy.Violation {
-	if pol.MonthlyTokenQuota == nil {
+	if pol.MonthlyTokenQuota == nil && pol.MonthlyBudgetUSD == nil {
 		return nil
 	}
 	s.mu.Lock()
 	now := s.now()
 	s.rollover(now)
-	s.seen[teamID] = now
+	month := s.month
 	used := s.global[teamID] + s.unconfirmed[teamID]
 	stale := now.Sub(s.lastOK) > s.o.StaleAfter
+	if pol.MonthlyTokenQuota != nil {
+		s.seen[teamID] = now
+	}
 	s.mu.Unlock()
+	rep, known := s.get(month, teamID)
 
-	if stale && s.o.FailClosed {
-		return unavailable
+	if pol.MonthlyTokenQuota != nil {
+		if stale && s.o.FailClosed {
+			return unavailable
+		}
+		// The control plane's count covers what the store may have lost
+		// (a Valkey restarted without persistence) and gateways that do
+		// not share this store.
+		if max(used, rep.Tokens) >= *pol.MonthlyTokenQuota {
+			return exceeded
+		}
 	}
-	if used >= *pol.MonthlyTokenQuota {
-		return exceeded
-	}
-	return nil
+	return checkBudget(rep, known, pol)
 }
 
 func (s *Shared) Add(teamID string, tokens int64) {
@@ -176,12 +186,15 @@ func (s *Shared) Add(teamID string, tokens int64) {
 	s.mu.Unlock()
 }
 
-// Used returns the team's usage as this replica currently sees it.
+// Used returns the team's usage as this replica currently sees it: the
+// larger of the shared count and the control plane's.
 func (s *Shared) Used(teamID string) int64 {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	s.rollover(s.now())
-	return s.global[teamID] + s.unconfirmed[teamID]
+	used, month := s.global[teamID]+s.unconfirmed[teamID], s.month
+	s.mu.Unlock()
+	rep, _ := s.get(month, teamID)
+	return max(used, rep.Tokens)
 }
 
 // rollover starts a new month. Pending deltas of the old month are kept and

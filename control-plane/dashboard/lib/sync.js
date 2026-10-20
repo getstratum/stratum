@@ -43,7 +43,7 @@ export async function buildSyncResponse(client, { orgId, sinceVersion, syncInter
   const q = async (sql, params) => (await client.query(sql, params)).rows
 
   await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY')
-  let version, policies, apiKeys, providerConfigs, tombstones
+  let version, policies, apiKeys, providerConfigs, tombstones, usage, usageMonth
   try {
     ;[{ v: version }] = await q('SELECT stratum_sync_version($1)::bigint AS v', [orgId])
 
@@ -63,7 +63,11 @@ export async function buildSyncResponse(client, { orgId, sinceVersion, syncInter
         -- under "all models".
         stratum_org_denied_models($2)                    AS denied_models,
         p.monthly_token_quota,
-        p.monthly_budget_usd,
+        -- What gateways enforce (migration 026): the team's own budget or
+        -- the policy's, only when the policy cuts at the budget.
+        CASE WHEN COALESCE(p.budget_enforced, false)
+             THEN COALESCE(t.monthly_budget_usd, p.monthly_budget_usd) END AS monthly_budget_usd,
+        p.max_tokens_per_request,
         COALESCE(p.pii_action, 'off')                    AS pii_action,
         COALESCE(p.dlp_action, 'off')                    AS dlp_action,
         p.allowed_providers,
@@ -136,6 +140,16 @@ export async function buildSyncResponse(client, { orgId, sinceVersion, syncInter
       ORDER BY version ASC
     `, [since, orgId, FULL_SYNC_TOMBSTONE_DAYS])
 
+    // Each team's usage this month (migration 026), with every sync: not
+    // versioned. Gateways use it as a floor for quotas and for budgets.
+    ;[{ m: usageMonth }] = await q(`SELECT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM') AS m`)
+    usage = await q(`
+      SELECT team_id::text AS team_id, tokens, cost_usd
+        FROM team_usage_monthly
+       WHERE org_id = $1 AND month = date_trunc('month', now() AT TIME ZONE 'UTC')::date
+       ORDER BY team_id
+    `, [orgId])
+
     await client.query('COMMIT')
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {})
@@ -154,6 +168,7 @@ export async function buildSyncResponse(client, { orgId, sinceVersion, syncInter
       version:             num(p.version),
       monthly_token_quota: num(p.monthly_token_quota),
       monthly_budget_usd:  num(p.monthly_budget_usd),
+      max_tokens_per_request: num(p.max_tokens_per_request),
     })),
     api_keys: apiKeys.map(k => ({ ...k, version: num(k.version) })),
     provider_configs: providerConfigs.map(pc => {
@@ -178,6 +193,10 @@ export async function buildSyncResponse(client, { orgId, sinceVersion, syncInter
         revoked:      pc.revoked,
       }
     }).filter(Boolean),
+    month_usage: {
+      month: usageMonth,
+      teams: usage.map(u => ({ team_id: u.team_id, tokens: num(u.tokens), cost_usd: num(u.cost_usd) })),
+    },
   }
 
   for (const t of tombstones) {
@@ -188,6 +207,7 @@ export async function buildSyncResponse(client, { orgId, sinceVersion, syncInter
       out.policies.push({
         id: '', team_id: t.object_id, version: v, updated_at: null,
         allowed_models: [], allow_all_models: false, monthly_token_quota: null, monthly_budget_usd: null,
+        max_tokens_per_request: null,
         pii_action: 'off', dlp_action: 'off', allowed_providers: null, revoked: true,
       })
     } else if (t.kind === 'provider_config') {
