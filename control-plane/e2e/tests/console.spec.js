@@ -291,6 +291,7 @@ test('gateways: the installation\'s own gateways are syncing', async () => {
   const { body } = await api('GET', '/api/internal/instances')
   const live = body.instances.filter((i) => i.status === 'online')
   expect(live.length, 'at least one gateway synced in the last 2 minutes').toBeGreaterThan(0)
+  for (const gw of live) expect(gw.versions.length, `${gw.name} reports the version it runs`).toBeGreaterThan(0)
 })
 
 // --- models ----------------------------------------------------------------------

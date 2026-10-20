@@ -13,10 +13,10 @@
  */
 
 import { NextResponse } from 'next/server'
-import { query, getDb } from '@/lib/db'
+import { getDb } from '@/lib/db'
 import { buildSyncResponse } from '@/lib/sync'
 import { decryptSecret } from '@/lib/secrets'
-import { authenticateInstance } from '@/lib/instance-auth'
+import { authenticateInstance, recordSync } from '@/lib/instance-auth'
 
 import { tokenRoute } from '@/lib/route'
 
@@ -61,13 +61,8 @@ async function handleSync(request) {
   }
   const currentVersion = body.current_version
 
-  // Heartbeat async
-  query(`
-    UPDATE data_plane_instances
-    SET last_seen_at = now(),
-        last_version = $1
-    WHERE id = $2
-  `, [currentVersion, instance.id]).catch(err =>
+  // Heartbeat, off the response path.
+  recordSync(getDb(), instance.id, currentVersion, request.headers.get('user-agent')).catch(err =>
     console.error('[sync] heartbeat update failed:', err)
   )
 

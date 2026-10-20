@@ -6,6 +6,7 @@ import { useSearchParams } from 'next/navigation'
 import { usePermissions } from '../../components/usePermissions'
 import Modal, { Field, Input, Btn } from '../../components/Modal'
 import { allowedBy } from '../../lib/catalog'
+import { ignoresModelSwitch, MODEL_SWITCH_SINCE } from '../../lib/gateway-version'
 
 const perMillion = v => {
   const n = parseFloat(v) * 1000
@@ -97,16 +98,21 @@ function Models() {
   const [refreshing, setRefreshing] = useState(false)
   const [pricing, setPricing]       = useState(null)
   const [busy, setBusy]             = useState('')
+  const [outdated, setOutdated]     = useState([])
 
   const load = useCallback(async () => {
-    const [m, pol, prov, cat] = await Promise.all([
+    const [m, pol, prov, cat, gws] = await Promise.all([
       fetch('/api/models').then(r => (r.ok ? r.json() : [])).catch(() => []),
       fetch('/api/policies').then(r => (r.ok ? r.json() : [])).catch(() => []),
       fetch('/api/internal/providers').then(r => (r.ok ? r.json() : null)).catch(() => null),
       fetch('/api/models/catalog').then(r => (r.ok ? r.json() : null)).catch(() => null),
+      fetch('/api/internal/instances').then(r => (r.ok ? r.json() : null)).catch(() => null),
     ])
     setCatalog(Array.isArray(m) ? m : [])
     setFeed(cat)
+    // Gateways whose replicas include a release that ignores the off switch
+    // (only for roles that can see gateways).
+    setOutdated((gws?.instances ?? []).filter(g => !g.disabled && g.versions?.some(ignoresModelSwitch)))
     setPolicies(Array.isArray(pol) ? pol : [])
     setConfigured(prov ? prov.providers.filter(p => p.enabled) : null)
     setLoading(false)
@@ -205,6 +211,13 @@ function Models() {
               </button>
             )}
           </div>
+        )}
+        {outdated.length > 0 && (
+          <p role="status" className="text-sm text-warn bg-warn-light rounded-lg px-3 py-2 mt-2">
+            {outdated.map(g => g.name).join(', ')} {outdated.length === 1 ? 'corre' : 'corren'} una versión anterior
+            a {MODEL_SWITCH_SINCE} y no {outdated.length === 1 ? 'rechaza' : 'rechazan'} los modelos apagados acá.{' '}
+            <Link href="/gateways" className="underline">Ver gateways</Link>
+          </p>
         )}
       </header>
 

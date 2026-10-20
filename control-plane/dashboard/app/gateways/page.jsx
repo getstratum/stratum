@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import Modal, { Field, Input, Btn } from '../../components/Modal'
+import { ignoresModelSwitch, olderThan, MODEL_SWITCH_SINCE } from '../../lib/gateway-version'
 
 const API = '/api/internal/instances'
 
@@ -19,6 +20,21 @@ function ago(seconds) {
   if (seconds < 3600) return `hace ${Math.floor(seconds / 60)} min`
   if (seconds < 86400) return `hace ${Math.floor(seconds / 3600)} h`
   return `hace ${Math.floor(seconds / 86400)} d`
+}
+
+const OLD_TITLE = `No rechaza los modelos apagados en Modelos: hace falta ${MODEL_SWITCH_SINCE} o posterior.`
+
+// Versions a gateway's replicas run, oldest first; old ones in amber.
+function Versions({ versions }) {
+  if (!versions?.length) return '—'
+  const sorted = [...versions].sort((a, b) => (olderThan(a, b) ? -1 : olderThan(b, a) ? 1 : a.localeCompare(b)))
+  return (
+    <span className="flex flex-wrap gap-x-2 gap-y-0.5">
+      {sorted.map(v => ignoresModelSwitch(v)
+        ? <span key={v} className="text-warn whitespace-nowrap" title={OLD_TITLE}>{v}</span>
+        : <span key={v} className="whitespace-nowrap">{v}</span>)}
+    </span>
+  )
 }
 
 function Copy({ text }) {
@@ -127,6 +143,8 @@ export default function GatewaysPage() {
     return () => clearInterval(t)
   }, [load])
 
+  const outdated = data.instances.filter(g => !g.disabled && g.versions?.some(ignoresModelSwitch))
+
   async function rotate(gw) {
     if (!window.confirm(`¿Generar un sync token nuevo para ${gw.name}? El actual deja de funcionar ya: el gateway sigue sirviendo con su última configuración hasta que le cargues el nuevo.`)) return
     const res = await fetch(`${API}?id=${gw.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'rotate-token' }) })
@@ -158,18 +176,29 @@ export default function GatewaysPage() {
 
       {error && <p className="text-sm text-err bg-err-light rounded-lg px-4 py-3 mb-4">{error}</p>}
 
+      {outdated.length > 0 && (
+        <p role="status" className="text-sm text-warn bg-warn-light rounded-lg px-4 py-3 mb-4">
+          {outdated.length === 1
+            ? <>{outdated[0].name} corre una versión anterior a {MODEL_SWITCH_SINCE}: sigue sirviendo los modelos
+                apagados en Modelos. Actualizalo para que los rechace.</>
+            : <>{outdated.map(g => g.name).join(', ')} corren una versión anterior a {MODEL_SWITCH_SINCE}: siguen
+                sirviendo los modelos apagados en Modelos. Actualizalos para que los rechacen.</>}
+        </p>
+      )}
+
       <div className="relative bg-card border border-border rounded-[10px] overflow-x-auto">
         {loading ? (
           <p className="p-6 text-sm text-muted">Cargando…</p>
         ) : data.instances.length === 0 ? (
           <p className="p-8 text-sm text-muted">Todavía no hay gateways registrados.</p>
         ) : (
-          <table className="w-full min-w-[820px] text-sm">
+          <table className="w-full min-w-[900px] text-sm">
             <thead>
               <tr className="text-left text-xs uppercase tracking-wide text-muted border-b border-border">
                 <th className="px-5 py-3 font-semibold">Gateway</th>
                 <th className="px-4 py-3 font-semibold">Estado</th>
                 <th className="px-4 py-3 font-semibold whitespace-nowrap">Última sincronización</th>
+                <th className="px-4 py-3 font-semibold">Versión</th>
                 <th className="px-4 py-3 font-semibold">Configuración</th>
                 <th className="px-4 py-3 font-semibold whitespace-nowrap">Último uso reportado</th>
                 <th className="px-5 py-3"><span className="sr-only">Acciones</span></th>
@@ -187,6 +216,9 @@ export default function GatewaysPage() {
                     </td>
                     <td className={`px-4 py-3.5 text-xs font-semibold whitespace-nowrap ${st.cls}`}>● {st.label}</td>
                     <td className="px-4 py-3.5 text-muted">{ago(gw.seconds_since_sync)}</td>
+                    <td className="px-4 py-3.5 text-muted tabular">
+                      <Versions versions={gw.versions} />
+                    </td>
                     <td className="px-4 py-3.5 text-muted">
                       {gw.last_version == null || gw.status === 'never' ? '—' : <>v{gw.last_version} {current ? <span className="text-ok">(actual)</span> : <span className="text-warn">(actual: v{data.current_version})</span>}</>}
                     </td>
