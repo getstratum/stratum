@@ -2,7 +2,7 @@
  * Data plane instances (gateways) of the session's organization.
  *
  * POST   /api/internal/instances         — register one; returns its sync token once
- * GET    /api/internal/instances         — list them
+ * GET    /api/internal/instances         — list them, with the versions they run
  * PATCH  /api/internal/instances?id=...  { action: 'rotate-token' } — new sync token, shown once
  * DELETE /api/internal/instances?id=...  — disable one (its token stops working)
  *
@@ -13,6 +13,7 @@
 import { createHash, randomBytes } from 'crypto'
 import { route, readJson, json, badRequest, notFound } from '@/lib/route'
 import { audit } from '@/lib/audit'
+import { RECENT_MINUTES } from '@/lib/gateway-version'
 
 export const dynamic = 'force-dynamic'
 
@@ -44,6 +45,11 @@ export const GET = route('gateways.read', async (req, { session, db }) => {
       `SELECT id, name, created_at, last_seen_at, last_version, disabled,
               EXTRACT(EPOCH FROM (now() - last_seen_at))::INT AS seconds_since_sync,
               EXTRACT(EPOCH FROM (now() - last_usage_at))::INT AS seconds_since_usage,
+              -- Software versions seen in a sync lately: more than one while
+              -- the replicas are being upgraded (lib/gateway-version.js).
+              ARRAY(SELECT k FROM jsonb_each_text(gateway_versions) AS e(k, v)
+                     WHERE v::timestamptz > now() - make_interval(mins => $2)
+                     ORDER BY k) AS versions,
               CASE
                 WHEN disabled                                     THEN 'disabled'
                 WHEN last_seen_at IS NULL                         THEN 'never'
@@ -54,7 +60,7 @@ export const GET = route('gateways.read', async (req, { session, db }) => {
          FROM data_plane_instances
         WHERE org_id = $1
         ORDER BY disabled, created_at DESC`,
-      [session.orgId]),
+      [session.orgId, RECENT_MINUTES]),
     db.query('SELECT stratum_sync_version($1)::bigint AS v', [session.orgId]),
   ])
   // current_version: the configuration version gateways should be on.
