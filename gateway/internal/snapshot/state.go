@@ -15,6 +15,7 @@ type State struct {
 	Policies  map[string]WirePolicy         `json:"policies"`  // by team_id
 	APIKeys   map[string]WireAPIKey         `json:"api_keys"`  // by id
 	Providers map[string]WireProviderConfig `json:"providers"` // by id
+	People    map[string]WirePerson         `json:"people"`    // by id (from 0.4)
 }
 
 // NewState returns an empty state.
@@ -23,16 +24,22 @@ func NewState() *State {
 		Policies:  map[string]WirePolicy{},
 		APIKeys:   map[string]WireAPIKey{},
 		Providers: map[string]WireProviderConfig{},
+		People:    map[string]WirePerson{},
 	}
 }
 
 func (s *State) clone() *State {
-	return &State{
+	c := &State{
 		Version:   s.Version,
 		Policies:  maps.Clone(s.Policies),
 		APIKeys:   maps.Clone(s.APIKeys),
 		Providers: maps.Clone(s.Providers),
+		People:    maps.Clone(s.People),
 	}
+	if c.People == nil { // a state saved by a gateway before 0.4
+		c.People = map[string]WirePerson{}
+	}
+	return c
 }
 
 // Apply returns a new State with resp applied on top of s. When full is
@@ -66,6 +73,15 @@ func (s *State) Apply(resp *SyncResponse, full bool) (*State, error) {
 			continue
 		}
 		next.APIKeys[k.ID] = k
+	}
+	for _, p := range resp.People {
+		if p.ID == "" {
+			return nil, errors.New("snapshot: a person has no id")
+		}
+		if cur, ok := next.People[p.ID]; ok && int64(cur.Version) > int64(p.Version) {
+			continue
+		}
+		next.People[p.ID] = p
 	}
 	for _, pc := range resp.ProviderConfigs {
 		if pc.ID == "" || pc.Provider == "" {

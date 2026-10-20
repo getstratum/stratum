@@ -32,6 +32,22 @@
       "upstream_ms": 0,
       "tokens_in": 0,
       "tokens_out": 0
+    },
+    {
+      "id": "3c2b1a09-8f7e-4d6c-9b5a-4e3d2c1b0a99",
+      "ts": "2026-10-16T16:05:54.250Z",
+      "key_id": "agent:2b0e6f7c-5d41-4a8e-9c3b-7a1d2e4f6b80",
+      "user_id": "10000000-0000-0000-0000-000000000002",
+      "team_id": "20000000-0000-0000-0000-000000000002",
+      "provider": "openai",
+      "model": "gpt-4o-mini",
+      "status": 200,
+      "reason": "ok",
+      "stream": true,
+      "duration_ms": 1830,
+      "upstream_ms": 240,
+      "tokens_in": 812,
+      "tokens_out": 230
     }
   ]
 }

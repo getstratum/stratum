@@ -1,6 +1,6 @@
 export const dynamic = 'force-dynamic'
 import { route, readJson, json, badRequest, notFound, idParam, assertTeamInScope } from '../../../../lib/route.js'
-import { newApiKey, AGENT_COLUMNS, fixedModel, fixedModelProvider } from '../../../../lib/users.js'
+import { newApiKey, AGENT_COLUMNS, fixedModel, fixedModelProvider, delegatesFlag } from '../../../../lib/users.js'
 import { audit } from '../../../../lib/audit.js'
 
 async function loadAgent(db, session, params) {
@@ -36,6 +36,7 @@ export const PATCH = route('keys.manage', async (req, { session, db, params }) =
   }
   if (body.defaultModel !== undefined) set('default_model', fixedModel(body.defaultModel))
   if (body.defaultProvider !== undefined) set('default_provider', fixedModelProvider(body.defaultProvider))
+  if (body.delegates !== undefined) set('delegates', delegatesFlag(body.delegates, session))
   if (!fields.length) throw badRequest('Nada para actualizar.')
 
   values.push(agent.id, session.orgId)
@@ -43,7 +44,10 @@ export const PATCH = route('keys.manage', async (req, { session, db, params }) =
     `UPDATE agents SET ${fields.join(', ')} WHERE id = $${values.length - 1} AND org_id = $${values.length}`, values)
   await audit(db, {
     req, session, action: 'agent.update', targetType: 'agent', targetId: agent.id,
-    details: { name: agent.name, changed: Object.keys(body).filter(k => body[k] !== undefined) },
+    details: {
+      name: agent.name, changed: Object.keys(body).filter(k => body[k] !== undefined),
+      ...(body.delegates !== undefined ? { delegates: body.delegates } : {}),
+    },
   })
   const { rows } = await db.query(
     `SELECT ${AGENT_COLUMNS} FROM agents a LEFT JOIN teams t ON t.id = a.team_id WHERE a.id = $1`, [agent.id])

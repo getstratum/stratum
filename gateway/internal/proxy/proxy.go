@@ -88,6 +88,7 @@ type record struct {
 	reason     string
 	teamID     string
 	keyID      string
+	userID     string // the person a delegating key acted for
 	provider   string
 	model      string
 	stream     bool
@@ -123,7 +124,30 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, rec, &policy.Violation{Status: http.StatusUnauthorized, Code: code, Message: err.Error()})
 		return
 	}
-	rec.teamID, rec.keyID = key.TeamID, key.ID
+	rec.keyID = key.ID
+
+	// ── Acting for a person ─────────────────────────────────────────────
+	// A key that delegates (an application such as a chat portal) names the
+	// person it acts for; the request then follows that person's team
+	// policy and its usage is theirs. Any other key sending the header is
+	// refused rather than ignored, so a misconfigured application cannot
+	// spend under its own team without noticing.
+	teamID := key.TeamID
+	if person := r.Header.Get("X-Stratum-User"); person != "" {
+		if !key.Delegates {
+			h.fail(w, rec, &policy.Violation{Status: http.StatusForbidden, Code: "delegation_not_allowed",
+				Message: "this key cannot act on behalf of a person"})
+			return
+		}
+		team, ok := snap.Person(person)
+		if !ok {
+			h.fail(w, rec, &policy.Violation{Status: http.StatusForbidden, Code: "unknown_user",
+				Message: "the person in X-Stratum-User does not exist or may not use applications"})
+			return
+		}
+		teamID, rec.userID = team, person
+	}
+	rec.teamID = teamID
 
 	// ── Route ───────────────────────────────────────────────────────────
 	slug, upstreamPath, explicit, ok := splitRoute(r.URL.Path)
@@ -150,7 +174,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	model, _ := body["model"].(string)
 	rec.model = model // as asked, until the route is resolved: errors before that still say what was asked
-	pol, polFound := snap.PolicyForTeam(key.TeamID)
+	pol, polFound := snap.PolicyForTeam(teamID)
 
 	// The request's API format: Anthropic Messages or OpenAI-compatible.
 	anthropicFormat := strings.HasPrefix(upstreamPath, "v1/messages")
@@ -210,7 +234,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, rec, v)
 		return
 	}
-	if v := h.Quota.Check(key.TeamID, pol); v != nil {
+	if v := h.Quota.Check(teamID, pol); v != nil {
 		h.fail(w, rec, v)
 		return
 	}
@@ -325,7 +349,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		rec.reason == "client_closed")
 
 	if total := usage.Input + usage.Output; total > 0 {
-		h.Quota.Add(key.TeamID, total)
+		h.Quota.Add(teamID, total)
 		h.Metrics.UpstreamTokens.Add(total)
 	}
 }
@@ -479,7 +503,7 @@ func (h *Handler) finish(r *http.Request, rec *record) {
 	if h.Usage != nil && rec.keyID != "" {
 		h.Usage.Add(usage.Record{
 			ID: usage.NewID(), Time: rec.start.UTC(), RequestID: usage.Clip(requestID, 128),
-			KeyID: rec.keyID, TeamID: rec.teamID, Provider: usage.Clip(rec.provider, 50), Model: usage.Clip(rec.model, 100),
+			KeyID: rec.keyID, UserID: rec.userID, TeamID: rec.teamID, Provider: usage.Clip(rec.provider, 50), Model: usage.Clip(rec.model, 100),
 			Status: rec.status, Reason: rec.reason, Stream: rec.stream,
 			DurationMs: duration, UpstreamMs: rec.upstreamMs,
 			TokensIn: rec.usage.Input, TokensOut: rec.usage.Output, ContentFlags: rec.piiTypes,
@@ -494,6 +518,9 @@ func (h *Handler) finish(r *http.Request, rec *record) {
 	}
 	if requestID != "" {
 		attrs = append(attrs, "request_id", requestID)
+	}
+	if rec.userID != "" {
+		attrs = append(attrs, "user_id", rec.userID)
 	}
 	if len(rec.piiTypes) > 0 {
 		attrs = append(attrs, "content_flags", rec.piiTypes)

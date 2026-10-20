@@ -206,6 +206,12 @@ function AccessBadges({ user }) {
           API key
         </span>
       )}
+      {user.app_access === false && (
+        <span className="text-xs text-subtle border border-border rounded-full px-2 py-0.5"
+          title="Ninguna aplicación (como un portal de chat) puede actuar en su nombre">
+          Sin aplicaciones
+        </span>
+      )}
       {!user.has_password && !user.has_api_key && (
         <span className="text-xs text-subtle">Sin acceso</span>
       )}
@@ -257,6 +263,15 @@ export default function UsersPage() {
       body: JSON.stringify({ isActive: !user.is_active }),
     })
     if (!res.ok) window.alert((await res.json()).message ?? 'No se pudo cambiar el estado.')
+    load()
+  }
+
+  async function toggleApps(user) {
+    const res = await fetch(`/api/users/${user.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ appAccess: user.app_access === false }),
+    })
+    if (!res.ok) window.alert((await res.json()).message ?? 'No se pudo cambiar el acceso a aplicaciones.')
     load()
   }
 
@@ -401,6 +416,13 @@ export default function UsersPage() {
                         <button onClick={() => revokeKey(user)}
                           className="text-xs text-err hover:text-err px-2 py-1 rounded hover:bg-raised transition-colors whitespace-nowrap">
                           Revocar key
+                        </button>
+                      )}
+                      {canManage && user.is_active && (
+                        <button onClick={() => toggleApps(user)}
+                          title="Aplicaciones que actúan en nombre de personas, como un portal de chat"
+                          className="text-xs text-muted hover:text-default px-2 py-1 rounded hover:bg-raised transition-colors whitespace-nowrap">
+                          {user.app_access === false ? 'Permitir aplicaciones' : 'Quitar aplicaciones'}
                         </button>
                       )}
                       {canManage && (

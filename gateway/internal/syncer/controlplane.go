@@ -144,13 +144,13 @@ func (c *ControlPlane) SyncOnce(ctx context.Context, forceFull bool) (time.Durat
 	c.Metrics.SnapshotVersion.Store(next.Version)
 	c.Metrics.SnapshotSynced.Store(now.Unix())
 
-	changed := full || prev == nil || len(resp.Policies)+len(resp.APIKeys)+len(resp.ProviderConfigs) > 0
+	changed := full || prev == nil || len(resp.Policies)+len(resp.APIKeys)+len(resp.ProviderConfigs)+len(resp.People) > 0
 	if changed && c.Persist != nil {
 		c.Persist(prev, next, full)
 	}
 	if changed {
 		c.Log.Info("configuration applied", "version", next.Version, "full", full,
-			"policies", len(resp.Policies), "api_keys", len(resp.APIKeys), "providers", len(resp.ProviderConfigs))
+			"policies", len(resp.Policies), "api_keys", len(resp.APIKeys), "providers", len(resp.ProviderConfigs), "people", len(resp.People))
 	}
 	return c.interval(resp), false, nil
 }

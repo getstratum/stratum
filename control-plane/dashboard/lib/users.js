@@ -13,6 +13,7 @@ export const USER_COLUMNS = `
   (u.password_hash IS NOT NULL) AS has_password,
   (u.api_key_hash  IS NOT NULL) AS has_api_key,
   (u.totp_enabled_at IS NOT NULL) AS has_mfa,
+  COALESCE(u.app_access, true) AS app_access,
   t.id AS team_id, t.name AS team_name`
 
 export function newApiKey(prefix) {
@@ -62,7 +63,7 @@ export async function assertAnotherOwner(db, orgId, userId) {
 // Columns a console API may return about an agent. Never the key hash.
 export const AGENT_COLUMNS = `
   a.id, a.name, a.description, a.api_key_prefix, a.is_active, a.created_at,
-  a.default_model, a.default_provider,
+  a.default_model, a.default_provider, COALESCE(a.delegates, false) AS delegates,
   t.id AS team_id, t.name AS team_name`
 
 // An agent's fixed model (agents.default_provider / default_model): gateways
@@ -80,4 +81,18 @@ export function fixedModel(value) {
   if (value == null || value === '') return null
   if (typeof value !== 'string' || !MODEL_RE.test(value.trim())) throw badRequest('Modelo inválido.')
   return value.trim()
+}
+
+/**
+ * Whether an agent's key may act for people (X-Stratum-User, migration
+ * 028). Such a key reaches every person's policy in the organization, so
+ * only an organization-wide scope may turn it on.
+ */
+export function delegatesFlag(value, session) {
+  if (value === undefined) return undefined
+  if (typeof value !== 'boolean') throw badRequest('delegates tiene que ser true o false.')
+  if (value && session.scope !== 'org') {
+    throw forbidden('Solo Owner o Admin pueden hacer que un agente actúe en nombre de personas.')
+  }
+  return value
 }

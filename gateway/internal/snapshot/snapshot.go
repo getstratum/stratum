@@ -16,6 +16,9 @@ type Key struct {
 	// it asks for. Empty Model means the caller chooses (within the policy).
 	Provider string
 	Model    string
+	// Delegates: the key may act for a person of the directory
+	// (X-Stratum-User); see Snapshot.Person.
+	Delegates bool
 }
 
 // Policy is a team policy, pre-indexed for O(1) checks.
@@ -54,6 +57,7 @@ type Snapshot struct {
 	keysByHash      map[string]Key
 	policiesByTeam  map[string]Policy
 	providersBySlug map[string][]Provider
+	people          map[string]string // person id → team id; active people only
 	activeKeys      int
 }
 
@@ -67,6 +71,7 @@ func Build(st *State, syncedAt time.Time) *Snapshot {
 		keysByHash:      make(map[string]Key, len(st.APIKeys)),
 		policiesByTeam:  make(map[string]Policy, len(st.Policies)),
 		providersBySlug: map[string][]Provider{},
+		people:          make(map[string]string, len(st.People)),
 	}
 
 	for _, k := range st.APIKeys {
@@ -74,9 +79,16 @@ func Build(st *State, syncedAt time.Time) *Snapshot {
 			continue
 		}
 		s.keysByHash[strings.ToLower(k.KeyHash)] = Key{ID: k.ID, TeamID: k.TeamID, Label: k.Label,
-			Provider: strings.ToLower(strings.TrimSpace(k.DefaultProvider)), Model: strings.TrimSpace(k.DefaultModel)}
+			Provider: strings.ToLower(strings.TrimSpace(k.DefaultProvider)), Model: strings.TrimSpace(k.DefaultModel),
+			Delegates: k.Delegates}
 	}
 	s.activeKeys = len(s.keysByHash)
+
+	for id, p := range st.People {
+		if !p.Revoked && p.TeamID != "" {
+			s.people[id] = p.TeamID
+		}
+	}
 
 	for teamID, p := range st.Policies {
 		pol := Policy{
@@ -134,6 +146,14 @@ func Build(st *State, syncedAt time.Time) *Snapshot {
 func (s *Snapshot) KeyByHash(hash string) (Key, bool) {
 	k, ok := s.keysByHash[hash]
 	return k, ok
+}
+
+// Person returns the team of a person a delegating key may act for. People
+// deactivated, without a team or without access to applications are not
+// found.
+func (s *Snapshot) Person(id string) (teamID string, ok bool) {
+	teamID, ok = s.people[id]
+	return teamID, ok
 }
 
 // PolicyForTeam returns the team's policy.

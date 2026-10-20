@@ -69,6 +69,16 @@ func TestRevocationsDelta(t *testing.T) {
 		t.Fatalf("an agent key carries its fixed model: %+v %v", k, ok)
 	}
 
+	if k, ok := before.KeyByHash("a3c1e5b7d9f02468ace13579bdf02468ace13579bdf02468ace13579bdf02468"); !ok || !k.Delegates {
+		t.Fatalf("a key that delegates says so: %+v %v", k, ok)
+	}
+	if team, ok := before.Person("user_writer"); !ok || team != "team_marketing" {
+		t.Fatalf("people directory: %q %v", team, ok)
+	}
+	if _, ok := before.Person("user_former"); ok {
+		t.Fatal("a revoked person must not be found")
+	}
+
 	st, err := full.Apply(load("delta-revocations.json"), false)
 	if err != nil {
 		t.Fatal(err)
@@ -82,6 +92,12 @@ func TestRevocationsDelta(t *testing.T) {
 	}
 	if p, _ := snap.PolicyForTeam("team_engineering"); p.ID != "pol_restricted" {
 		t.Fatalf("a team moved to another policy must use it, got %q", p.ID)
+	}
+	if _, ok := snap.Person("user_dev"); ok {
+		t.Fatal("a person revoked by a delta must stop being found")
+	}
+	if team, _ := snap.Person("user_writer"); team != "team_engineering" {
+		t.Fatalf("a person moved to another team must follow it, got %q", team)
 	}
 	if len(snap.ProviderSlugs()) != len(before.ProviderSlugs())-1 {
 		t.Fatalf("a deleted provider config must be dropped: before %v, after %v", before.ProviderSlugs(), snap.ProviderSlugs())
