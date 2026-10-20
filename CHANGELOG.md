@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.2.0](https://github.com/getstratum/stratum/compare/v0.1.1...v0.2.0) (2026-10-20)
+
+
+### Features
+
+* a daily model catalog feed; orgs turn models off and set prices ([#55](https://github.com/getstratum/stratum/issues/55)) ([a720cc4](https://github.com/getstratum/stratum/commit/a720cc486a126d5442a26b5ba7722486e2422940))
+* **console:** 75 more providers from a curated catalog, with search ([#53](https://github.com/getstratum/stratum/issues/53)) ([becd1a8](https://github.com/getstratum/stratum/commit/becd1a8b19958a29fc9ac3b6ea2412dafab6c097))
+* **console:** create and delete teams; honest limits; es-UY numbers ([#56](https://github.com/getstratum/stratum/issues/56)) ([73f1e60](https://github.com/getstratum/stratum/commit/73f1e60b1548068ffa837063348bac5d2a07cfb4))
+* **deploy:** Helm chart for the control plane, migrations image ([#58](https://github.com/getstratum/stratum/issues/58)) ([029427e](https://github.com/getstratum/stratum/commit/029427e971eb98341ffa823d0ca0a697f69c6fdd))
+* **gcp:** the kit installs the control plane with its Helm chart ([#60](https://github.com/getstratum/stratum/issues/60)) ([7c01c14](https://github.com/getstratum/stratum/commit/7c01c14ac82a2deb31f46cc827f24083528c8790))
+* **mock-llm:** token usage that follows the request (MOCK_USAGE) ([#62](https://github.com/getstratum/stratum/issues/62)) ([ec488cb](https://github.com/getstratum/stratum/commit/ec488cbc46589f39d4adadfa6da28bf2ddf02367))
+
+
+### Bug Fixes
+
+* **chart:** charts in the repository name the released version ([#66](https://github.com/getstratum/stratum/issues/66)) ([81c6246](https://github.com/getstratum/stratum/commit/81c6246a36908c80fb1221c7302eb71e00047c6c))
+* **chart:** control plane probes tolerate a busy node ([#63](https://github.com/getstratum/stratum/issues/63)) ([67afb09](https://github.com/getstratum/stratum/commit/67afb0937e6f9aadb53f3fcb1aa5cdbf7f414148))
+* **control-plane:** stratum-admin starts in the container image ([#57](https://github.com/getstratum/stratum/issues/57)) ([8d23d41](https://github.com/getstratum/stratum/commit/8d23d41339420df5e406fc569e6f7ef05943dacd))
+* **migrations:** the image can read its own files ([#61](https://github.com/getstratum/stratum/issues/61)) ([397b823](https://github.com/getstratum/stratum/commit/397b8238c64f09af309cd89b3c63331669ac2242))
+
 ## [0.1.1](https://github.com/getstratum/stratum/compare/v0.1.0...v0.1.1) (2026-10-18)
 
 
