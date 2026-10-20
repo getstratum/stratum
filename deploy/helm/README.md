@@ -91,6 +91,27 @@ The gateway trusts only the CAs in that file, reads it at start (restart the
 pods after a CA rotation), and connects to an IP address only if the
 certificate names that IP. deploy/gcp does this with Memorystore.
 
+## Metrics
+
+`/metrics` on the admin port (`metrics.port`, a Service of its own;
+`metrics.serviceMonitor.enabled` for the Prometheus Operator). Among them:
+
+| Metric | |
+|---|---|
+| `stratum_requests_total{code,provider,reason}` | Every request, refused ones included; `reason` is a short code (`ok`, `quota_exceeded`, `upstream_status`, ...) |
+| `gen_ai_client_operation_duration_seconds` | Histogram of requests sent to a provider, streams to their end. OpenTelemetry `gen_ai.client.operation.duration` |
+| `gen_ai_client_token_usage` | Histogram of tokens per request, `gen_ai_token_type="input"` or `"output"`. OpenTelemetry `gen_ai.client.token.usage` |
+| `stratum_snapshot_age_seconds` | Seconds since the control plane last confirmed the configuration |
+| `stratum_upstream_retries_total`, `stratum_provider_breaker_trips_total` | Provider failures (ADR-0010) |
+
+The `gen_ai_*` histograms follow the OpenTelemetry semantic conventions for
+generative AI, under the names an OpenTelemetry Collector gives them in
+Prometheus, with `gen_ai_operation_name`, `gen_ai_provider_name` (the
+conventions' value where there is one: `azure.ai.openai`, `gcp.gemini`, ...),
+`gen_ai_request_model` and, for failures, `error_type` (the provider's HTTP
+status, or the gateway's reason). The model comes from the request: past
+1,000 label sets, new models are counted as `_other`.
+
 ## Exposing the gateway
 
 The chart creates a ClusterIP service. Put your regional L7 load balancer or

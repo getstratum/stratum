@@ -1,6 +1,7 @@
 // Package metrics exposes gateway counters in the Prometheus text format.
-// It is deliberately tiny and dependency-free; OpenTelemetry export is a
-// separate, later concern.
+// It is deliberately tiny and dependency-free. The GenAI histograms follow
+// the OpenTelemetry semantic conventions (genai.go); exporting OTLP is a
+// separate concern.
 package metrics
 
 import (
@@ -16,6 +17,7 @@ import (
 type Metrics struct {
 	mu       sync.Mutex
 	requests map[reqKey]*atomic.Int64
+	genai    genAI // OpenTelemetry GenAI client metrics (genai.go)
 
 	Inflight        atomic.Int64
 	Overloaded      atomic.Int64 // requests shed by the concurrency limiter
@@ -107,6 +109,8 @@ func (m *Metrics) WriteTo(w io.Writer, now time.Time) {
 			k.code, k.provider, k.reason, m.requests[k].Load())
 	}
 	m.mu.Unlock()
+
+	m.genai.write(&b)
 
 	gauge(&b, "stratum_inflight_requests", "Requests currently being served.", m.Inflight.Load())
 	counter(&b, "stratum_overload_rejections_total", "Requests rejected by the concurrency limiter.", m.Overloaded.Load())
