@@ -48,21 +48,29 @@ billing="$(gcloud billing projects describe "$project" --format='value(billingEn
 [[ "$billing" == "True" ]] || warn "could not confirm billing is enabled on $project (needed for every service used)"
 
 step "Enabling APIs (also declared in Terraform; doing it first avoids propagation errors)"
-# A new project has a small quota of Service Usage changes per minute, and
-# enabling these also enables what they depend on: the first try can get
-# 429 (RESOURCE_EXHAUSTED). It clears within a minute, so try again.
-for attempt in 1 2 3 4; do
-  if gcloud services enable --project "$project" \
-    cloudresourcemanager.googleapis.com serviceusage.googleapis.com iam.googleapis.com \
-    compute.googleapis.com container.googleapis.com sqladmin.googleapis.com \
-    servicenetworking.googleapis.com memorystore.googleapis.com networkconnectivity.googleapis.com \
-    certificatemanager.googleapis.com artifactregistry.googleapis.com cloudbuild.googleapis.com \
-    secretmanager.googleapis.com monitoring.googleapis.com logging.googleapis.com; then
-    break
-  fi
-  ((attempt < 4)) || die "could not enable the APIs; wait a few minutes and run 'make up' again"
-  warn "enabling the APIs failed (attempt $attempt); trying again in 70 s"
-  sleep 70
+# A new project allows few Service Usage changes per minute, and enabling one
+# API also enables what it depends on: enabling all of them in one request can
+# get 429 (RESOURCE_EXHAUSTED) on every try. So enable only what is missing,
+# one at a time, and wait when the quota runs out.
+apis=(cloudresourcemanager serviceusage iam compute container sqladmin
+  servicenetworking memorystore networkconnectivity certificatemanager
+  artifactregistry cloudbuild secretmanager monitoring logging)
+enabled="$(gcloud services list --enabled --project "$project" --format='value(config.name)' 2>/dev/null || true)"
+for api in "${apis[@]}"; do
+  svc="$api.googleapis.com"
+  grep -qx "$svc" <<<"$enabled" && continue
+  for attempt in 1 2 3 4 5 6; do
+    if err="$(gcloud services enable "$svc" --project "$project" 2>&1)"; then
+      ok "$svc"
+      break
+    fi
+    if ! grep -q RESOURCE_EXHAUSTED <<<"$err" || ((attempt == 6)); then
+      echo "$err" >&2
+      die "could not enable $svc; run 'make up' again later (what is enabled stays enabled)"
+    fi
+    warn "$svc: Service Usage quota exhausted (attempt $attempt); trying again in 90 s"
+    sleep 90
+  done
 done
 ok "APIs enabled"
 
