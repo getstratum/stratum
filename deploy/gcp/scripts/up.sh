@@ -48,19 +48,22 @@ billing="$(gcloud billing projects describe "$project" --format='value(billingEn
 [[ "$billing" == "True" ]] || warn "could not confirm billing is enabled on $project (needed for every service used)"
 
 step "Enabling APIs (also declared in Terraform; doing it first avoids propagation errors)"
-# A new project allows few Service Usage changes per minute, and enabling one
-# API also enables what it depends on: enabling all of them in one request can
-# get 429 (RESOURCE_EXHAUSTED) on every try. So enable only what is missing,
-# one at a time, and wait when the quota runs out.
+# Bill these calls to this project (--billing-project), as Terraform does
+# (user_project_override). Without it, gcloud with user credentials bills
+# them to its own OAuth client's project, whose 120 changes per minute are
+# shared by everyone using it (in Cloud Shell, every Cloud Shell): 429
+# RESOURCE_EXHAUSTED for minutes on end. Service Usage is on in every new
+# project, so it can be billed here from the start. Only what is missing is
+# enabled, one at a time, waiting when the quota runs out.
 apis=(cloudresourcemanager serviceusage iam compute container sqladmin
   servicenetworking memorystore networkconnectivity certificatemanager
   artifactregistry cloudbuild secretmanager monitoring logging)
-enabled="$(gcloud services list --enabled --project "$project" --format='value(config.name)' 2>/dev/null || true)"
+enabled="$(gcloud services list --enabled --project "$project" --billing-project "$project" --format='value(config.name)' 2>/dev/null || true)"
 for api in "${apis[@]}"; do
   svc="$api.googleapis.com"
   grep -qx "$svc" <<<"$enabled" && continue
   for attempt in 1 2 3 4 5 6; do
-    if err="$(gcloud services enable "$svc" --project "$project" 2>&1)"; then
+    if err="$(gcloud services enable "$svc" --project "$project" --billing-project "$project" 2>&1)"; then
       ok "$svc"
       break
     fi
