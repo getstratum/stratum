@@ -2,6 +2,9 @@
 # Rendered by scripts/deploy.sh (envsubst). One hostname:
 #   /v1/*, /proxy/*, /readyz      -> gateway (data plane)
 #   /api/internal/sync, /usage    -> control plane, gateway endpoints (gateway egress IPs only)
+#   /.well-known/openid-configuration, /api/oidc/, /oidc/, /_next/static/
+#                                 -> control plane, sign-in to the organization's
+#                                    applications (anyone, rate limited per IP)
 #   everything else               -> control plane console (operator IPs only)
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
@@ -106,6 +109,27 @@ spec:
             value: /api/internal/usage
       backendRefs:
         - name: stratum-cp-sync
+          port: 80
+    # People sign in to the organization's applications (a chat portal,
+    # an internal tool) with their console account, from wherever they
+    # are; the applications' servers fetch the keys and exchange codes from
+    # their own address. The rest of the console stays for operators. The
+    # sign-in page needs the console's static files.
+    - matches:
+        - path:
+            type: Exact
+            value: /.well-known/openid-configuration
+        - path:
+            type: PathPrefix
+            value: /api/oidc/
+        - path:
+            type: PathPrefix
+            value: /oidc/
+        - path:
+            type: PathPrefix
+            value: /_next/static/
+      backendRefs:
+        - name: stratum-cp-apps
           port: 80
     - matches:
         - path:
@@ -243,3 +267,46 @@ spec:
     group: ""
     kind: Service
     name: stratum-cp-sync
+---
+# Sign-in to applications: the API's policy (per-IP rate limit, this
+# environment's egress exempt). The console's own lockout limits password
+# guessing per account.
+apiVersion: networking.gke.io/v1
+kind: GCPBackendPolicy
+metadata:
+  name: stratum-cp-apps
+  namespace: ${NAMESPACE}
+spec:
+  default:
+    timeoutSec: 60
+    securityPolicy: ${ARMOR_API}
+    connectionDraining:
+      drainingTimeoutSec: 30
+    logging:
+      enabled: true
+      sampleRate: 1000000
+  targetRef:
+    group: ""
+    kind: Service
+    name: stratum-cp-apps
+---
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: stratum-cp-apps
+  namespace: ${NAMESPACE}
+spec:
+  default:
+    checkIntervalSec: 5
+    timeoutSec: 3
+    healthyThreshold: 2
+    unhealthyThreshold: 2
+    config:
+      type: HTTP
+      httpHealthCheck:
+        port: 3000
+        requestPath: /api/healthz
+  targetRef:
+    group: ""
+    kind: Service
+    name: stratum-cp-apps
