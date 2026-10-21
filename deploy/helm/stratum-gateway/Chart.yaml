@@ -2,8 +2,8 @@ apiVersion: v2
 name: stratum-gateway
 description: Stratum gateway (data plane) — highly available reference deployment
 type: application
-version: 0.2.0 # x-release-please-version
-appVersion: "0.2.0" # x-release-please-version
+version: 0.3.0 # x-release-please-version
+appVersion: "0.3.0" # x-release-please-version
 kubeVersion: ">=1.27.0-0"
 home: https://github.com/getstratum/stratum
 sources:
