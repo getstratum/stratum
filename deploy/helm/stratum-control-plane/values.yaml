@@ -60,7 +60,9 @@ console:
   # project's feed, a URL of your own, or "off" without internet access
   # (then: stratum-admin catalog-update --file).
   modelCatalogUrl: ""
-  # Address of the console, for the links in alert messages (optional).
+  # Public address of the console (https): the links in alert messages and
+  # the issuer when applications sign people in with their console account
+  # (OIDC, docs/console/applications.md). Empty: no links, and no OIDC.
   publicUrl: ""
   # Alerts (docs/console/teams.md): checked every intervalSeconds (0 turns
   # them off). Webhooks are posted only to webhookHosts (comma-separated).

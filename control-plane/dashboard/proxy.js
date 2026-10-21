@@ -11,7 +11,10 @@ import { COOKIE } from './lib/session-cookie.js'
 
 export function proxy(request) {
   const { pathname } = request.nextUrl
-  if (pathname === '/login' || pathname.startsWith('/api/')) return NextResponse.next()
+  // The sign-in pages, the API (each route checks access) and the OpenID
+  // discovery document are reachable without a console session.
+  if (pathname === '/login' || pathname.startsWith('/api/') || pathname.startsWith('/oidc/') ||
+      pathname.startsWith('/.well-known/')) return NextResponse.next()
   if (!request.cookies.get(COOKIE)?.value) {
     return NextResponse.redirect(new URL('/login', request.url))
   }

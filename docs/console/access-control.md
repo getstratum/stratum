@@ -100,6 +100,8 @@ a summary.
 | Providers, gateways | yes | yes | — | read | — |
 | Usage and request logs | all | all | own team | all | — |
 | Audit log | yes | yes | — | yes | — |
+| Applications (OIDC) | yes | yes | — | read | — |
+| Sign in to applications | yes | yes | yes | yes | yes |
 
 What a team's policy, quota and budget do: [teams.md](teams.md).
 
