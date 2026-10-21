@@ -21,6 +21,10 @@ serviceAccount:
 console:
   # The Google load balancer appends the client and its own address.
   trustedProxyHops: 2
+  # Its public address: links in alert messages, and the issuer when the
+  # console signs people in to the organization's own applications (OIDC,
+  # Aplicaciones). k8s/edge.yaml routes those endpoints apart.
+  publicUrl: https://${HOST}
 
 extraEnv:
   # Keep-alive longer than the load balancer's (600 s), so the server never

@@ -20,7 +20,7 @@ flowchart LR
   client([Clients / SDKs]) -->|HTTPS| lb
   subgraph edge[Google edge]
     lb[Global external Application LB<br/>anycast IP · managed cert · TLS 1.2+]
-    armor[Cloud Armor<br/>API: per-IP rate limit<br/>console: operator IPs<br/>sync: gateway egress IP]
+    armor[Cloud Armor<br/>API and app sign-in: per-IP rate limit<br/>console: operator IPs<br/>sync: gateway egress IP]
     lb --- armor
   end
   subgraph vpc[VPC · region with 3 zones]
@@ -37,6 +37,7 @@ flowchart LR
   lb -->|/v1 /proxy /readyz| gw
   lb -->|/ console| cp
   lb -->|/api/internal/sync, /usage| cp
+  lb -->|/api/oidc, /oidc: sign-in to applications| cp
   gw -. config sync over HTTPS .-> nat -.-> lb
   gw -->|quota counters, async| valkey
   gw --> mock
@@ -50,6 +51,7 @@ flowchart LR
 | Edge | Global external Application LB via **Gateway API** | Anycast IP, Google-managed certificate, 99.99% SLA, Cloud Armor; same front door a multi-region (Enterprise) setup would use. |
 | TLS | Certificate Manager, load-balancer authorization | No DNS needed: the hostname defaults to `<edge-ip>.sslip.io`. Set `domain` to use your own. |
 | WAF | Cloud Armor, **no OWASP signatures on the API** | Prompts contain SQL, shell and HTML; signature rules would block real traffic. Content inspection is the gateway's job. Rate limiting per IP at the edge; console and sync endpoints are allowlisted. |
+| Sign-in to applications | The console as OIDC provider (`console.publicUrl` = `https://<host>`); its sign-in endpoints routed apart under the API's Cloud Armor policy | People sign in to the organization's own applications (a chat portal, an internal tool) from wherever they are, and those applications' servers exchange codes from their own address; the rest of the console stays allowlisted. |
 | Control plane DB | Cloud SQL PostgreSQL 16, regional HA, PITR, private IP | Synchronous standby in another zone, automatic failover, backups. Reached through the Auth Proxy (mTLS + IAM). |
 | Quota store | Memorystore for Valkey, cluster mode disabled, 1 replica, AOF, `noeviction`, TLS with a per-instance CA, token authentication | Zone-redundant with automatic failover and a stable endpoint; counters survive restarts and are never evicted. Not on the request path (ADR-0004). Encrypted and authenticated even inside the VPC, without IAM on the connection path (ADR-0011). |
 | Egress | Cloud NAT with a static IP | Nodes have no public IPs. One known address to give to providers or customers that allowlist callers. |
