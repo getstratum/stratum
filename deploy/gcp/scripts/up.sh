@@ -48,12 +48,22 @@ billing="$(gcloud billing projects describe "$project" --format='value(billingEn
 [[ "$billing" == "True" ]] || warn "could not confirm billing is enabled on $project (needed for every service used)"
 
 step "Enabling APIs (also declared in Terraform; doing it first avoids propagation errors)"
-gcloud services enable --project "$project" \
-  cloudresourcemanager.googleapis.com serviceusage.googleapis.com iam.googleapis.com \
-  compute.googleapis.com container.googleapis.com sqladmin.googleapis.com \
-  servicenetworking.googleapis.com memorystore.googleapis.com networkconnectivity.googleapis.com \
-  certificatemanager.googleapis.com artifactregistry.googleapis.com cloudbuild.googleapis.com \
-  secretmanager.googleapis.com monitoring.googleapis.com logging.googleapis.com
+# A new project has a small quota of Service Usage changes per minute, and
+# enabling these also enables what they depend on: the first try can get
+# 429 (RESOURCE_EXHAUSTED). It clears within a minute, so try again.
+for attempt in 1 2 3 4; do
+  if gcloud services enable --project "$project" \
+    cloudresourcemanager.googleapis.com serviceusage.googleapis.com iam.googleapis.com \
+    compute.googleapis.com container.googleapis.com sqladmin.googleapis.com \
+    servicenetworking.googleapis.com memorystore.googleapis.com networkconnectivity.googleapis.com \
+    certificatemanager.googleapis.com artifactregistry.googleapis.com cloudbuild.googleapis.com \
+    secretmanager.googleapis.com monitoring.googleapis.com logging.googleapis.com; then
+    break
+  fi
+  ((attempt < 4)) || die "could not enable the APIs; wait a few minutes and run 'make up' again"
+  warn "enabling the APIs failed (attempt $attempt); trying again in 70 s"
+  sleep 70
+done
 ok "APIs enabled"
 
 step "terraform init"
