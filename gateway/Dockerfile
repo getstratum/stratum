@@ -6,9 +6,17 @@
 # Base images are pinned by tag and digest (scripts/pin-images.sh);
 # Dependabot proposes new digests and versions.
 
-FROM --platform=$BUILDPLATFORM golang:1.26-alpine@sha256:3082400e369fa24d5fc60bca20edab3f6d604e0c5a690ec66b295eff4dd87ade AS build
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine@sha256:9ce231b28998b32e116927c61aa5c406183061d4f3f2d61b292c88e7f6bdf7ca AS build
 WORKDIR /src
 COPY go.mod ./
+# The image's Go must be at least go.mod's toolchain, the patch release with
+# the standard library's security fixes. golang images build with their own
+# Go (GOTOOLCHAIN=local), so a stale digest would otherwise ship a vulnerable
+# binary without a word.
+RUN want="$(sed -n 's/^toolchain go//p' go.mod)"; have="$(go env GOVERSION | sed 's/^go//')"; \
+    awk -v have="$have" -v want="$want" 'BEGIN { split(have, h, "."); split(want, w, "."); \
+      for (i = 1; i <= 3; i++) { if (h[i] + 0 > w[i] + 0) exit 0; if (h[i] + 0 < w[i] + 0) exit 1 } exit 0 }' || \
+    { echo "the image has Go $have, go.mod needs $want: update the golang digest" >&2; exit 1; }
 RUN go mod download
 COPY . .
 
