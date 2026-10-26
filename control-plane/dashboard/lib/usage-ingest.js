@@ -10,7 +10,13 @@
  * alias) at the organization's own price when it set one, not sent by
  * gateways.
  * Records already stored (same ID and time: a retried batch) are skipped.
+ *
+ * Each record also gets its estimated environmental impact (lib/impacts,
+ * migration 032), computed here from its provider, model, output tokens and
+ * duration; null when the model is not known.
  */
+
+import { estimate } from './impacts/index.js'
 
 export const MAX_RECORDS = 500
 export const MAX_BODY_BYTES = 2 * 1024 * 1024
@@ -71,6 +77,19 @@ export function normalizeRecord(r, now = Date.now()) {
 
 const col = (records, k) => records.map(r => r[k])
 
+const IMPACTS = ['energy_wh', 'gwp_g', 'water_ml', 'pe_kj', 'adpe_mg_sb']
+
+/** The impact columns of each record, in the order of the INSERT below. */
+export function impactColumns(records) {
+  const est = records.map(r => estimate({ provider: r.provider, model: r.model, tokensOut: r.tokens_out, durationMs: r.duration_ms }))
+  const cols = []
+  for (const k of IMPACTS) {
+    cols.push(est.map(e => (e ? e[k].min : null)), est.map(e => (e ? e[k].max : null)))
+  }
+  cols.push(est.map(e => e?.zone ?? null), est.map(e => e?.method ?? null))
+  return cols
+}
+
 /**
  * Stores normalized records for an instance. Returns how many were new.
  * `db` is a pool or client.
@@ -82,14 +101,20 @@ export async function ingest(db, instance, records) {
        SELECT * FROM unnest(
          $3::uuid[], $4::timestamptz[], $5::text[], $6::text[], $7::text[], $8::text[], $9::text[],
          $10::int[], $11::text[], $12::bool[], $13::int[], $14::int[], $15::int[], $16::int[], $17::text[],
-         $18::text[], $19::text[]
+         $18::text[], $19::text[],
+         $20::float8[], $21::float8[], $22::float8[], $23::float8[], $24::float8[],
+         $25::float8[], $26::float8[], $27::float8[], $28::float8[], $29::float8[], $30::text[], $31::text[]
        ) AS t(id, ts, request_id, key_id, team_id, provider, model,
-              status, reason, stream, duration_ms, upstream_ms, tokens_in, tokens_out, flags, user_id, labels)
+              status, reason, stream, duration_ms, upstream_ms, tokens_in, tokens_out, flags, user_id, labels,
+              e_min, e_max, g_min, g_max, w_min, w_max, pe_min, pe_max, ad_min, ad_max, zone, method)
      )
      INSERT INTO request_logs (
        id, created_at, org_id, team_id, user_id, agent_id, provider, model_id,
        tokens_input, tokens_output, cost_usd, status_code, latency_ms, provider_ms,
-       is_stream, error_message, pii_flagged, pii_types, instance_id, request_id, labels)
+       is_stream, error_message, pii_flagged, pii_types, instance_id, request_id, labels,
+       impact_energy_wh_min, impact_energy_wh_max, impact_gwp_g_min, impact_gwp_g_max,
+       impact_water_ml_min, impact_water_ml_max, impact_pe_kj_min, impact_pe_kj_max,
+       impact_adpe_mg_min, impact_adpe_mg_max, impact_zone, impact_method)
      SELECT r.id, r.ts, $1::uuid, tm.id, u.id, a.id, r.provider, r.model,
             r.tokens_in, r.tokens_out,
             -- request_logs.cost_usd is DECIMAL(10,6): a cost past it would
@@ -100,7 +125,9 @@ export async function ingest(db, instance, records) {
             r.status, r.duration_ms, r.upstream_ms,
             r.stream, NULLIF(r.reason, 'ok'), r.flags <> '',
             COALESCE(string_to_array(NULLIF(r.flags, ''), ','), '{}'), $2, r.request_id,
-            COALESCE(string_to_array(NULLIF(r.labels, ''), ','), '{}')
+            COALESCE(string_to_array(NULLIF(r.labels, ''), ','), '{}'),
+            r.e_min, r.e_max, r.g_min, r.g_max, r.w_min, r.w_max, r.pe_min, r.pe_max,
+            r.ad_min, r.ad_max, r.zone, r.method
        FROM r
        LEFT JOIN teams tm  ON tm.id::text = r.team_id AND tm.org_id = $1::uuid
        -- The person: the one a delegating key acted for, else the key's owner.
@@ -131,7 +158,7 @@ export async function ingest(db, instance, records) {
      col(records, 'team_id'), col(records, 'provider'), col(records, 'model'), col(records, 'status'),
      col(records, 'reason'), col(records, 'stream'), col(records, 'duration_ms'), col(records, 'upstream_ms'),
      col(records, 'tokens_in'), col(records, 'tokens_out'), col(records, 'flags'), col(records, 'user_id'),
-     col(records, 'labels')])
+     col(records, 'labels'), ...impactColumns(records)])
   await db.query('UPDATE data_plane_instances SET last_usage_at = now() WHERE id = $1', [instance.id])
   return rowCount
 }

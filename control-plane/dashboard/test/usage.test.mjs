@@ -13,6 +13,7 @@ const pg = (await import('pg')).default
 const { closeDb } = await import('../lib/db.js')
 const { hashSyncToken } = await import('../lib/instance-auth.js')
 const { normalizeRecord } = await import('../lib/usage-ingest.js')
+const { estimate, METHOD } = await import('../lib/impacts/index.js')
 const route = await import('../app/api/internal/usage/route.js')
 
 const url = process.env.DATABASE_URL
@@ -134,6 +135,31 @@ test('usage: the cost is found by model ID or alias (migration 023)', { skip }, 
   assert.equal(await cost(alias), 0.0035) // 1000 × $1/M + 500 × $5/M
   assert.equal(await cost(dated), 0.0035)
   assert.equal(await cost(gemini), 0.0045) // provider "gemini", as gateways call it
+})
+
+test('usage: each request gets its estimated impact; an unknown model or no output gets none', { skip }, async () => {
+  const known = record(A, { provider: 'openai', model: 'gpt-4o-mini', tokens_out: 400, duration_ms: 6000 })
+  const unknown = record(A, { provider: 'ollama', model: 'mock-fast', tokens_out: 400 })
+  const refused = record(A, { provider: 'openai', model: 'gpt-4o-mini', status: 429, reason: 'quota_exceeded', tokens_in: 0, tokens_out: 0 })
+  assert.equal((await post(A.token, { records: [known, unknown, refused] })).body.accepted, 3)
+  const row = async r => (await sql('SELECT * FROM request_logs WHERE id = $1', [r.id]))[0]
+
+  const k = await row(known)
+  const want = estimate({ provider: 'openai', model: 'gpt-4o-mini', tokensOut: 400, durationMs: 6000 })
+  for (const [col, key] of [['energy_wh', 'energy_wh'], ['gwp_g', 'gwp_g'], ['water_ml', 'water_ml'], ['pe_kj', 'pe_kj'], ['adpe_mg', 'adpe_mg_sb']]) {
+    assert.equal(k[`impact_${col}_min`], want[key].min, col)
+    assert.equal(k[`impact_${col}_max`], want[key].max, col)
+  }
+  assert.ok(k.impact_gwp_g_min > 0 && k.impact_gwp_g_min < k.impact_gwp_g_max, 'a closed model: a range')
+  assert.equal(k.impact_zone, 'USA')
+  assert.equal(k.impact_method, METHOD)
+
+  for (const r of [unknown, refused]) {
+    const u = await row(r)
+    assert.equal(u.impact_energy_wh_min, null)
+    assert.equal(u.impact_gwp_g_max, null)
+    assert.equal(u.impact_method, null)
+  }
 })
 
 test('usage: IDs from another organization are not attributed', { skip }, async () => {
