@@ -387,6 +387,45 @@ test('policies: budgets that cut and the maximum tokens per request', { skip }, 
   assert.equal(detail.budget_enforced, false)
 })
 
+test('policies: instructions for people travel to gateways, trimmed, and can be cleared', { skip }, async () => {
+  const says = 'Si falta contexto para responder bien, preguntá antes de responder.'
+  const created = await call('policies', 'POST', { as: A.owner, body: { name: 'Con instrucciones', allowAllModels: true, peopleInstructions: `  ${says}\r\n` } })
+  assert.equal(created.status, 201)
+  assert.equal(created.body.people_instructions, says)
+  const id = created.body.id
+
+  const [{ team_id: team }] = await sql(`SELECT team_id FROM users WHERE org_id = $1 AND role = 'team_manager'`, [A.id])
+  await sql('UPDATE teams SET policy_id = $1 WHERE id = $2', [id, team])
+  const synced = async () => {
+    const client = await db.connect()
+    try {
+      const out = await buildSyncResponse(client, { orgId: A.id, sinceVersion: 0, syncIntervalS: 30, decrypt: decryptSecret, warn: () => {} })
+      return out.policies.find(p => p.team_id === team)
+    } finally {
+      client.release()
+    }
+  }
+  assert.equal((await synced()).people_instructions, says)
+
+  // Absent stays; the auditor and a team manager cannot change it; empty clears it.
+  let r = await call('policies/[id]', 'PATCH', { as: A.owner, params: { id }, body: { name: 'Con instrucciones 2' } })
+  assert.equal(r.body.people_instructions, says)
+  for (const as of [A.auditor, A.team_manager]) {
+    r = await call('policies/[id]', 'PATCH', { as, params: { id }, body: { peopleInstructions: 'Otra cosa' } })
+    assert.equal(r.status, 403)
+  }
+  for (const body of [{ peopleInstructions: 3 }, { peopleInstructions: 'x'.repeat(2001) }]) {
+    assert.equal((await call('policies/[id]', 'PATCH', { as: A.owner, params: { id }, body })).status, 400)
+  }
+  r = await call('policies/[id]', 'PATCH', { as: A.owner, params: { id }, body: { peopleInstructions: '   ' } })
+  assert.equal(r.body.people_instructions, null)
+  assert.equal((await synced()).people_instructions, '')
+
+  const [entry] = await sql(`SELECT details FROM audit_log WHERE org_id = $1 AND action = 'policy.update' AND target_id = $2 ORDER BY id DESC LIMIT 1`, [A.id, id])
+  assert.ok(entry && 'peopleInstructions' in entry.details, 'the change is in the audit log')
+  await sql('UPDATE teams SET policy_id = NULL WHERE id = $1', [team])
+})
+
 test('models: the catalog lists aliases', { skip }, async () => {
   const r = await call('models', 'GET', { as: A.auditor })
   assert.equal(r.status, 200)

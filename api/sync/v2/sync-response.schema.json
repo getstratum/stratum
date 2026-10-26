@@ -87,6 +87,11 @@
           "description": "Most output tokens a request may ask for; null or absent: no limit. Gateways from 0.3 lower requests that ask for more, and set it on requests that ask for nothing.",
           "anyOf": [{ "$ref": "#/$defs/integer" }, { "type": "null" }]
         },
+        "people_instructions": {
+          "description": "Text gateways from 0.3 put first in the system instruction of the requests an application makes for a person (X-Stratum-User), and return from GET /v1/stratum/instructions; never in an agent's or a key's own requests. Empty or absent: none.",
+          "type": "string",
+          "maxLength": 2000
+        },
         "pii_action": { "$ref": "#/$defs/action" },
         "dlp_action": { "$ref": "#/$defs/action" },
         "revoked": { "type": "boolean", "description": "True disables the whole team." }

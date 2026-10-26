@@ -26,6 +26,15 @@ may use, and how many tokens per month.
 | Monthly token quota | Policy, per team | yes: past 100 % the team's requests are refused until the next month (`quota_exceeded`, 429; ADR-0004) |
 | Monthly budget (US$) | Policy, or the team's own | when the policy says so (*Cortar los pedidos al llegar al presupuesto*): past 100 % the team's requests are refused until the next month (`budget_exceeded`, 429). Otherwise a reference the console compares spending against |
 | Max tokens per request | Policy | yes: a request that asks for more output tokens is lowered to the limit, and one that asks for none gets it (`X-Stratum-Max-Tokens` in the response says so). Empty: no limit |
+| Instructions for people | Policy | yes, on the requests an application makes for a person (`X-Stratum-User`): they go first in the system instruction (`X-Stratum-Instructions` in the response names them). Never on an agent's or a key's own requests. Up to 2,000 characters; empty: none |
+
+**Instructions for people** are for the organization's own words to the
+model, for example *if context is missing, ask before answering*: they shape
+how the model answers people without rewriting what people write. They are
+not hidden. The gateway returns them to the application
+(`GET /v1/stratum/instructions`), so a chat portal can show them, and every
+change is a new version of the policy, in the audit log. They cost input
+tokens on every request they go into; keep them short.
 
 A team's own budget, when set, takes the place of its policy's. When the
 policy cuts at the budget, a team manager may lower the team's budget but
