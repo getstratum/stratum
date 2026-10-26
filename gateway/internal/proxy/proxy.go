@@ -251,6 +251,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("X-Stratum-Max-Tokens", strconv.FormatInt(*pol.MaxTokensPerRequest, 10))
 		}
 	}
+	// The team's instructions, only for a person (see instructions.go).
+	if rec.userID != "" && polFound && pol.PeopleInstructions != "" {
+		if addInstructions(body, upstreamPath, kind, pol.PeopleInstructions) {
+			w.Header().Set("X-Stratum-Instructions", instructionsID(pol.PeopleInstructions))
+		}
+	}
 	final, err := json.Marshal(body)
 	if err != nil {
 		h.fail(w, rec, &policy.Violation{Status: http.StatusInternalServerError, Code: "internal", Message: "could not encode request"})

@@ -11,6 +11,7 @@
       "allowed_providers": null,
       "monthly_token_quota": 1000000,
       "monthly_budget_usd": 100.0,
+      "people_instructions": "Si falta contexto para responder bien, preguntá antes de responder.",
       "pii_action": "redact",
       "dlp_action": "block",
       "revoked": false

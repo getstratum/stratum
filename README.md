@@ -91,6 +91,7 @@ tests against it, see [deploy/gcp](deploy/gcp/README.md).
 | `POST /v1/...` | OpenAI-compatible. The provider comes from `"model": "provider/model"`, or from the team policy when it allows a single provider. |
 | `POST /proxy/{provider}/...` | Explicit provider, e.g. `/proxy/anthropic/v1/messages` for the Anthropic SDK. |
 | `GET /v1/models` | The models the caller may use, in the OpenAI format: the organization's models (from the console's catalog, of the providers it configured, not turned off) that the policy allows. Each `id` is `provider/model`, which `/v1/...` accepts as is. An agent with a fixed model sees only that one. |
+| `GET /v1/stratum/instructions` | The instructions for people the gateway adds to the caller's requests (`{"instructions": "...", "id": "..."}`, or nulls): only a key acting for a person, with `X-Stratum-User`, gets any. An application shows them to the person. |
 | `GET /livez`, `GET /readyz` | Probes. Readiness depends only on having a configuration and not draining. |
 | `GET /metrics` (admin port `:9090`) | Prometheus metrics. Keep the admin port private. |
 
@@ -120,6 +121,12 @@ header is refused with `delegation_not_allowed`; a person who is not in the
 directory, is deactivated, has no team or had access to applications taken
 away gets `unknown_user`. Keep such a key on a server, never in a browser:
 it can act for anyone in the organization.
+
+The team's policy can carry **instructions for people**: a text the gateway
+puts first in the system instruction of those requests (`X-Stratum-Instructions`
+in the response names the version), never in an agent's or a key's own. The
+application can read them from `GET /v1/stratum/instructions` and show them.
+See [Teams, limits and alerts](docs/console/teams.md).
 
 ## Gateway configuration
 

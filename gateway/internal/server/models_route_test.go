@@ -16,6 +16,7 @@ func TestModelsRoute(t *testing.T) {
 	}
 	o := opts(named("proxy"), &snapshot.Holder{})
 	o.Models = named("models")
+	o.Instructions = named("instructions")
 	srv := httptest.NewServer(Public(o))
 	defer srv.Close()
 
@@ -34,6 +35,9 @@ func TestModelsRoute(t *testing.T) {
 	}
 	if got := call(http.MethodPost, "/v1/chat/completions"); got != "proxy" {
 		t.Errorf("POST /v1/chat/completions went to %q", got)
+	}
+	if got := call(http.MethodGet, "/v1/stratum/instructions"); got != "instructions" {
+		t.Errorf("GET /v1/stratum/instructions went to %q", got)
 	}
 	if got := call(http.MethodGet, "/v1/models/gpt-4o"); got != "proxy" {
 		t.Errorf("other paths stay with the proxy, got %q", got)

@@ -15,13 +15,15 @@ export const PATCH = route('policies.manage', async (req, { session, db, params 
       monthly_budget_usd     = COALESCE($5, monthly_budget_usd),
       allow_all_models       = COALESCE($8, allow_all_models),
       allowed_providers      = CASE WHEN $9 THEN $10::text[] ELSE allowed_providers END,
-      budget_enforced        = COALESCE($11, budget_enforced)
+      budget_enforced        = COALESCE($11, budget_enforced),
+      people_instructions    = CASE WHEN $13 THEN $14::text ELSE people_instructions END
     WHERE id = $6 AND org_id = $7
     RETURNING *
   `, [f.name ?? null, f.allowedModels ?? null, f.maxTokensPerRequest ?? null,
       f.monthlyTokenQuota ?? null, f.monthlyBudgetUsd ?? null, id, session.orgId,
       f.allowAllModels ?? null, 'allowedProviders' in f, f.allowedProviders ?? null,
-      f.budgetEnforced ?? null, 'maxTokensPerRequest' in f])
+      f.budgetEnforced ?? null, 'maxTokensPerRequest' in f,
+      'peopleInstructions' in f, f.peopleInstructions ?? null])
   if (!rows[0]) throw notFound('Política no encontrada.')
   await audit(db, { req, session, action: 'policy.update', targetType: 'policy', targetId: id, details: f })
   return json(rows[0])

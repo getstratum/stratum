@@ -34,9 +34,13 @@ type Policy struct {
 	// MaxTokensPerRequest caps the output tokens a request may ask for
 	// (nil: no cap). Requests above it are lowered; see proxy.capOutputTokens.
 	MaxTokensPerRequest *int64
-	PIIAction           string // off | log | redact | block
-	DLPAction           string // off | log | redact | block
-	Revoked             bool
+	// PeopleInstructions goes first in the system instruction of requests an
+	// application makes for a person, never an agent's or a key's own; see
+	// proxy.addInstructions. Empty: none.
+	PeopleInstructions string
+	PIIAction          string // off | log | redact | block
+	DLPAction          string // off | log | redact | block
+	Revoked            bool
 }
 
 // Provider is an enabled upstream provider configuration.
@@ -103,15 +107,16 @@ func Build(st *State, syncedAt time.Time) *Snapshot {
 
 	for teamID, p := range st.Policies {
 		pol := Policy{
-			ID:               p.ID,
-			TeamID:           teamID,
-			AllowAllModels:   p.AllowAllModels,
-			AllowedModels:    toSet(p.AllowedModels),
-			AllowedProviders: toSet(p.AllowedProviders),
-			DeniedModels:     toSet(p.DeniedModels),
-			PIIAction:        normalizeAction(p.PIIAction),
-			DLPAction:        normalizeAction(p.DLPAction),
-			Revoked:          p.Revoked,
+			ID:                 p.ID,
+			TeamID:             teamID,
+			AllowAllModels:     p.AllowAllModels,
+			AllowedModels:      toSet(p.AllowedModels),
+			AllowedProviders:   toSet(p.AllowedProviders),
+			DeniedModels:       toSet(p.DeniedModels),
+			PeopleInstructions: strings.TrimSpace(p.PeopleInstructions),
+			PIIAction:          normalizeAction(p.PIIAction),
+			DLPAction:          normalizeAction(p.DLPAction),
+			Revoked:            p.Revoked,
 		}
 		if p.MonthlyTokenQuota != nil {
 			v := int64(*p.MonthlyTokenQuota)

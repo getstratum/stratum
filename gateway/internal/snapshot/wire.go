@@ -128,9 +128,12 @@ type WirePolicy struct {
 	// MaxTokensPerRequest caps the output tokens of each request; absent
 	// from control planes before 0.3.
 	MaxTokensPerRequest *Int64 `json:"max_tokens_per_request,omitempty"`
-	PIIAction           string `json:"pii_action,omitempty"`
-	DLPAction           string `json:"dlp_action,omitempty"`
-	Revoked             bool   `json:"revoked"`
+	// PeopleInstructions is a system instruction added to the requests an
+	// application makes for a person (X-Stratum-User); absent before 0.3.
+	PeopleInstructions string `json:"people_instructions,omitempty"`
+	PIIAction          string `json:"pii_action,omitempty"`
+	DLPAction          string `json:"dlp_action,omitempty"`
+	Revoked            bool   `json:"revoked"`
 }
 
 // WireAPIKey is a developer API key. Only the SHA-256 hex digest travels;

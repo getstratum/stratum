@@ -109,3 +109,27 @@ func TestRevocationsDelta(t *testing.T) {
 		t.Fatalf("a deleted provider config must be dropped: before %v, after %v", before.ProviderSlugs(), snap.ProviderSlugs())
 	}
 }
+
+// TestPeopleInstructionsFromContract: the instructions for people travel
+// with the policy, and a policy without them has none.
+func TestPeopleInstructionsFromContract(t *testing.T) {
+	raw, err := os.ReadFile("../../../api/sync/v2/examples/full-sync.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var resp SyncResponse
+	if err := json.Unmarshal(raw, &resp); err != nil {
+		t.Fatal(err)
+	}
+	st, err := (*State)(nil).Apply(&resp, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snap := Build(st, time.Now())
+	if p, _ := snap.PolicyForTeam("team_engineering"); p.PeopleInstructions == "" {
+		t.Error("engineering's instructions for people are missing")
+	}
+	if p, _ := snap.PolicyForTeam("team_marketing"); p.PeopleInstructions != "" {
+		t.Errorf("marketing has instructions it was never given: %q", p.PeopleInstructions)
+	}
+}
