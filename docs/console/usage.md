@@ -34,3 +34,32 @@ The cost is an estimate: tokens the provider reported × the price when the
 request was recorded: the organization's own price for that model if it set
 one in Modelos, the catalog's list price otherwise. Requests to models
 without either cost 0 here.
+
+## Environmental impact (estimated)
+
+Each request also gets an estimate of its environmental impact when its
+usage arrives: energy (Wh, datacenter overhead included), emissions (g
+CO2eq: the electricity plus the request's share of making the hardware),
+water (mL), primary energy (kJ) and abiotic resource depletion (mg Sb eq).
+They are stored in `request_logs` (`impact_*`, migration 032); Consumo shows
+them in the next release.
+
+- **Method:** [EcoLogits](https://github.com/mlco2/ecologits), a life cycle
+  assessment of model inference (ISO 14044), ported to the console with its
+  data (`control-plane/dashboard/lib/impacts`, MPL-2.0). It uses what
+  gateways already report: provider, model, output tokens and duration.
+- **A range, not a number:** closed models do not publish their size, so
+  each figure has a low and a high end (`_min`, `_max`), equal when the
+  model is known exactly.
+- **No estimate, not zero:** a model EcoLogits does not know (a custom or
+  local one) or a request without output gets NULL.
+- **Where:** the datacenter's country and efficiency per provider, as
+  EcoLogits has them (OpenAI, Anthropic, Google: USA; Mistral: Sweden).
+  Azure OpenAI takes OpenAI's figures; open models served by any provider
+  (Groq, Together...) take those of Hugging Face.
+- **Not counted:** model training, the network, people's devices, the
+  datacenter building, the hardware's end of life, and input tokens (a long
+  prompt with a short answer is underestimated).
+- **Versioned:** `impact_method` (e.g. `ecologits-0.11.3`) says which
+  method and data made each estimate. An update applies from its date;
+  stored rows are not recomputed.
