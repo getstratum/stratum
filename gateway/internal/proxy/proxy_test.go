@@ -85,6 +85,7 @@ type env struct {
 	quota *quota.Local
 	m     *metrics.Metrics
 	usage *usageRecorder
+	h     *Handler
 }
 
 func newEnv(t *testing.T, policyJSON string, idle time.Duration, configure ...func(*Handler)) *env {
@@ -135,6 +136,7 @@ func newEnv(t *testing.T, policyJSON string, idle time.Duration, configure ...fu
 	for _, f := range configure {
 		f(h)
 	}
+	e.h = h
 	e.gw = httptest.NewServer(h)
 	t.Cleanup(e.gw.Close)
 	return e

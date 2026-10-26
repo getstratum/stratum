@@ -12,6 +12,8 @@ function optionalNumber(v, label, { integer = false } = {}) {
   return n
 }
 
+export const PEOPLE_INSTRUCTIONS_MAX = 2000
+
 /** The editable fields present in `body`, validated. Absent fields are undefined. */
 export function policyFields(body) {
   const out = {}
@@ -51,6 +53,22 @@ export function policyFields(body) {
   out.maxTokensPerRequest = body.maxTokensPerRequest === null || body.maxTokensPerRequest === ''
     ? null : optionalNumber(body.maxTokensPerRequest, 'Máximo de tokens por pedido', { integer: true })
   if (out.maxTokensPerRequest === 0) throw badRequest('Máximo de tokens por pedido inválido: vacío para no limitar.')
+  // What gateways (from 0.3) tell the model first when an application asks
+  // for a person; null or empty: nothing. Plain text, kept short: every
+  // request carries it as input tokens.
+  if (body.peopleInstructions !== undefined) {
+    if (body.peopleInstructions === null) {
+      out.peopleInstructions = null
+    } else if (typeof body.peopleInstructions !== 'string') {
+      throw badRequest('Instrucciones para personas inválidas.')
+    } else {
+      const text = body.peopleInstructions.replace(/\r\n/g, '\n').trim()
+      if (text.length > PEOPLE_INSTRUCTIONS_MAX) {
+        throw badRequest(`Las instrucciones para personas tienen hasta ${PEOPLE_INSTRUCTIONS_MAX} caracteres.`)
+      }
+      out.peopleInstructions = text || null
+    }
+  }
   out.monthlyTokenQuota   = optionalNumber(body.monthlyTokenQuota, 'Cuota mensual de tokens', { integer: true })
   out.monthlyBudgetUsd    = optionalNumber(body.monthlyBudgetUsd, 'Presupuesto mensual')
   for (const k of Object.keys(out)) if (out[k] === undefined) delete out[k]  // null stays: it means "all"

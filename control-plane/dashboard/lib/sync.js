@@ -72,6 +72,8 @@ export async function buildSyncResponse(client, { orgId, sinceVersion, syncInter
         CASE WHEN COALESCE(p.budget_enforced, false)
              THEN COALESCE(t.monthly_budget_usd, p.monthly_budget_usd) END AS monthly_budget_usd,
         p.max_tokens_per_request,
+        -- Instructions for people (migration 031); gateways before 0.3 ignore them.
+        COALESCE(p.people_instructions, '')              AS people_instructions,
         COALESCE(p.pii_action, 'off')                    AS pii_action,
         COALESCE(p.dlp_action, 'off')                    AS dlp_action,
         p.allowed_providers,
@@ -262,7 +264,7 @@ export async function buildSyncResponse(client, { orgId, sinceVersion, syncInter
       out.policies.push({
         id: '', team_id: t.object_id, version: v, updated_at: null,
         allowed_models: [], allow_all_models: false, monthly_token_quota: null, monthly_budget_usd: null,
-        max_tokens_per_request: null,
+        max_tokens_per_request: null, people_instructions: '',
         pii_action: 'off', dlp_action: 'off', allowed_providers: null, revoked: true,
       })
     } else if (t.kind === 'person') {

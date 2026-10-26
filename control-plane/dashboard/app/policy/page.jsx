@@ -6,6 +6,9 @@ import { formatCost, formatCostCompact, formatTokens, nf } from '../../lib/forma
 import { namesOf } from '../../lib/catalog'
 import { usePermissions } from '../../components/usePermissions'
 
+// The same limit as lib/policies.js (not imported: that module is the server's).
+const PEOPLE_INSTRUCTIONS_MAX = 2000
+
 
 // ─── Policy form modal ────────────────────────────────────────────────────────
 function PolicyModal({ policy, allModels, configured, onSave, onClose }) {
@@ -19,6 +22,7 @@ function PolicyModal({ policy, allModels, configured, onSave, onClose }) {
     monthlyTokenQuota:   policy?.monthly_token_quota     ?? 1000000,
     monthlyBudgetUsd:    policy?.monthly_budget_usd      ?? 100,
     budgetEnforced:      policy?.budget_enforced         ?? false,
+    peopleInstructions:  policy?.people_instructions     ?? '',
   })
   const [saving, setSaving] = useState(false)
   const [error,  setError]  = useState('')
@@ -221,6 +225,18 @@ function PolicyModal({ policy, allModels, configured, onSave, onClose }) {
           </span>
         </label>
 
+        <Field label="Instrucciones para personas"
+               hint={`El gateway se las da al modelo primero, solo en los pedidos que una aplicación hace por una persona (como el portal de chat); nunca a agentes ni a claves propias. La aplicación puede mostrarlas. Cuentan como tokens de entrada en cada pedido. Hasta ${PEOPLE_INSTRUCTIONS_MAX} caracteres; gateways 0.3 o posterior.`}>
+          <textarea
+            rows={4} maxLength={PEOPLE_INSTRUCTIONS_MAX}
+            placeholder="Por ejemplo: si falta contexto para responder bien, preguntá antes de responder."
+            value={form.peopleInstructions}
+            onChange={e => set('peopleInstructions', e.target.value)}
+            className="w-full bg-card border border-border-strong rounded-md px-3 py-2 text-sm text-strong placeholder-subtle focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent transition-all"
+          />
+          <div className="text-xs text-muted mt-1 tabular text-right">{form.peopleInstructions.length} / {PEOPLE_INSTRUCTIONS_MAX}</div>
+        </Field>
+
         {error && <p className="text-xs text-err">{error}</p>}
 
         <div className="flex gap-3 pt-1">
@@ -377,6 +393,12 @@ export default function PolicyPage() {
                     </div>
                   )}
                 </div>
+                {policy.people_instructions && (
+                  <div>
+                    <div className="text-xs text-muted mb-2">Instrucciones para personas</div>
+                    <p className="text-sm text-default whitespace-pre-wrap border-l-2 border-border pl-3">{policy.people_instructions}</p>
+                  </div>
+                )}
                 <div>
                   <div className="text-xs text-muted mb-2">Modelos</div>
                   {policy.allow_all_models ? (

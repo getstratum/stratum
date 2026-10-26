@@ -197,7 +197,7 @@ func serve() int {
 			log.Warn("provider failing; pausing requests to it", "provider_config", id, "cooldown", cfg.BreakerCooldown)
 		}
 	}
-	opts := server.Options{Proxy: px, Models: http.HandlerFunc(px.Models), Health: hc, Metrics: m, Log: log,
+	opts := server.Options{Proxy: px, Models: http.HandlerFunc(px.Models), Instructions: http.HandlerFunc(px.Instructions), Health: hc, Metrics: m, Log: log,
 		MaxInflight: cfg.MaxInflight, AllowedOrigins: cfg.CORSAllowedOrigins}
 
 	public := server.NewHTTPServer(cfg.ListenAddr, server.Public(opts), log)
