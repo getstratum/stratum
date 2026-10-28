@@ -58,7 +58,16 @@ curl http://localhost:20128/v1/chat/completions \
   -d '{"model":"openai/gpt-4o-mini","messages":[{"role":"user","content":"Hola"}]}'
 ```
 
-Each request shows up in Consumo a few seconds later. `openai/gpt-4o` with
+In Windows PowerShell, `curl` is another command; use `curl.exe` on one
+line, with the JSON's quotes escaped:
+
+```powershell
+curl.exe http://localhost:20128/v1/chat/completions -H "Authorization: Bearer <the key it printed>" -H "content-type: application/json" -d '{\"model\":\"openai/gpt-4o-mini\",\"messages\":[{\"role\":\"user\",\"content\":\"Hola\"}]}'
+```
+
+Each request shows up in Consumo a few seconds later. The mock always
+answers the same sentence and reports tokens from the request (up to 600
+of output), so costs and emissions look like real traffic. `openai/gpt-4o` with
 the Marketing key is refused: its policy does not allow it.
 
 ## What is in it

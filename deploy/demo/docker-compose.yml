@@ -67,6 +67,9 @@ services:
       context: ../gcp/mock-llm
     environment:
       MOCK_USAGE: request
+      # Engineering's policy caps requests at 8,192 output tokens, and the
+      # gateway adds the cap to requests without one: report at most 600.
+      MOCK_MAX_COMPLETION_TOKENS: "600"
       MOCK_LATENCY_MS: "250"
       MOCK_CHUNK_INTERVAL_MS: "40"
 
