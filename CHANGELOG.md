@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/getstratum/stratum/compare/v0.3.0...v0.3.1) (2026-10-28)
+
+
+### Bug Fixes
+
+* **console:** a session the console no longer has goes back to sign-in ([#91](https://github.com/getstratum/stratum/issues/91)) ([1c2c868](https://github.com/getstratum/stratum/commit/1c2c86819551875158747dafab7406d22b7ed422))
+
 ## [0.3.0](https://github.com/getstratum/stratum/compare/v0.2.0...v0.3.0) (2026-10-28)
 
 
