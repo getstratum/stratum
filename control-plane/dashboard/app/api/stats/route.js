@@ -17,7 +17,10 @@ export const GET = route('usage.read', async (req, { session, db }) => {
       SELECT COUNT(*)                                       AS total_requests,
              COALESCE(SUM(tokens_input + tokens_output), 0) AS total_tokens,
              COALESCE(SUM(cost_usd), 0)                     AS total_cost,
-             COUNT(DISTINCT team_id)                        AS active_teams
+             COUNT(DISTINCT team_id)                        AS active_teams,
+             SUM(impact_gwp_g_min)                          AS gwp_g_min,
+             SUM(impact_gwp_g_max)                          AS gwp_g_max,
+             COUNT(*) FILTER (WHERE impact_method IS NULL AND tokens_output > 0) AS impact_missing
         FROM request_logs r
        WHERE r.created_at >= $1 AND r.created_at <= $2 AND ${s1}
     `, p1),

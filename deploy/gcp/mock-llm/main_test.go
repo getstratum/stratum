@@ -29,4 +29,12 @@ func TestTokens(t *testing.T) {
 	if _, c := (config{usageFromReq: true}).tokens(req); c != 40 {
 		t.Fatalf("no max: got %d", c)
 	}
+	req.MaxTokens = 8192
+	if _, c := (config{usageFromReq: true, maxCompletion: 600}).tokens(req); c != 600 {
+		t.Fatalf("MOCK_MAX_COMPLETION_TOKENS: got %d, want 600", c)
+	}
+	req.MaxTokens = 200
+	if _, c := (config{usageFromReq: true, maxCompletion: 600}).tokens(req); c != 200 {
+		t.Fatalf("under the limit: got %d, want 200", c)
+	}
 }

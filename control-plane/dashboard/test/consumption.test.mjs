@@ -125,3 +125,35 @@ test('parseQuery: one dimension, one filter, valid ids', () => {
     assert.throws(() => q(bad), /./, bad)
   }
 })
+
+test('consumption: estimated emissions add up as ranges; requests without an estimate are counted apart', { skip }, async () => {
+  const C = await org()
+  const row = async (team, impact, tout = 50) => sql(`
+    INSERT INTO request_logs (id, created_at, org_id, team_id, provider, model_id, tokens_input, tokens_output, cost_usd,
+                              status_code, latency_ms, provider_ms,
+                              impact_gwp_g_min, impact_gwp_g_max, impact_energy_wh_min, impact_energy_wh_max,
+                              impact_water_ml_min, impact_water_ml_max, impact_method)
+    VALUES (gen_random_uuid(), '2026-10-07T12:00:00Z', $1, $2, 'openai', 'gpt-4o-mini', 10, $3, 0, 200, 500, 490,
+            $4, $5, $6, $7, $8, $9, $10)`,
+  [C.id, team, tout, ...(impact ? [impact[0], impact[1], 1, 2, 3, 4, 'ecologits-0.11.3'] : [null, null, null, null, null, null, null])])
+  await row(C.eng, [0.5, 1.5])
+  await row(C.eng, [1, 2])
+  await row(C.eng, null)          // a model without an estimate
+  await row(C.eng, null, 0)       // no output: nothing to estimate, not "missing"
+  await row(C.mkt, null)
+
+  const r = await consumption(db, { orgId: C.id, scope: 'org' }, { from: FROM, to: TO, by: 'team', filter: null })
+  assert.deepEqual(r.totals.impact.gwp_g, { min: 1.5, max: 3.5 })
+  assert.deepEqual(r.totals.impact.energy_wh, { min: 2, max: 4 })
+  assert.equal(r.totals.impact.estimated, 2)
+  assert.equal(r.totals.impact.missing, 2)
+  assert.equal(r.totals.impact.tokens_out, 100)
+
+  const eng = r.rows.find(x => x.key === C.eng)
+  const mkt = r.rows.find(x => x.key === C.mkt)
+  assert.deepEqual([eng.impact.gwp_g, eng.impact.missing], [{ min: 1.5, max: 3.5 }, 1])
+  assert.equal(mkt.impact.gwp_g, null, 'no estimate is no number, never zero')
+  assert.equal(mkt.impact.missing, 1)
+  const day = r.days.find(d => d.key === C.eng)
+  assert.equal(day.co2, 2.5, 'the daily series carries the middle of the range')
+})

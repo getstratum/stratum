@@ -10,7 +10,10 @@
 // total), which makes quota tests predictable. With MOCK_USAGE=request the
 // usage follows the request instead, for usage and cost demos: prompt
 // tokens about one per 4 characters of the messages, completion tokens the
-// request's max_tokens (or max_completion_tokens), 40 without one.
+// request's max_tokens (or max_completion_tokens), 40 without one, and at
+// most MOCK_MAX_COMPLETION_TOKENS when it is set: a gateway that caps output
+// tokens adds its cap to requests that have none, so a one-line answer
+// would otherwise report thousands of tokens.
 //
 // Environment:
 //
@@ -18,6 +21,8 @@
 //	MOCK_STREAM_CHUNKS      chunks per streamed response (default 20)
 //	MOCK_CHUNK_INTERVAL_MS  pause between chunks (default 100)
 //	MOCK_USAGE              fixed (default) or request
+//	MOCK_MAX_COMPLETION_TOKENS  with MOCK_USAGE=request, the most completion
+//	                        tokens a response reports (default 0: no limit)
 package main
 
 import (
@@ -44,6 +49,7 @@ type config struct {
 	chunks        int
 	chunkInterval time.Duration
 	usageFromReq  bool
+	maxCompletion int
 }
 
 func main() {
@@ -52,6 +58,7 @@ func main() {
 		chunks:        envInt("MOCK_STREAM_CHUNKS", 20),
 		chunkInterval: envMillis("MOCK_CHUNK_INTERVAL_MS", 100),
 		usageFromReq:  os.Getenv("MOCK_USAGE") == "request",
+		maxCompletion: envInt("MOCK_MAX_COMPLETION_TOKENS", 0),
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.Write([]byte("ok")) })
@@ -98,6 +105,9 @@ func (c config) tokens(req request) (prompt, completion int) {
 	}
 	if completion <= 0 {
 		completion = completionTokens
+	}
+	if c.maxCompletion > 0 {
+		completion = min(completion, c.maxCompletion)
 	}
 	return prompt, min(completion, 100000)
 }
