@@ -13,7 +13,8 @@ Tracks what is done and what still blocks the first public release.
 - [x] Pin every GitHub Action to a commit SHA, maintained by Dependabot with a 14-day cooldown
 - [x] Pin base images by tag and digest (`scripts/pin-images.sh`, checked in CI), maintained by Dependabot
 - [ ] Enable branch protection on `main` (required checks, signed-off commits, linear history)
-- [ ] Enable GitHub private vulnerability reporting and OpenSSF Scorecard publishing
+- [x] OpenSSF Scorecard workflow (`.github/workflows/scorecard.yml`); it publishes once the repository is public
+- [ ] Enable GitHub private vulnerability reporting (repository settings, by an admin)
 - [x] Decide ADR-0006: high availability is part of the open-source edition
 
 ## Blocking the public release
@@ -42,6 +43,9 @@ Tracks what is done and what still blocks the first public release.
       against a console, a gateway and a mock provider, and on GCP with `make test-console`.
 - [x] Control plane: migrations runner (`control-plane/migrations/migrate.sh`) that
       applies each file once, tracked in `schema_migrations`, under an advisory lock.
+- [x] A demo in one command (`make demo`, deploy/demo): console, gateway, mock LLM and an organization
+      with four weeks of usage, no provider keys; ports on 127.0.0.1 only.
+- [x] Upgrade path from 0.2 tested (migrations 025–032 on a 0.2.0 database with data), docs/upgrading.md.
 - [ ] Control plane: expand/contract discipline for schema changes (documented in CONTRIBUTING).
 
 ## Phase 2 — HA topology (started)

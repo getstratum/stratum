@@ -11,6 +11,45 @@ every pod), by `make up` with Docker Compose, or by you with the
 ([chart README](../deploy/helm/stratum-control-plane/README.md#migrations)).
 Back up the database before you upgrade.
 
+## From 0.2 to 0.3
+
+Tested from 0.2.0: its migrations and the demo data, with request logs
+already in place, then the 0.3 migrations on top (026 to 032 applied, old
+rows kept as they were). A 0.3 control plane sends gateways fields that a
+0.2 gateway ignores, so syncing keeps working while you upgrade them.
+
+**What to know before you upgrade**
+
+- **Eight migrations (025 to 032), all additive.** New columns and tables;
+  nothing is rewritten. 026 backfills the month's usage per team for this
+  month and the previous one from `request_logs`, so on a large table it
+  takes a while; 032 does not estimate old requests (see below).
+- **Upgrade every gateway before relying on what they enforce.** A 0.2
+  gateway ignores, until it is replaced:
+  budgets that cut and the maximum tokens per request (026, *Políticas*);
+  instructions for people (031);
+  `X-Stratum-User`: a request from a key that acts for people is served and
+  counted as the agent's own, under the agent's team policy (028);
+  `X-Stratum-Labels`: the request is served, without labels (029);
+  and `GET /v1/models`. The console lists the versions each gateway reported
+  in its last syncs (*Gateways*).
+- **Alerts are now sent.** Active alerts, by email or Slack webhook, once
+  per alert and month. Email needs `STRATUM_SMTP_URL`; webhooks go only to
+  the hosts in `STRATUM_ALERT_WEBHOOK_HOSTS` (chart: `console.alerts.*`,
+  default `hooks.slack.com`). Review your alerts before upgrading if some
+  were set up only as a reference.
+- **`STRATUM_CONSOLE_URL`** (chart: `console.publicUrl`), the console's
+  public https address, is new: alert messages link to it, and it is the
+  issuer when your own applications sign people in with their console
+  account (OIDC, [applications](console/applications.md)). Without it,
+  alerts have no links and OIDC is off.
+- **Estimated environmental impact** is computed for requests reported
+  after the upgrade. Requests already logged have none, and Consumo shows
+  their emissions as missing rather than zero.
+- **Kubernetes:** the gateway chart can install SLO burn-rate alerting
+  rules (`PrometheusRule`), off by default.
+- **Docker Compose:** `git pull` and `make up`.
+
 ## From 0.1 to 0.2
 
 Tested from 0.1.1 with real processes: the 0.2 migrations on a 0.1.1

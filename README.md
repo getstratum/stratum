@@ -1,24 +1,102 @@
 # Stratum
 
-**An open-source AI gateway that enforces your organization's AI policies inside your own network.**
+*[Leer en español](README.es.md)*
+
+**An open-source AI gateway that enforces your organization's AI policies
+inside your own network, and shows what AI costs you: in money, and in
+energy, water and emissions.**
+
+![Consumo: cost, tokens and estimated emissions by team](docs/images/consumo.png)
 
 Stratum sits between your applications and LLM providers (OpenAI, Anthropic,
-Gemini, Groq, Azure OpenAI, Ollama and other OpenAI-compatible APIs). It
-authenticates every developer and agent, applies per-team policies, quotas and
-PII/secret controls, and forwards the request with your organization's own
-provider credentials.
+Gemini, Mistral, Groq, Azure OpenAI, Ollama and other OpenAI-compatible
+APIs). It authenticates every developer, agent and application, applies each
+team's policy, quota and budget, keeps personal data and secrets from
+reaching the provider, and forwards the request with your organization's own
+provider credentials. Prompts and responses never leave your network except
+toward the provider you chose.
 
-It is built as two planes:
+## Try it in one command
 
-- **Gateway (data plane)**, a single Go binary that runs in your network. Prompts
-  and responses never leave it except toward the provider you chose.
-- **Control plane**, where you manage teams, keys, policies and providers. It can
-  run anywhere; the gateway only pulls configuration from it.
+```sh
+git clone https://github.com/getstratum/stratum && cd stratum
+make demo
+```
 
-The gateway is designed to keep serving when everything except the LLM provider
-is down: it holds its configuration as an in-memory snapshot, persists it
-encrypted to disk, and never calls the control plane, a database or Redis on the
-request path. See [docs/architecture](docs/architecture/overview.md).
+Docker is all it needs. You get the console on <http://localhost:3000>, a
+gateway, a mock LLM instead of real providers (no keys, nothing is paid) and
+a demo organization with four weeks of usage. `make demo-down` removes it.
+Details and the demo accounts: [deploy/demo](deploy/demo/README.md).
+
+## What it does
+
+**Control**
+
+- Teams, people, agents and keys; a policy per team with the providers and
+  models it may use, a monthly token quota and a budget in US$ that can cut
+  requests once it is spent, and a maximum of tokens per request.
+- Personal data and secrets found in a prompt are redacted before it reaches
+  the provider, or the request is refused, as the policy says.
+- An agent can have a fixed model; models can be turned off for the whole
+  organization.
+- Applications built on the gateway (a chat portal, an internal assistant)
+  act **on behalf of people** (`X-Stratum-User`): each person's team policy,
+  quota and budget apply, and the usage is theirs. Those applications can
+  sign people in with their console account (OpenID Connect).
+- **Instructions for people**: a text in the team's policy that the gateway
+  puts first in the system instruction of those requests, and the
+  application can show.
+
+**Visibility**
+
+- *Consumo*: cost, tokens, errors, requests refused and latency, by team,
+  agent, person, model, provider or label (`X-Stratum-Labels`), with a daily
+  series.
+- **Estimated environmental impact** of every request: energy, water and
+  CO2e, as a range, with the method and data of
+  [EcoLogits](https://github.com/mlco2/ecologits). Shown in Consumo, per 1,000 tokens in
+  Modelos, and on the home page. Models without an estimate are counted as
+  missing, never as zero.
+- Request logs (metadata only, never prompts) with CSV export, an audit log of every change
+  in the console, alerts by email or Slack webhook, a live model catalog
+  with prices, and Prometheus metrics with the GenAI semantic conventions.
+
+**Operations**
+
+- The gateway is one Go binary (standard library only). It keeps serving
+  when everything but the LLM provider is down: configuration is an
+  in-memory snapshot, persisted encrypted, and neither the control plane,
+  a database nor Valkey is called on the request path.
+- Helm charts for both planes, highly available by default; SLO burn-rate
+  alerting rules; a Google Cloud reference deployment with failure tests
+  (Stratum: 0 errors in 52,805 requests across a rolling restart, the loss
+  of a zone, a database failover and outages of Valkey and the control
+  plane, [report](docs/testing/gcp-2026-10-18.md)).
+- Signed multi-arch images, SBOM and SLSA provenance on every release.
+- Five console roles checked on the server, sessions on the server,
+  required second factor for Owner and Admin.
+
+The console speaks Spanish for now; the API, the docs and the code are in
+English.
+
+<table>
+<tr>
+<td><img src="docs/images/inicio.png" alt="Inicio: the organization at a glance"></td>
+<td><img src="docs/images/modelos.png" alt="Modelos: the catalog, with prices and emissions per 1,000 tokens"></td>
+</tr>
+</table>
+
+## How it is built
+
+Two planes:
+
+- **Gateway (data plane)**, which runs in your network, next to your
+  applications.
+- **Control plane**, where you manage teams, keys, policies and providers,
+  and see usage. It can run anywhere; gateways only pull configuration from
+  it and report usage (metadata only) to it.
+
+See [docs/architecture](docs/architecture/overview.md).
 
 > **Status: pre-release (0.x).** APIs and configuration may still change.
 > See the [release checklist](docs/release-checklist.md). Upgrading from an
@@ -208,7 +286,7 @@ Details in [ADR-0008](docs/adr/0008-snapshot-in-the-data-plane.md).
 gateway/        Go data plane (standard library only)
 control-plane/  Next.js control plane and SQL migrations
 api/            sync contract between the planes (JSON Schema + examples)
-deploy/         Helm chart, Docker Compose, GCP reference deployment, standalone example
+deploy/         Helm charts, Docker Compose, the demo, GCP reference deployment, standalone example
 docs/           architecture and decision records (docs/adr)
 ```
 
@@ -219,4 +297,7 @@ described in [SECURITY.md](SECURITY.md).
 
 ## License
 
-[MIT](LICENSE) © 2026 Matech SAS
+[MIT](LICENSE) © 2026 Matech SAS, except the environmental impact method
+and data in `control-plane/dashboard/lib/impacts`, ported from EcoLogits and
+under the [MPL-2.0](control-plane/dashboard/lib/impacts/data/LICENSE-MPL-2.0)
+file by file.
