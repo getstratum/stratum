@@ -4,7 +4,8 @@
 dimension: team, agent, person, model, provider or label.
 
 - **Totals:** estimated cost, requests (share with an error, and how many a
-  policy refused), tokens in and out, and p50/p95 latency.
+  policy refused), tokens in and out, p50/p95 latency, and estimated
+  emissions (see below).
 - **Per day:** cost, requests or tokens, stacked for the five largest groups;
   the rest add up as "Otros". Days are UTC.
 - **Table:** the same numbers per group, with the last request. A row opens
@@ -41,8 +42,20 @@ Each request also gets an estimate of its environmental impact when its
 usage arrives: energy (Wh, datacenter overhead included), emissions (g
 CO2eq: the electricity plus the request's share of making the hardware),
 water (mL), primary energy (kJ) and abiotic resource depletion (mg Sb eq).
-They are stored in `request_logs` (`impact_*`, migration 032); Consumo shows
-them in the next release.
+They are stored in `request_logs` (`impact_*`, migration 032) and shown:
+
+- **Consumo:** a tile with the period's emissions (the middle of the range,
+  the range, energy and water), a CO2e measure for the daily chart, and a
+  column per group. A group whose requests lack an estimate says so (an
+  asterisk, "sin dato"); it never counts them as zero.
+- **Modelos:** each model's emissions per 1,000 output tokens, beside its
+  price, to compare models for the same job.
+- **Inicio:** the period's emissions.
+
+`GET /api/consumption` returns them as `impact` on the totals and on each
+row: `gwp_g`, `energy_wh` and `water_ml` as `{min, max}` (null when nothing
+in the group has an estimate), `estimated` and `missing` (requests with
+output and no estimate), and `co2` (the middle, in g) per day.
 
 - **Method:** [EcoLogits](https://github.com/mlco2/ecologits), a life cycle
   assessment of model inference (ISO 14044), ported to the console with its
