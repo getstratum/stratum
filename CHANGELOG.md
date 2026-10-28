@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.3.0](https://github.com/getstratum/stratum/compare/v0.2.0...v0.3.0) (2026-10-28)
+
+
+### Features
+
+* **chart:** SLO burn-rate alerting rules for the gateway, tested in CI ([#73](https://github.com/getstratum/stratum/issues/73)) ([cd262ee](https://github.com/getstratum/stratum/commit/cd262eec2c340f146b3a0f233dbdf6b52d71e152))
+* **console:** alerts are sent, by email and Slack webhook ([#70](https://github.com/getstratum/stratum/issues/70)) ([c640f51](https://github.com/getstratum/stratum/commit/c640f51c1ba0776cbe9052e70cd921d6ed554d45))
+* **console:** sign in to your own applications with the console account ([#80](https://github.com/getstratum/stratum/issues/80)) ([f54be1e](https://github.com/getstratum/stratum/commit/f54be1ea49ec659b5f05c2f15a26507f4ab98576))
+* **console:** the estimated environmental impact of each request ([#88](https://github.com/getstratum/stratum/issues/88)) ([8ec6ee6](https://github.com/getstratum/stratum/commit/8ec6ee66a4ae295be6988bb08be9cea9551fe990))
+* **deploy/gcp:** people sign in to applications through the console ([#81](https://github.com/getstratum/stratum/issues/81)) ([f435c11](https://github.com/getstratum/stratum/commit/f435c1122a00b7faa6736a2ab7b64f3fa2674d86))
+* estimated emissions in the console, Stratum in one command, and the README for 0.3 ([#90](https://github.com/getstratum/stratum/issues/90)) ([f7a29f7](https://github.com/getstratum/stratum/commit/f7a29f7db3e3f30f11c414254cc080ba3bd64eba))
+* **gateway:** GenAI semantic-convention metrics on /metrics ([#71](https://github.com/getstratum/stratum/issues/71)) ([8f69c4e](https://github.com/getstratum/stratum/commit/8f69c4ee7b3972da8834a064ec2d6266cb955627))
+* **gateway:** GET /v1/models lists what the caller's policy allows ([#78](https://github.com/getstratum/stratum/issues/78)) ([b97d43e](https://github.com/getstratum/stratum/commit/b97d43e5cf13b92b916510eed47b95f965570e98))
+* instructions for people, from the team's policy ([#87](https://github.com/getstratum/stratum/issues/87)) ([6fd849b](https://github.com/getstratum/stratum/commit/6fd849b54b68c759c0690595f6f4c09b997d7308))
+* keys that act on behalf of people (X-Stratum-User) ([#77](https://github.com/getstratum/stratum/issues/77)) ([adf0241](https://github.com/getstratum/stratum/commit/adf0241239e3610e6831e6680c9f146c1cdffc18))
+* limits that cut: quota floor, US$ budgets, max tokens per request ([#68](https://github.com/getstratum/stratum/issues/68)) ([53168d2](https://github.com/getstratum/stratum/commit/53168d2e2cf57931e858277648704984d06f1c0c))
+* request labels (X-Stratum-Labels) and Consumo by label ([#79](https://github.com/getstratum/stratum/issues/79)) ([cabf371](https://github.com/getstratum/stratum/commit/cabf3719707b67a588fbd2405aa54cfe92e2ad16))
+
+
+### Bug Fixes
+
+* **deploy/gcp:** bill enabling the APIs to the project, not to gcloud's client ([#86](https://github.com/getstratum/stratum/issues/86)) ([d3ee371](https://github.com/getstratum/stratum/commit/d3ee371370f368d3ef573d858219501e3626bb7a))
+* **deploy/gcp:** enable the APIs one at a time, only the missing ones ([#85](https://github.com/getstratum/stratum/issues/85)) ([f42f9f9](https://github.com/getstratum/stratum/commit/f42f9f98c6914b1d8d9d1e8e2e7afe3fe4561f9b))
+* **deploy/gcp:** retry enabling the APIs on a new project ([#84](https://github.com/getstratum/stratum/issues/84)) ([e49f2e5](https://github.com/getstratum/stratum/commit/e49f2e54a04371076e05d39675d0194520ad9c30))
+* **gateway:** Go 1.26.10, for GO-2026-6809 in crypto/x509 ([#82](https://github.com/getstratum/stratum/issues/82)) ([b50522e](https://github.com/getstratum/stratum/commit/b50522ebe17205eb875e99f784927f336d85be4a))
+* Go 1.26.10 for GO-2026-6809 (go.mod and the images) ([#83](https://github.com/getstratum/stratum/issues/83)) ([e6d40e5](https://github.com/getstratum/stratum/commit/e6d40e5ca389813f5171b3f28e17323b0d89853a))
+
 ## [0.2.0](https://github.com/getstratum/stratum/compare/v0.1.1...v0.2.0) (2026-10-20)
 
 
