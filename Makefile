@@ -3,7 +3,9 @@ COMMIT  ?= $(shell git rev-parse HEAD 2>/dev/null || echo unknown)
 LDFLAGS := -s -w -buildid= -X main.version=$(VERSION) -X main.commit=$(COMMIT)
 COMPOSE := docker compose -f deploy/compose/docker-compose.yml --env-file deploy/compose/.env
 
-.PHONY: test lint contract build image up down
+DEMO    := docker compose -f deploy/demo/docker-compose.yml
+
+.PHONY: test lint contract build image up down demo demo-down
 
 test:
 	cd gateway && go test -race -count=1 ./...
@@ -29,3 +31,14 @@ up:
 
 down:
 	$(COMPOSE) down
+
+# Stratum in one command, with a mock LLM and demo data (deploy/demo). DEMO ONLY.
+demo:
+	$(DEMO) up -d --build --wait control-plane mock-llm
+	$(DEMO) up --build --exit-code-from setup setup
+	$(DEMO) up -d --build gateway
+	$(DEMO) up --exit-code-from traffic traffic
+	@echo "Console: http://localhost:3000 (accounts above). Stop and delete everything: make demo-down"
+
+demo-down:
+	$(DEMO) down -v
