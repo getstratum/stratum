@@ -161,6 +161,17 @@ async function cleanup() {
 
 // --- sign-in -------------------------------------------------------------------
 
+test('sign-in: a session the console no longer has goes back to sign-in', async () => {
+  // A cookie from before the database was recreated (make demo-down, then
+  // make demo), or from a session deleted on the server.
+  const url = new URL('/', page.url() === 'about:blank' ? test.info().project.use.baseURL : page.url()).toString()
+  await page.context().addCookies([{ name: 'stratum_session', value: 'a'.repeat(43), url }])
+  await page.goto('/')
+  await expect(page).toHaveURL(/\/login\?reason=session_expired$/)
+  await expect(page.getByText('Tu sesión terminó')).toBeVisible()
+  await page.context().clearCookies()
+})
+
 test('sign-in: a wrong password is refused without saying why', async () => {
   await page.goto('/')
   await expect(page).toHaveURL(/\/login$/)
