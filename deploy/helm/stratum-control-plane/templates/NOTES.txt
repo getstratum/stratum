@@ -25,3 +25,14 @@ Migrations: {{ if .Values.migrations.enabled }}applied by each pod before it sta
 
 Keep a copy of STRATUM_ENCRYPTION_KEY outside the cluster: provider
 credentials and second factors cannot be read without it.
+{{- if and .Values.topologySpread.enabled (eq .Values.topologySpread.zoneWhenUnsatisfiable "DoNotSchedule") }}
+
+Replicas spread across zones with DoNotSchedule. If pods stay Pending with "missing
+required label", the nodes have no topology.kubernetes.io/zone label (kind, minikube,
+kubeadm): upgrade with --set topologySpread.zoneWhenUnsatisfiable=ScheduleAnyway
+{{- end }}
+{{- if .Values.autoscaling.enabled }}
+
+Autoscaling needs the metrics API (metrics-server). Without it the HPA keeps
+{{ .Values.autoscaling.minReplicas }} replicas: check that "kubectl -n {{ .Release.Namespace }} get hpa" shows CPU targets, not <unknown>.
+{{- end }}

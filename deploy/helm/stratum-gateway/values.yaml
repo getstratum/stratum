@@ -149,7 +149,9 @@ autoscaling:
 
 # Spread replicas across zones and nodes. With "DoNotSchedule" a replica
 # stays pending rather than landing in a zone that already has one too many;
-# use "ScheduleAnyway" on single-zone clusters.
+# use "ScheduleAnyway" on single-zone clusters and on clusters whose nodes
+# have no topology.kubernetes.io/zone label (kind, minikube, kubeadm), where
+# "DoNotSchedule" leaves every replica pending.
 topologySpread:
   enabled: true
   zoneWhenUnsatisfiable: DoNotSchedule

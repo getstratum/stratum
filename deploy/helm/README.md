@@ -9,7 +9,8 @@ What the defaults give you:
 
 | Concern | Default |
 |---|---|
-| Replicas | 3 minimum (HPA 3–12 on CPU); the chart refuses fewer than 2 |
+| Kubernetes | 1.29 or later |
+| Replicas | 3 minimum (HPA 3–12 on CPU, needs the metrics API); the chart refuses fewer than 2 |
 | Placement | spread across zones (`DoNotSchedule`) and nodes (`ScheduleAnyway`) |
 | Voluntary disruptions | PodDisruptionBudget, at most 1 replica down |
 | Rollouts | `maxUnavailable: 0`, `maxSurge: 1`: capacity never drops |
@@ -161,6 +162,23 @@ and tests them with synthetic series (`tests/prometheusrule.test.yaml`).
 
 ## Single-zone and development clusters
 
+Replicas are spread across zones with `DoNotSchedule`: a replica stays
+pending rather than leave a zone without one. A node without the
+`topology.kubernetes.io/zone` label cannot satisfy that, so on a cluster
+whose nodes have no zone (kind, minikube, kubeadm, many on-premises
+clusters) every replica stays pending, with *didn't match pod topology
+spread constraints (missing required label)*. There, and on single-zone
+clusters:
+
 ```sh
 --set topologySpread.zoneWhenUnsatisfiable=ScheduleAnyway
 ```
+
+## Autoscaling
+
+The HorizontalPodAutoscaler (on by default) scales on CPU through the
+metrics API, which metrics-server or your provider serves; it is not part
+of every cluster. Without it the gateway keeps `autoscaling.minReplicas`
+replicas and does not scale: `kubectl get hpa` shows `<unknown>` targets.
+Install metrics-server, or set `autoscaling.enabled=false` and
+`replicaCount`.
