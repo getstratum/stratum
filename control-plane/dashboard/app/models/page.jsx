@@ -7,6 +7,14 @@ import { usePermissions } from '../../components/usePermissions'
 import Modal, { Field, Input, Btn } from '../../components/Modal'
 import { allowedBy } from '../../lib/catalog'
 import { ignoresModelSwitch, MODEL_SWITCH_SINCE } from '../../lib/gateway-version'
+import { co2, middle, METHOD_URL } from '../../lib/impacts/format'
+
+// Estimated emissions per 1,000 output tokens: the middle, the range on hover.
+function Intensity({ impact }) {
+  if (!impact) return <span className="text-muted" title="Este modelo no tiene estimación (propio, local o fuera de los datos de EcoLogits)">—</span>
+  const r = impact.gwp_g
+  return <span title={r.min === r.max ? undefined : `Entre ${co2(r.min)} y ${co2(r.max)}`}>{co2(middle(r))}</span>
+}
 
 const perMillion = v => {
   const n = parseFloat(v) * 1000
@@ -279,6 +287,9 @@ function Models() {
                 <th className="px-3 py-3 font-semibold">Proveedor</th>
                 <th className="px-3 py-3 font-semibold text-right">Entrada US$/M</th>
                 <th className="px-3 py-3 font-semibold text-right">Salida US$/M</th>
+                <th className="px-3 py-3 font-semibold text-right">
+                  <a href={METHOD_URL} target="_blank" rel="noreferrer" className="hover:text-strong" title="Emisiones estimadas por cada 1.000 tokens de salida (EcoLogits)">CO2e / 1k tok.</a>
+                </th>
                 <th className="px-3 py-3 font-semibold">Estado</th>
                 <th className="px-3 py-3 font-semibold">Permitido en</th>
                 <th className="px-5 py-3 font-semibold">En tu organización</th>
@@ -303,6 +314,7 @@ function Models() {
                     <td className="px-3 py-3">{m.provider}</td>
                     <td className="px-3 py-3 text-right"><Price list={m.cost_per_1k_input_tokens} own={m.org_cost_per_1k_input_tokens} /></td>
                     <td className="px-3 py-3 text-right"><Price list={m.cost_per_1k_output_tokens} own={m.org_cost_per_1k_output_tokens} /></td>
+                    <td className="px-3 py-3 text-right tabular whitespace-nowrap"><Intensity impact={m.impact_per_1k} /></td>
                     <td className="px-3 py-3">{status(m)}</td>
                     <td className="px-3 py-3" title={allowing.map(p => p.name).join(', ') || undefined}>
                       {m.enabled === false

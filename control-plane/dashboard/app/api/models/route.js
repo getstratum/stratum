@@ -4,7 +4,9 @@
  * GET   /api/models — catalog models (shared by every organization: IDs,
  *       aliases, list prices) with this organization's settings, plus models
  *       a provider listed for it in a connection test that the catalog does
- *       not have (source "provider", no price).
+ *       not have (source "provider", no price). Each with its estimated
+ *       emissions per 1,000 output tokens (impact_per_1k, lib/impacts), or
+ *       null when the model has no estimate.
  * PATCH /api/models  { provider, model_id, enabled?, input_per_mtok?, output_per_mtok? }
  *       — turn a model off or on for the organization (gateways refuse it
  *       even under "all models"), or set the prices it pays (null: list
@@ -14,6 +16,13 @@
 export const dynamic = 'force-dynamic'
 import { route, json, readJson, badRequest } from '../../../lib/route.js'
 import { audit } from '../../../lib/audit.js'
+import { estimate } from '../../../lib/impacts/index.js'
+
+// Per 1,000 output tokens, generation time from the model's own figures.
+function perThousand(provider, model) {
+  const e = estimate({ provider, model, tokensOut: 1000, durationMs: 0 })
+  return e ? { gwp_g: e.gwp_g, energy_wh: e.energy_wh, water_ml: e.water_ml } : null
+}
 
 export const GET = route('models.read', async (req, { db, session }) => {
   const { rows } = await db.query(`
@@ -41,7 +50,7 @@ export const GET = route('models.read', async (req, { db, session }) => {
                           AND (m.model_id = pm.model_id OR pm.model_id = ANY(m.aliases)))
      ORDER BY 1, 3
   `, [session.orgId])
-  return json(rows)
+  return json(rows.map(r => ({ ...r, impact_per_1k: perThousand(r.provider, r.model_id) })))
 })
 
 const MODEL_RE = /^[A-Za-z0-9][A-Za-z0-9._:@/+-]{0,199}$/

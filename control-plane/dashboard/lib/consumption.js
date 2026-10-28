@@ -11,6 +11,12 @@
  * policy, tokens, estimated cost and latency percentiles; the daily series
  * (UTC days) carries requests, tokens and cost per group. Everything is
  * limited to what the session may read (lib/usage.js logsScope).
+ *
+ * The estimated environmental impact (migration 032, lib/impacts) adds up
+ * as ranges: emissions, energy and water, low and high ends apart, over the
+ * requests that have an estimate; `missing` counts the requests with output
+ * whose model has none, so a total never passes for complete when it is
+ * not. The daily series carries the middle of the emissions range.
  */
 
 import { badRequest, isUuid } from './route.js'
@@ -96,12 +102,23 @@ const AGGREGATES = `
   -- milliseconds and would make it look better than it is.
   percentile_cont(0.5)  WITHIN GROUP (ORDER BY r.latency_ms) FILTER (WHERE r.provider_ms > 0) AS p50_ms,
   percentile_cont(0.95) WITHIN GROUP (ORDER BY r.latency_ms) FILTER (WHERE r.provider_ms > 0) AS p95_ms,
-  MAX(r.created_at)                                            AS last_at`
+  MAX(r.created_at)                                            AS last_at,
+  SUM(r.impact_gwp_g_min)                                      AS gwp_min,
+  SUM(r.impact_gwp_g_max)                                      AS gwp_max,
+  SUM(r.impact_energy_wh_min)                                  AS energy_min,
+  SUM(r.impact_energy_wh_max)                                  AS energy_max,
+  SUM(r.impact_water_ml_min)                                   AS water_min,
+  SUM(r.impact_water_ml_max)                                   AS water_max,
+  COUNT(*) FILTER (WHERE r.impact_method IS NOT NULL)          AS impact_estimated,
+  COUNT(*) FILTER (WHERE r.impact_method IS NULL AND r.tokens_output > 0) AS impact_missing,
+  COALESCE(SUM(r.tokens_output) FILTER (WHERE r.impact_method IS NOT NULL), 0) AS impact_tokens_out`
 
 function aggregates(params) {
   params.push(POLICY_REASONS)
   return AGGREGATES.replace('$POLICY', `$${params.length}`)
 }
+
+const range = (lo, hi) => (lo == null ? null : { min: num(lo), max: num(hi) })
 
 const shape = r => ({
   requests: num(r.requests), errors: num(r.errors), blocked: num(r.blocked),
@@ -109,6 +126,15 @@ const shape = r => ({
   p50_ms: r.p50_ms == null ? null : Math.round(num(r.p50_ms)),
   p95_ms: r.p95_ms == null ? null : Math.round(num(r.p95_ms)),
   last_at: r.last_at ?? null,
+  // null ranges: nothing in the group has an estimate.
+  impact: {
+    gwp_g: range(r.gwp_min, r.gwp_max),
+    energy_wh: range(r.energy_min, r.energy_max),
+    water_ml: range(r.water_min, r.water_max),
+    estimated: num(r.impact_estimated),
+    missing: num(r.impact_missing),
+    tokens_out: num(r.impact_tokens_out),
+  },
 })
 
 /**
@@ -158,7 +184,8 @@ export async function consumption(db, session, { from, to, by, filter }) {
              ${KEY[by]} AS key,
              COUNT(*)                                     AS requests,
              COALESCE(SUM(r.tokens_input + r.tokens_output), 0) AS tokens,
-             COALESCE(SUM(r.cost_usd), 0)                 AS cost
+             COALESCE(SUM(r.cost_usd), 0)                 AS cost,
+             COALESCE(SUM((r.impact_gwp_g_min + r.impact_gwp_g_max) / 2), 0) AS co2
         FROM ${source(by)}
        WHERE ${wd}
        GROUP BY 1, 2
@@ -184,6 +211,6 @@ export async function consumption(db, session, { from, to, by, filter }) {
       label: r.key == null ? 'Sin asignar' : names.get(r.key) ?? (['team', 'agent', 'user'].includes(by) ? 'Eliminado' : r.key),
       ...shape(r),
     })),
-    days: days.rows.map(d => ({ day: d.day, key: d.key, requests: num(d.requests), tokens: num(d.tokens), cost: num(d.cost) })),
+    days: days.rows.map(d => ({ day: d.day, key: d.key, requests: num(d.requests), tokens: num(d.tokens), cost: num(d.cost), co2: num(d.co2) })),
   }
 }

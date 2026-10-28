@@ -1,0 +1,133 @@
+# Stratum in one command, to look around: DEMO ONLY.
+#
+#   make demo         # builds and starts everything, prints how to sign in
+#   make demo-down    # stops it and deletes its data
+#
+# PostgreSQL, the control plane (console) on http://localhost:3000, a gateway
+# on http://localhost:20128, a mock LLM instead of real providers, and a demo
+# organization with four weeks of usage. Secrets, passwords and keys here
+# are fixed and public: never expose these ports or use this for real work
+# (deploy/compose is the development stack; deploy/helm for production).
+
+name: stratum-demo
+
+x-demo-env: &demo-env
+  # Fixed, public, DEMO ONLY.
+  DATABASE_URL: "postgresql://stratum:stratum-demo@postgres:5432/stratum"
+  STRATUM_ENCRYPTION_KEY: "0d0e0f0a0b0c0d0e0f0a0b0c0d0e0f0a0b0c0d0e0f0a0b0c0d0e0f0a0b0c0d0e"
+
+services:
+  postgres:
+    image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
+    environment:
+      POSTGRES_DB: stratum
+      POSTGRES_USER: stratum
+      POSTGRES_PASSWORD: stratum-demo
+    volumes:
+      - demo-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U stratum -d stratum"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  migrate:
+    image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
+    environment:
+      PGHOST: postgres
+      PGUSER: stratum
+      PGDATABASE: stratum
+      PGPASSWORD: stratum-demo
+    volumes:
+      - ../../control-plane/migrations:/migrations:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["sh", "/migrations/migrate.sh", "/migrations"]
+
+  control-plane:
+    image: stratum-demo-control-plane
+    build:
+      context: ../../control-plane/dashboard
+    environment:
+      <<: *demo-env
+      # Plain http on localhost: browsers accept Secure cookies there.
+      STRATUM_SYNC_INTERVAL_S: "10"
+      STRATUM_CONSOLE_URL: "http://localhost:3000"
+      # The catalog that ships with this checkout, not a download.
+      STRATUM_MODEL_CATALOG_URL: "off"
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  mock-llm:
+    build:
+      context: ../gcp/mock-llm
+    environment:
+      MOCK_USAGE: request
+      # Engineering's policy caps requests at 8,192 output tokens, and the
+      # gateway adds the cap to requests without one: report at most 600.
+      MOCK_MAX_COMPLETION_TOKENS: "600"
+      MOCK_LATENCY_MS: "250"
+      MOCK_CHUNK_INTERVAL_MS: "40"
+
+  # The demo organization, accounts, keys, the gateway's registration and
+  # four weeks of history; prints how to sign in.
+  setup:
+    image: stratum-demo-control-plane
+    pull_policy: never
+    environment:
+      <<: *demo-env
+      STRATUM_CP_URL: "http://control-plane:3000"
+    volumes:
+      - ./setup.mjs:/app/demo/setup.mjs:ro
+      - ./traffic.mjs:/app/demo/traffic.mjs:ro
+      - ../../control-plane/seed/demo.sql:/app/demo/seed.sql:ro
+    command: ["node", "/app/demo/setup.mjs"]
+    restart: "no"
+    depends_on:
+      control-plane:
+        condition: service_healthy
+
+  gateway:
+    build:
+      context: ../../gateway
+    read_only: true
+    environment:
+      STRATUM_CP_URL: "http://control-plane:3000"
+      STRATUM_CP_ALLOW_HTTP: "true"
+      STRATUM_SYNC_INTERVAL: "10s"
+      STRATUM_USAGE_INTERVAL: "3s"
+      # Fixed, public, DEMO ONLY (setup.mjs registers this gateway).
+      STRATUM_INSTANCE_ID: "dp_00000000000000000000000000000001"
+      STRATUM_SYNC_TOKEN: "dp_sync_ec04306ae2ed29a95834cb9b70b9d7f0a8698db0df6f19ff70b925c8aed0cb29"
+      STRATUM_SNAPSHOT_KEY: "a1a2a3a4a5a6a7a8a9b0b1b2b3b4b5b6b7b8b9c0c1c2c3c4c5c6c7c8c9d0d1d2"
+    volumes:
+      - demo-gateway:/var/lib/stratum
+    ports:
+      - "127.0.0.1:20128:20128"
+    depends_on:
+      setup:
+        condition: service_completed_successfully
+
+  # Today's traffic, through the gateway.
+  traffic:
+    image: stratum-demo-control-plane
+    pull_policy: never
+    environment:
+      <<: *demo-env
+      STRATUM_GATEWAY_URL: "http://gateway:20128"
+    volumes:
+      - ./setup.mjs:/app/demo/setup.mjs:ro
+      - ./traffic.mjs:/app/demo/traffic.mjs:ro
+    command: ["node", "/app/demo/traffic.mjs"]
+    restart: "no"
+    depends_on:
+      gateway:
+        condition: service_started
+
+volumes:
+  demo-postgres:
+  demo-gateway:

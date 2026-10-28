@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts'
+import { co2, energy, water, middle, METHOD_URL } from '../../lib/impacts/format'
 
 // Categorical slots in fixed order (validated: adjacent CVD ΔE ≥ 9.1 on the
 // light surface). Three are under 3:1 on white, so the table below always
@@ -26,6 +27,7 @@ const METRICS = [
   { id: 'cost',     label: 'Costo' },
   { id: 'requests', label: 'Requests' },
   { id: 'tokens',   label: 'Tokens' },
+  { id: 'co2',      label: 'CO2e' },
 ]
 
 const PERIODS = [
@@ -66,7 +68,18 @@ function tokens(v) {
 }
 const ms = v => (v == null ? '—' : v >= 1000 ? `${nf(v / 1000, 1)} s` : `${nf(v)} ms`)
 const pct = (a, b) => (b ? `${nf((a / b) * 100, a / b < 0.1 ? 1 : 0)} %` : '—')
-const metricText = (metric, v) => (metric === 'cost' ? usd(v) : metric === 'tokens' ? tokens(v) : nf(v))
+const metricText = (metric, v) => (metric === 'cost' ? usd(v) : metric === 'tokens' ? tokens(v) : metric === 'co2' ? co2(v) : nf(v))
+
+/** A group's emissions: the middle of its range, its range, and what lacks an estimate. */
+function Emissions({ impact }) {
+  if (!impact.gwp_g) return <span className="text-muted" title="Ningún modelo de este grupo tiene estimación">{impact.missing ? 'sin dato' : '—'}</span>
+  const { min, max } = impact.gwp_g
+  return (
+    <span title={`Entre ${co2(min)} y ${co2(max)}${impact.missing ? ` · ${nf(impact.missing)} requests sin dato` : ''}`}>
+      {co2(middle(impact.gwp_g))}{impact.missing > 0 && <span className="text-muted">*</span>}
+    </span>
+  )
+}
 function ago(t) {
   if (!t) return '—'
   const s = (Date.now() - new Date(t).getTime()) / 1000
@@ -150,7 +163,7 @@ export default function UsagePage() {
   // Top five groups by the shown metric get a color; the rest stack as "Otros".
   const chart = useMemo(() => {
     if (!data) return null
-    const value = r => (shown === 'tokens' ? r.tokens_in + r.tokens_out : r[shown])
+    const value = r => (shown === 'tokens' ? r.tokens_in + r.tokens_out : shown === 'co2' ? middle(r.impact.gwp_g) ?? 0 : r[shown])
     const ranked = [...data.rows].sort((a, b) => value(b) - value(a))
     const top = ranked.slice(0, SLOTS.length).filter(r => value(r) > 0).map(r => r.key ?? 'null')
     const names = Object.fromEntries(data.rows.map(r => [r.key ?? 'null', r.label]))
@@ -220,6 +233,12 @@ export default function UsagePage() {
             tone={t.requests && t.errors / t.requests > 0.05 ? 'warn' : undefined} />
           <Tile label="Tokens" value={tokens(t.tokens_in + t.tokens_out)} note={`${tokens(t.tokens_in)} de entrada · ${tokens(t.tokens_out)} de salida`} />
           <Tile label="Latencia p95" value={ms(t.p95_ms)} note={`p50 ${ms(t.p50_ms)} · de los requests que llegaron al proveedor`} />
+          <Tile label="Emisiones estimadas"
+            value={t.impact.gwp_g ? `${co2(middle(t.impact.gwp_g))} CO2e` : 'Sin dato'}
+            note={t.impact.gwp_g
+              ? `entre ${co2(t.impact.gwp_g.min)} y ${co2(t.impact.gwp_g.max)} · ${energy(middle(t.impact.energy_wh))} · ${water(middle(t.impact.water_ml))} de agua`
+                + (t.impact.missing ? ` · ${nf(t.impact.missing)} requests sin dato` : '')
+              : t.impact.missing ? `${nf(t.impact.missing)} requests de modelos sin estimación` : 'Sin requests con respuesta'} />
         </section>
       )}
 
@@ -255,7 +274,7 @@ export default function UsagePage() {
                   <XAxis dataKey="day" tickLine={false} axisLine={{ stroke: '#c9ced6' }} tick={{ fontSize: 11, fill: '#6b7380' }}
                     tickFormatter={d => String(Number(d.slice(8, 10)))} interval="preserveStartEnd" minTickGap={8} />
                   <YAxis tickLine={false} axisLine={false} width={64} tick={{ fontSize: 11, fill: '#6b7380' }}
-                    tickFormatter={v => metricText(shown, v)} allowDecimals={shown === 'cost'} />
+                    tickFormatter={v => metricText(shown, v)} allowDecimals={shown === 'cost' || shown === 'co2'} />
                   <Tooltip cursor={{ fill: '#eef0f3' }} content={<ChartTooltip metric={shown} names={chart.names} />} />
                   {chart.series.map((k, i) => (
                     <Bar key={k} dataKey={k} stackId="a" fill={chart.color(k)} stroke="#ffffff" strokeWidth={1}
@@ -275,7 +294,7 @@ export default function UsagePage() {
           {data.rows.length === 0 ? (
             <p className="px-5 pb-5 text-sm text-muted">Sin requests en este período.</p>
           ) : (
-            <table className="w-full min-w-[920px] text-sm tabular">
+            <table className="w-full min-w-[1000px] text-sm tabular">
               <thead>
                 <tr className="text-left text-xs uppercase tracking-wide text-muted">
                   <th className="px-5 py-2.5 font-semibold">{dimOf(by).one}</th>
@@ -284,6 +303,7 @@ export default function UsagePage() {
                   <th className="px-3 py-2.5 font-semibold text-right">Rechazados</th>
                   <th className="px-3 py-2.5 font-semibold text-right">Tokens ent. / sal.</th>
                   <th className="px-3 py-2.5 font-semibold text-right">Costo</th>
+                  <th className="px-3 py-2.5 font-semibold text-right">CO2e est.</th>
                   <th className="px-3 py-2.5 font-semibold text-right">p50 / p95</th>
                   <th className="px-5 py-2.5 font-semibold">Último uso</th>
                 </tr>
@@ -309,7 +329,8 @@ export default function UsagePage() {
                       <td className={`px-3 py-2.5 text-right ${r.requests && r.errors / r.requests > 0.05 ? 'text-warn font-semibold' : ''}`}>{pct(r.errors, r.requests)}</td>
                       <td className="px-3 py-2.5 text-right">{nf(r.blocked)}</td>
                       <td className="px-3 py-2.5 text-right whitespace-nowrap">{tokens(r.tokens_in)} / {tokens(r.tokens_out)}</td>
-                      <td className="px-3 py-2.5 text-right">{usd(r.cost)}</td>
+                      <td className="px-3 py-2.5 text-right whitespace-nowrap">{usd(r.cost)}</td>
+                      <td className="px-3 py-2.5 text-right whitespace-nowrap"><Emissions impact={r.impact} /></td>
                       <td className="px-3 py-2.5 text-right whitespace-nowrap">{ms(r.p50_ms)} / {ms(r.p95_ms)}</td>
                       <td className="px-5 py-2.5 text-muted whitespace-nowrap">{ago(r.last_at)}</td>
                     </tr>
@@ -325,6 +346,13 @@ export default function UsagePage() {
         Costo estimado = tokens que informa el proveedor × precio de lista del catálogo vigente al registrar el request.
         No reemplaza la factura: no incluye impuestos, créditos ni descuentos. Con error: respuestas 4xx y 5xx, incluidos
         los rechazos por política (modelo o proveedor no permitido, cuota, datos sensibles).
+      </p>
+      <p className="text-[13px] text-muted max-w-3xl leading-relaxed">
+        Emisiones, energía y agua son estimaciones con el método de EcoLogits, a partir del modelo, los tokens de salida y la
+        duración de cada request. Muestran el valor medio; el rango (al pasar el mouse) viene de que los modelos cerrados no
+        publican su tamaño. No incluyen el entrenamiento de los modelos, la red ni los dispositivos. Un modelo sin estimación
+        (propio o local) figura como «sin dato» y lo marca un asterisco, nunca como cero.{' '}
+        <a href={METHOD_URL} target="_blank" rel="noreferrer" className="text-accent hover:text-accent-hover">Cómo se estima</a>
       </p>
     </div>
   )
