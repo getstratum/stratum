@@ -46,15 +46,18 @@ export default function OverviewPage() {
     setLoading(true)
     const q = buildQuery(range)
 
+    // An answer that is not 200 (no session, an error) is not data: without
+    // the summary the page says so instead of rendering an error body.
+    const body = r => (r.ok ? r.json() : null)
     const [s, a, l] = await Promise.all([
-      fetch(`/api/stats${q}`).then(r => r.json()),
-      fetch(`/api/analytics${q}`).then(r => r.json()),
-      fetch(`/api/logs-recent`).then(r => r.json()).catch(() => []),
+      fetch(`/api/stats${q}`).then(body).catch(() => null),
+      fetch(`/api/analytics${q}`).then(body).catch(() => null),
+      fetch(`/api/logs-recent`).then(body).catch(() => null),
     ])
 
     setStats(s)
     setAnalytics(a)
-    setLogs(l)
+    setLogs(Array.isArray(l) ? l : [])
     setLoading(false)
   }, [range])
 
@@ -91,6 +94,10 @@ export default function OverviewPage() {
 
       {loading && (
         <div className="text-center text-muted text-sm py-16">Cargando…</div>
+      )}
+
+      {!loading && !stats && (
+        <div className="text-center text-muted text-sm py-16">No se pudo cargar el resumen. Probá de nuevo en un momento.</div>
       )}
 
       {!loading && stats && (

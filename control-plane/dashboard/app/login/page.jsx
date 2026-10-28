@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 const INPUT = 'w-full bg-raised border border-border rounded-lg px-3.5 py-2.5 text-sm text-strong placeholder-subtle focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent transition-all disabled:opacity-50'
 const LABEL = 'block text-xs font-semibold text-muted uppercase tracking-wide mb-1.5'
@@ -13,13 +13,13 @@ export default function LoginPage() {
   const [code,        setCode]        = useState('')
   const [loading,     setLoading]     = useState(false)
   const [redirecting, setRedirecting] = useState(false)
-  const [error,       setError]       = useState(() => {
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search)
-      if (params.get('reason') === 'session_expired') return 'Tu sesión terminó. Volvé a ingresar.'
-    }
-    return ''
-  })
+  const [error,       setError]       = useState('')
+  // After hydration: the server renders the page without the query string,
+  // and a first render that differs from it is a hydration error.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('reason') === 'session_expired') setError('Tu sesión terminó. Volvé a ingresar.')
+  }, [])
 
   function go(path) {
     setRedirecting(true)
