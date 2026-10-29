@@ -99,7 +99,7 @@ export function redirectUriProblem(value) {
 }
 
 // What the console shows of an application (never the secret's hash).
-export const CLIENT_COLUMNS = `c.id, c.name, c.redirect_uris, c.require_mfa, c.created_at, c.revoked_at`
+export const CLIENT_COLUMNS = `c.id, c.name, c.redirect_uris, c.require_mfa, c.usage_reports, c.created_at, c.revoked_at`
 
 export function parseRedirectUris(value) {
   if (!Array.isArray(value) || value.length === 0 || value.length > 10) {
@@ -124,7 +124,7 @@ export function parseAppName(value) {
 export async function authenticateClient(db, clientId, secret) {
   if (typeof clientId !== 'string' || typeof secret !== 'string' || clientId.length > 100 || secret.length > 200) return null
   const { rows: [c] } = await db.query(
-    `SELECT c.id, c.org_id, c.name, c.secret_hash, c.redirect_uris
+    `SELECT c.id, c.org_id, c.name, c.secret_hash, c.redirect_uris, c.usage_reports
        FROM oidc_clients c JOIN organizations o ON o.id = c.org_id
       WHERE c.id = $1 AND c.revoked_at IS NULL AND o.status = 'active'`, [clientId])
   if (!c) return null
