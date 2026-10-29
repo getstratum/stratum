@@ -34,6 +34,7 @@ codes not yet redeemed.
 | Client authentication | `client_secret_basic` or `client_secret_post`. |
 | ID token | RS256, 5 minutes. `iss`, `sub` (the person's id), `aud` (the client_id), `iat`, `exp`, `auth_time`, `nonce`, `amr` (`pwd`, plus `otp` with a second factor), `org_id`, `team_id`; `email` with scope `email`, `name` with scope `profile`. |
 | Access token | A JWT for `userinfo` only, 5 minutes. |
+| Usage reports | With the client secret, when the application may ask for them (below). |
 | Keys | `/api/oidc/jwks`. Made on first use, the private key encrypted with `STRATUM_ENCRYPTION_KEY`. If that key changes, the signing key is replaced on the next sign-in. |
 
 Applications keep their own session after the sign-in. The console keeps
@@ -55,3 +56,27 @@ the console's sign-in.
 Userinfo refuses a token as soon as the person loses access; an ID token
 already issued stays valid for its 5 minutes, so applications should check
 it right after the sign-in, not hold on to it.
+
+## Usage reports
+
+An application may also ask for usage reports on behalf of the people it
+signed in, for a chat portal to offer a PDF of them, say. It is off until an
+Owner or Admin turns on **Reportes de consumo** for that application.
+
+    GET /api/oidc/usage-report?person=<id>&kind=scopes|self|team&month=AAAA-MM
+    Authorization: Basic <client_id:client_secret>
+
+| `kind` | |
+|---|---|
+| `scopes` | Which reports the person may have: `{ person, self: true, team: { id, name } \| null }`. |
+| `self` | Their own usage in the month (UTC): what they did with their keys and what applications did on their behalf. Totals, by model, by day, by label, estimated emissions. |
+| `team` | Only for a Team manager: their team's usage added up, the same views plus how many people used it, people against agents, and the team's budget and token quota. Never who used how much: no person's name, id or share. |
+
+The console decides, not the application: the person has to be active, in
+the application's organization and allowed to use applications, and for a
+team report a Team manager now. A team report is refused (`403
+too_few_people`) while fewer than 3 people used anything in the month: with
+two, the total less one's own is the other's. Months go back two years.
+
+Every report given, or refused for lack of permission, is in the audit log
+(`usage_report.read`, by `app:<name>`), with the person and the kind.

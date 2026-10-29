@@ -49,6 +49,7 @@ function AppModal({ app, onSave, onClose }) {
   const [name, setName] = useState(app?.name ?? '')
   const [uris, setUris] = useState((app?.redirect_uris ?? []).join('\n'))
   const [requireMfa, setRequireMfa] = useState(app?.require_mfa ?? true)
+  const [usageReports, setUsageReports] = useState(app?.usage_reports ?? false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -58,7 +59,7 @@ function AppModal({ app, onSave, onClose }) {
       const res = await fetch(isEdit ? `/api/apps/${app.id}` : '/api/apps', {
         method: isEdit ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, redirectUris: uris.split('\n').map(s => s.trim()).filter(Boolean), requireMfa }),
+        body: JSON.stringify({ name, redirectUris: uris.split('\n').map(s => s.trim()).filter(Boolean), requireMfa, usageReports }),
       })
       const data = await res.json()
       if (!res.ok) { setError(data.message ?? 'No se pudo guardar.'); return }
@@ -84,6 +85,16 @@ function AppModal({ app, onSave, onClose }) {
             Pedir verificación en dos pasos
             <span className="block text-xs text-muted mt-0.5">
               Quien no la tenga la configura al ingresar. Sin esto, alcanza la contraseña para quien no la usa.
+            </span>
+          </span>
+        </label>
+        <label className="flex items-start gap-2.5 text-sm text-default">
+          <input type="checkbox" className="mt-0.5 h-4 w-4" checked={usageReports} onChange={e => setUsageReports(e.target.checked)} />
+          <span>
+            Reportes de consumo
+            <span className="block text-xs text-muted mt-0.5">
+              La aplicación puede pedir, por cada persona que ingresó, el reporte de su propio consumo y, si administra un
+              equipo, el del equipo sumado, sin el detalle por persona. Cada pedido queda en Auditoría.
             </span>
           </span>
         </label>
@@ -175,6 +186,7 @@ export default function AppsPage() {
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-sm font-semibold text-strong">{app.name}</span>
                 {app.require_mfa && <span className="text-xs text-default border border-border rounded px-2 py-0.5">2 pasos</span>}
+                {app.usage_reports && <span className="text-xs text-default border border-border rounded px-2 py-0.5">reportes de consumo</span>}
                 {app.revoked_at && <span className="text-xs text-warn">dada de baja</span>}
               </div>
               <div className="text-xs font-mono text-muted break-all">{app.id}</div>

@@ -30,6 +30,7 @@ const PUBLIC = {
   'oidc/token/route.js:POST':      'an application redeems a code with its client secret',
   'oidc/userinfo/route.js:GET':    'an application reads who signed in, with an access token',
   'oidc/jwks/route.js:GET':        'public keys of the ID tokens',
+  'oidc/usage-report/route.js:GET': 'an allowed application asks for a person\'s usage report with its client secret',
 }
 // Routes a session that must set up the second factor first may use.
 const DURING_ENROLLMENT = new Set([

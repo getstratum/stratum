@@ -3,7 +3,7 @@
  * lib/oidc.js).
  *
  * GET  /api/apps → the organization's applications, and the issuer
- * POST /api/apps  { name, redirectUris: [...], requireMfa? } → a new one;
+ * POST /api/apps  { name, redirectUris: [...], requireMfa?, usageReports? } → a new one;
  *      its client secret is in the answer, this once
  */
 export const dynamic = 'force-dynamic'
@@ -24,13 +24,14 @@ export const POST = route('apps.manage', async (req, { session, db }) => {
   const name = parseAppName(body.name)
   const uris = parseRedirectUris(body.redirectUris)
   if (body.requireMfa !== undefined && typeof body.requireMfa !== 'boolean') throw badRequest('requireMfa tiene que ser true o false.')
+  if (body.usageReports !== undefined && typeof body.usageReports !== 'boolean') throw badRequest('usageReports tiene que ser true o false.')
   const id = newClientId()
   const secret = newClientSecret()
   const { rows: [app] } = await db.query(
-    `INSERT INTO oidc_clients (id, org_id, name, secret_hash, redirect_uris, require_mfa)
-     VALUES ($1, $2, $3, $4, $5, $6) RETURNING ${COLUMNS.replaceAll('c.', '')}`,
-    [id, session.orgId, name, secret.hash, uris, body.requireMfa ?? true])
+    `INSERT INTO oidc_clients (id, org_id, name, secret_hash, redirect_uris, require_mfa, usage_reports)
+     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING ${COLUMNS.replaceAll('c.', '')}`,
+    [id, session.orgId, name, secret.hash, uris, body.requireMfa ?? true, body.usageReports ?? false])
   await audit(db, { req, session, action: 'app.create', targetType: 'oidc_client', targetId: id,
-    details: { name, redirectUris: uris, requireMfa: app.require_mfa } })
+    details: { name, redirectUris: uris, requireMfa: app.require_mfa, usageReports: app.usage_reports } })
   return json({ app, clientSecret: secret.raw }, 201)
 })

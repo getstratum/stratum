@@ -1,5 +1,5 @@
 /**
- * PATCH  /api/apps/:id  { name?, redirectUris?, requireMfa? }
+ * PATCH  /api/apps/:id  { name?, redirectUris?, requireMfa?, usageReports? }
  * POST   /api/apps/:id  { action: 'rotate-secret' } → the new secret, this once
  * DELETE /api/apps/:id  → revoked: no new sign-ins, codes or tokens
  */
@@ -29,6 +29,10 @@ export const PATCH = route('apps.manage', async (req, { session, db, params }) =
   if (body.requireMfa !== undefined) {
     if (typeof body.requireMfa !== 'boolean') throw badRequest('requireMfa tiene que ser true o false.')
     set('require_mfa', body.requireMfa)
+  }
+  if (body.usageReports !== undefined) {
+    if (typeof body.usageReports !== 'boolean') throw badRequest('usageReports tiene que ser true o false.')
+    set('usage_reports', body.usageReports)
   }
   if (!sets.length) throw badRequest('Nada para actualizar.')
   const { rows: [updated] } = await db.query(
