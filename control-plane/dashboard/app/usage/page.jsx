@@ -14,6 +14,7 @@ const OTHER_KEY = '__otros'
 const DIMS = [
   { id: 'team',     label: 'Equipos',     one: 'Equipo' },
   { id: 'agent',    label: 'Agentes',     one: 'Agente' },
+  { id: 'app',      label: 'Aplicaciones', one: 'Aplicación' },
   { id: 'user',     label: 'Personas',    one: 'Persona' },
   { id: 'model',    label: 'Modelos',     one: 'Modelo' },
   { id: 'provider', label: 'Proveedores', one: 'Proveedor' },
@@ -21,7 +22,7 @@ const DIMS = [
 ]
 const dimOf = id => DIMS.find(d => d.id === id)
 // Clicking a row narrows to it and groups by the next useful dimension.
-const NEXT = { team: 'agent', agent: 'model', user: 'model', model: 'agent', provider: 'model', label: 'user' }
+const NEXT = { team: 'agent', agent: 'model', app: 'user', user: 'model', model: 'agent', provider: 'model', label: 'user' }
 
 const METRICS = [
   { id: 'cost',     label: 'Costo' },
@@ -127,7 +128,7 @@ export default function UsagePage() {
   const [ready, setReady]   = useState(false)
   const latest = useRef(0) // only the last request's answer is shown
 
-  // Deep links: /usage?agent=<id> (from Agentes), ?team=, ?by=
+  // Deep links: /usage?agent=<id> or ?app=<id> (from Agentes), ?team=, ?by=
   useEffect(() => {
     const q = new URLSearchParams(window.location.search)
     for (const d of DIMS) {
@@ -203,7 +204,7 @@ export default function UsagePage() {
               </button>
             </p>
           ) : (
-            <p className="text-sm text-muted">Por equipo, agente, persona, modelo, proveedor o etiqueta. Tocá una fila para ver su detalle.</p>
+            <p className="text-sm text-muted">Por equipo, agente, aplicación, persona, modelo, proveedor o etiqueta. Tocá una fila para ver su detalle.</p>
           )}
         </div>
         <div className="flex flex-col gap-1">
@@ -298,6 +299,7 @@ export default function UsagePage() {
               <thead>
                 <tr className="text-left text-xs uppercase tracking-wide text-muted">
                   <th className="px-5 py-2.5 font-semibold">{dimOf(by).one}</th>
+                  {by === 'app' && <th className="px-3 py-2.5 font-semibold text-right">Personas</th>}
                   <th className="px-3 py-2.5 font-semibold text-right">Requests</th>
                   <th className="px-3 py-2.5 font-semibold text-right">Con error</th>
                   <th className="px-3 py-2.5 font-semibold text-right">Rechazados</th>
@@ -325,6 +327,7 @@ export default function UsagePage() {
                           ) : <span className="text-muted">{r.label}</span>}
                         </span>
                       </td>
+                      {by === 'app' && <td className="px-3 py-2.5 text-right">{nf(r.people)}</td>}
                       <td className="px-3 py-2.5 text-right">{nf(r.requests)}</td>
                       <td className={`px-3 py-2.5 text-right ${r.requests && r.errors / r.requests > 0.05 ? 'text-warn font-semibold' : ''}`}>{pct(r.errors, r.requests)}</td>
                       <td className="px-3 py-2.5 text-right">{nf(r.blocked)}</td>
@@ -342,6 +345,11 @@ export default function UsagePage() {
         </section>
       )}
 
+      <p className="text-[13px] text-muted max-w-3xl leading-relaxed">
+        Agentes: lo que cada agente hace por su cuenta. Aplicaciones: lo que una aplicación hace en nombre de personas
+        (un portal de chat, por ejemplo, con un agente que actúa por personas); ese uso también figura en Personas y en el
+        equipo de cada persona, no en el del agente.
+      </p>
       <p className="text-[13px] text-muted max-w-3xl leading-relaxed">
         Costo estimado = tokens que informa el proveedor × precio de lista del catálogo vigente al registrar el request.
         No reemplaza la factura: no incluye impuestos, créditos ni descuentos. Con error: respuestas 4xx y 5xx, incluidos

@@ -50,7 +50,7 @@ Details and the demo accounts: [deploy/demo](deploy/demo/README.md).
 **Visibility**
 
 - *Consumo*: cost, tokens, errors, requests refused and latency, by team,
-  agent, person, model, provider or label (`X-Stratum-Labels`), with a daily
+  agent, application (on behalf of people), person, model, provider or label (`X-Stratum-Labels`), with a daily
   series.
 - **Estimated environmental impact** of every request: energy, water and
   CO2e, as a range, with the method and data of

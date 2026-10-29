@@ -53,7 +53,7 @@ paga nada) y una organización de demo con cuatro semanas de uso.
 **Visibilidad**
 
 - *Consumo*: costo, tokens, errores, consultas rechazadas y latencia, por
-  equipo, agente, persona, modelo, proveedor o etiqueta
+  equipo, agente, aplicación (en nombre de personas), persona, modelo, proveedor o etiqueta
   (`X-Stratum-Labels`), con la serie diaria.
 - **Impacto ambiental estimado** de cada consulta: energía, agua y CO2e,
   como rango, con el método y los datos de

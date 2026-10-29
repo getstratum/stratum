@@ -1,7 +1,14 @@
 /**
  * lib/consumption.js — consumption grouped by one dimension (team, agent,
- * person, model, provider or label), from request_logs, for the Consumo
- * page.
+ * application, person, model, provider or label), from request_logs, for
+ * the Consumo page.
+ *
+ * Agents and applications are both agents' keys, apart by how a request
+ * used it: an agent's request is its own work (no person); an
+ * application's is on behalf of a person (a key that delegates, with
+ * X-Stratum-User: a chat portal, say). Kept apart, people chatting through
+ * an application never pass for an agent's cost, and "Aplicaciones" says
+ * how many people used each one.
  *
  * Labels are the application's (X-Stratum-Labels, migration 029): a request
  * with two labels counts in both rows, so per-label rows can add up to more
@@ -22,7 +29,7 @@
 import { badRequest, isUuid } from './route.js'
 import { logsScope } from './usage.js'
 
-export const DIMENSIONS = ['team', 'agent', 'user', 'model', 'provider', 'label']
+export const DIMENSIONS = ['team', 'agent', 'app', 'user', 'model', 'provider', 'label']
 
 // Reasons a gateway refuses a request because of the team's policy or quota,
 // not because something failed.
@@ -34,6 +41,7 @@ export const POLICY_REASONS = [
 const KEY = {
   team:     `r.team_id::text`,
   agent:    `r.agent_id::text`,
+  app:      `r.agent_id::text`,
   user:     `r.user_id::text`,
   // Refused before a provider was chosen: no provider (NULL, "Sin asignar").
   model:    `NULLIF(r.provider, '') || '/' || r.model_id`,
@@ -49,12 +57,16 @@ const source = by => FROM[by] ?? 'request_logs r'
 
 const LABEL_RE = /^[a-z0-9_]{1,40}$/
 
-// Rows that belong to the dimension at all: agent and person traffic are
-// apart, so "por agente" never mixes in people.
+// Rows that belong to the dimension at all, also when it is the filter: an
+// agent's own work is apart from what an application did for people.
 const PRESENT = {
-  team: 'TRUE', agent: 'r.agent_id IS NOT NULL', user: 'r.user_id IS NOT NULL', model: 'TRUE', provider: 'TRUE',
+  team: 'TRUE',
+  agent: 'r.agent_id IS NOT NULL AND r.user_id IS NULL',
+  app: 'r.agent_id IS NOT NULL AND r.user_id IS NOT NULL',
+  user: 'r.user_id IS NOT NULL', model: 'TRUE', provider: 'TRUE',
   label: 'cardinality(r.labels) > 0',
 }
+const IDS = ['team', 'agent', 'app', 'user'] // uuid keys, with names
 
 /**
  * Validated ?by and the optional drill-down filter (one of ?team ?agent
@@ -68,7 +80,7 @@ export function parseQuery(searchParams) {
     const v = searchParams.get(kind)
     if (v == null || v === '') continue
     if (filter) throw badRequest('Filtrá por una sola cosa a la vez.')
-    if (['team', 'agent', 'user'].includes(kind) && !isUuid(v)) throw badRequest(`${kind} inválido.`)
+    if (IDS.includes(kind) && !isUuid(v)) throw badRequest(`${kind} inválido.`)
     if (v.length > 200) throw badRequest(`${kind} inválido.`)
     if (kind === 'label' && !LABEL_RE.test(v)) throw badRequest('label inválido.')
     filter = { kind, value: v }
@@ -86,7 +98,7 @@ function where(session, { from, to, by, filter }, params) {
     params.push(filter.value)
     parts.push(filter.kind === 'label'
       ? `$${params.length} = ANY(r.labels)`
-      : `${KEY[filter.kind]} = $${params.length}`)
+      : `${KEY[filter.kind]} = $${params.length}`, PRESENT[filter.kind])
   }
   return parts.join(' AND ')
 }
@@ -113,9 +125,13 @@ const AGGREGATES = `
   COUNT(*) FILTER (WHERE r.impact_method IS NULL AND r.tokens_output > 0) AS impact_missing,
   COALESCE(SUM(r.tokens_output) FILTER (WHERE r.impact_method IS NOT NULL), 0) AS impact_tokens_out`
 
-function aggregates(params) {
+// How many people an application acted for: only where it is shown.
+const PEOPLE = `,
+  COUNT(DISTINCT r.user_id)                                    AS people`
+
+function aggregates(params, by) {
   params.push(POLICY_REASONS)
-  return AGGREGATES.replace('$POLICY', `$${params.length}`)
+  return AGGREGATES.replace('$POLICY', `$${params.length}`) + (by === 'app' ? PEOPLE : '')
 }
 
 const range = (lo, hi) => (lo == null ? null : { min: num(lo), max: num(hi) })
@@ -126,6 +142,7 @@ const shape = r => ({
   p50_ms: r.p50_ms == null ? null : Math.round(num(r.p50_ms)),
   p95_ms: r.p95_ms == null ? null : Math.round(num(r.p95_ms)),
   last_at: r.last_at ?? null,
+  ...(r.people == null ? {} : { people: num(r.people) }),
   // null ranges: nothing in the group has an estimate.
   impact: {
     gwp_g: range(r.gwp_min, r.gwp_max),
@@ -138,18 +155,20 @@ const shape = r => ({
 })
 
 /**
- * Names for team, agent and person keys: from this organization, and for a
- * team manager from their team only (a name is not shown to whom may not
- * read it, even when the id was guessed).
+ * Names for team, agent, application and person keys: from this
+ * organization, and for a team manager from their team only (a name is not
+ * shown to whom may not read it, even when the id was guessed). An
+ * application is the exception: it acts for people of every team, and a
+ * manager sees their people's use of it by its name.
  */
 async function labels(db, session, kind, keys) {
   if (!keys.length) return new Map()
-  const table = { team: 'teams', agent: 'agents', user: 'users' }[kind]
+  const table = { team: 'teams', agent: 'agents', app: 'agents', user: 'users' }[kind]
   if (!table) return new Map(keys.map(k => [k, k]))
   const name = kind === 'user' ? `COALESCE(NULLIF(name, ''), email)` : 'name'
   const params = [session.orgId, keys]
   let scope = ''
-  if (session.scope === 'team') {
+  if (session.scope === 'team' && kind !== 'app') {
     params.push(session.teamId)
     scope = kind === 'team' ? ' AND id = $3' : ' AND team_id = $3'
   }
@@ -163,10 +182,10 @@ export async function consumption(db, session, { from, to, by, filter }) {
 
   const pt = []
   const wt = where(session, q, pt)
-  const at = aggregates(pt)
+  const at = aggregates(pt, by)
   const pr = []
   const wr = where(session, q, pr)
-  const ar = aggregates(pr)
+  const ar = aggregates(pr, by)
   const pd = []
   const wd = where(session, q, pd)
 
@@ -208,7 +227,7 @@ export async function consumption(db, session, { from, to, by, filter }) {
     totals: shape(totals.rows[0] ?? {}),
     rows: rows.rows.map(r => ({
       key: r.key,
-      label: r.key == null ? 'Sin asignar' : names.get(r.key) ?? (['team', 'agent', 'user'].includes(by) ? 'Eliminado' : r.key),
+      label: r.key == null ? 'Sin asignar' : names.get(r.key) ?? (IDS.includes(by) ? 'Eliminado' : r.key),
       ...shape(r),
     })),
     days: days.rows.map(d => ({ day: d.day, key: d.key, requests: num(d.requests), tokens: num(d.tokens), cost: num(d.cost), co2: num(d.co2) })),

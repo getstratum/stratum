@@ -337,7 +337,10 @@ export default function AgentsPage() {
                   {!agent.is_active && <span className="text-xs text-warn">desactivado</span>}
                 </div>
                 <div className="flex flex-wrap items-center gap-1">
-                  {canUsage && <Link href={`/usage?agent=${agent.id}`} className={`${action} inline-flex items-center`}>Ver consumo</Link>}
+                  {canUsage && (
+                    // A key that acts for people is an application in Consumo: its use is theirs.
+                    <Link href={`/usage?${agent.delegates ? 'app' : 'agent'}=${agent.id}`} className={`${action} inline-flex items-center`}>Ver consumo</Link>
+                  )}
                   {canManage && (
                     <>
                       <button type="button" onClick={() => setModal({ agent })} className={action}>Editar</button>

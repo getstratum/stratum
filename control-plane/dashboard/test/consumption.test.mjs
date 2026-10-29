@@ -121,7 +121,8 @@ test('parseQuery: one dimension, one filter, valid ids', () => {
   const q = s => parseQuery(new URLSearchParams(s))
   assert.deepEqual(q(''), { by: 'team', filter: null })
   assert.deepEqual(q('by=model&provider=openai'), { by: 'model', filter: { kind: 'provider', value: 'openai' } })
-  for (const bad of ['by=color', 'agent=x', 'agent=' + randomUUID() + '&team=' + randomUUID()]) {
+  assert.deepEqual(q('by=user&app=' + '00000000-0000-0000-0000-000000000001').filter.kind, 'app')
+  for (const bad of ['by=color', 'agent=x', 'app=x', 'agent=' + randomUUID() + '&team=' + randomUUID()]) {
     assert.throws(() => q(bad), /./, bad)
   }
 })
@@ -156,4 +157,39 @@ test('consumption: estimated emissions add up as ranges; requests without an est
   assert.equal(mkt.impact.missing, 1)
   const day = r.days.find(d => d.key === C.eng)
   assert.equal(day.co2, 2.5, 'the daily series carries the middle of the range')
+})
+
+test('consumption: an application acting for people is apart from agents; Aplicaciones counts its people', { skip }, async () => {
+  const D = await org()
+  const [leo] = await sql(`INSERT INTO users (org_id, team_id, email, name) VALUES ($1, $2, $3, 'Leo') RETURNING id`,
+    [D.id, D.mkt, `leo-${D.id.slice(0, 8)}@example.com`])
+  const [portal] = await sql(`INSERT INTO agents (org_id, team_id, name, delegates) VALUES ($1, $2, 'portal', true) RETURNING id`,
+    [D.id, D.eng])
+  await log(D, { day: '07', team: D.eng, agent: D.bot, cost: 0.001 })                   // the bot's own work
+  await log(D, { day: '07', team: D.eng, agent: portal.id, user: D.ana, cost: 0.01 })   // Ana, through the portal
+  await log(D, { day: '08', team: D.eng, agent: portal.id, user: D.ana, cost: 0.01 })
+  await log(D, { day: '08', team: D.mkt, agent: portal.id, user: leo.id, cost: 0.02 })  // Leo, Marketing
+  const of = (session, by, filter = null) => consumption(db, session, { from: FROM, to: TO, by, filter })
+  const org_ = { orgId: D.id, scope: 'org' }
+
+  const agents = await of(org_, 'agent')
+  assert.deepEqual(agents.rows.map(r => [r.label, r.requests]), [['bot-hora', 1]], 'people chatting are no agent')
+  assert.equal(agents.totals.requests, 1)
+  assert.equal(agents.rows[0].people, undefined)
+
+  const apps = await of(org_, 'app')
+  assert.deepEqual(apps.rows.map(r => [r.label, r.requests, r.people]), [['portal', 3, 2]])
+  assert.ok(Math.abs(apps.totals.cost - 0.04) < 1e-9)
+  // Its use is each person's team's, not the agent's.
+  const teams = await of(org_, 'team', { kind: 'app', value: portal.id })
+  assert.deepEqual(teams.rows.map(r => [r.label, r.requests]).sort(), [['Ingeniería', 2], ['Marketing', 1]])
+  // Drilled into the application: by person.
+  const people = await of(org_, 'user', { kind: 'app', value: portal.id })
+  assert.deepEqual(people.rows.map(r => [r.label, r.requests]).sort(), [['Ana', 2], ['Leo', 1]])
+  // The same key as an agent filter: only its own work (none).
+  assert.equal((await of(org_, 'model', { kind: 'agent', value: portal.id })).rows.length, 0)
+
+  // A Marketing manager sees Leo's use of the portal, by its name, though the agent is Ingeniería's.
+  const mgr = await of({ orgId: D.id, scope: 'team', teamId: D.mkt }, 'app')
+  assert.deepEqual(mgr.rows.map(r => [r.label, r.requests, r.people]), [['portal', 1, 1]])
 })
