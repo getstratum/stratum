@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.2](https://github.com/getstratum/stratum/compare/v0.3.1...v0.3.2) (2026-10-29)
+
+
+### Bug Fixes
+
+* **chart:** Kubernetes 1.29 or later; say why pods stay pending; test both charts on kind ([#93](https://github.com/getstratum/stratum/issues/93)) ([5919bdf](https://github.com/getstratum/stratum/commit/5919bdfb87e3021f512bc27ef2e9edcc11a14230))
+
 ## [0.3.1](https://github.com/getstratum/stratum/compare/v0.3.0...v0.3.1) (2026-10-28)
 
 
