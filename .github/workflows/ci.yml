@@ -301,6 +301,84 @@ jobs:
           refuses "needs restartPolicy: Always" --set existingSecret=s --set 'sidecars[0].name=proxy' --set 'sidecars[0].image=x'
           refuses "ingress.hosts needs at least one host" --set existingSecret=s --set ingress.enabled=true
 
+  charts-kind:
+    name: charts on kind
+    runs-on: ubuntu-latest
+    # Both charts installed on kind, a certified-conformant Kubernetes with no
+    # cloud features (no zones, no metrics API, no load balancer), the way
+    # their READMEs say to: every pod has to become ready. It catches what
+    # rendering and schemas do not, such as a placement rule no node can meet.
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v4.3.0
+      - uses: helm/kind-action@ef37e7f390d99f746eb8b610417061a60e82a6cc # v1.14.0
+        with:
+          cluster_name: stratum
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: migrations image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: control-plane/migrations
+          load: true
+          tags: stratum-migrations:ci
+          cache-from: type=gha,scope=migrations
+      - name: control plane image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: control-plane/dashboard
+          load: true
+          tags: stratum-control-plane:ci
+          cache-from: type=gha,scope=cp
+      - name: gateway image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: gateway
+          load: true
+          tags: stratum-gateway:ci
+          cache-from: type=gha,scope=gateway
+      - name: images into the cluster
+        run: |
+          for i in stratum-migrations stratum-control-plane stratum-gateway; do
+            kind load docker-image "$i:ci" --name stratum
+          done
+      - name: PostgreSQL
+        run: |
+          kubectl create namespace stratum
+          kubectl -n stratum create deployment postgres \
+            --image=postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea --port=5432
+          kubectl -n stratum set env deployment/postgres POSTGRES_USER=stratum POSTGRES_PASSWORD=ci POSTGRES_DB=stratum
+          kubectl -n stratum expose deployment postgres --port=5432
+          kubectl -n stratum rollout status deployment/postgres --timeout=3m
+      - name: control plane chart
+        run: |
+          kubectl -n stratum create secret generic stratum-control-plane \
+            --from-literal=DATABASE_URL=postgresql://stratum:ci@postgres:5432/stratum \
+            --from-literal=STRATUM_ENCRYPTION_KEY="$(openssl rand -hex 32)"
+          helm install cp deploy/helm/stratum-control-plane -n stratum \
+            --set existingSecret=stratum-control-plane \
+            --set image.repository=stratum-control-plane --set image.tag=ci \
+            --set migrations.image.repository=stratum-migrations --set migrations.image.tag=ci \
+            --set topologySpread.zoneWhenUnsatisfiable=ScheduleAnyway
+          kubectl -n stratum rollout status deployment/cp-stratum-control-plane --timeout=5m
+      - name: gateway chart (defaults, standalone configuration)
+        run: |
+          kubectl -n stratum create secret generic provider-keys --from-literal=OPENAI_API_KEY=unused
+          helm install gw deploy/helm/stratum-gateway -n stratum \
+            -f deploy/helm/stratum-gateway/ci/static-values.yaml \
+            --set image.repository=stratum-gateway --set image.tag=ci
+          kubectl -n stratum rollout status deployment/gw-stratum-gateway --timeout=5m
+      - name: what went wrong
+        if: failure()
+        run: |
+          kubectl -n stratum get pods -o wide
+          kubectl -n stratum describe pods | tail -n 120
+          kubectl -n stratum logs --all-containers --prefix --tail=50 -l app.kubernetes.io/instance=cp || true
+          kubectl -n stratum logs --all-containers --prefix --tail=50 -l app.kubernetes.io/instance=gw || true
+
   gcp-kit:
     name: GCP reference deployment
     runs-on: ubuntu-latest

@@ -20,3 +20,14 @@ WARNING: quota.valkey.url is not set. Unless STRATUM_VALKEY_URL is in existingSe
 each replica enforces monthly token quotas on its own, so a team can spend up to
 {{ if .Values.autoscaling.enabled }}{{ .Values.autoscaling.maxReplicas }}{{ else }}{{ .Values.replicaCount }}{{ end }}x its quota. See docs/adr/0004-quotas.md.
 {{- end }}
+{{- if and .Values.topologySpread.enabled (eq .Values.topologySpread.zoneWhenUnsatisfiable "DoNotSchedule") }}
+
+Replicas spread across zones with DoNotSchedule. If pods stay Pending with "missing
+required label", the nodes have no topology.kubernetes.io/zone label (kind, minikube,
+kubeadm): upgrade with --set topologySpread.zoneWhenUnsatisfiable=ScheduleAnyway
+{{- end }}
+{{- if .Values.autoscaling.enabled }}
+
+Autoscaling needs the metrics API (metrics-server). Without it the HPA keeps
+{{ .Values.autoscaling.minReplicas }} replicas: check that "kubectl -n {{ .Release.Namespace }} get hpa" shows CPU targets, not <unknown>.
+{{- end }}

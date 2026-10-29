@@ -11,7 +11,8 @@ What the defaults give you:
 
 | Concern | Default |
 |---|---|
-| Replicas | 2 (the chart refuses fewer); optional HPA |
+| Kubernetes | 1.29 or later |
+| Replicas | 2 (the chart refuses fewer); optional HPA (needs the metrics API) |
 | Placement | spread across zones (`DoNotSchedule`) and nodes (`ScheduleAnyway`) |
 | Voluntary disruptions | PodDisruptionBudget, at least 1 replica up |
 | Rollouts | `maxUnavailable: 0`, `maxSurge: 1` |
@@ -148,6 +149,11 @@ kubectl -n stratum exec <pod> -c control-plane -- \
 ```
 
 ## Single-zone and development clusters
+
+Replicas are spread across zones with `DoNotSchedule`. On a cluster whose
+nodes have no `topology.kubernetes.io/zone` label (kind, minikube,
+kubeadm, many on-premises clusters) every replica stays pending; there,
+and on single-zone clusters:
 
 ```sh
 --set topologySpread.zoneWhenUnsatisfiable=ScheduleAnyway
