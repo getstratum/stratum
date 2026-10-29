@@ -35,6 +35,10 @@ the period (`from`/`to` or `period`) and at most one filter (`team`, `agent`,
 `app`, `user`, `model` as `provider/model`, `provider`, `label`). Rows by
 `app` carry `people`. Permission `usage.read`.
 
+Since 0.4, `agent` (as `by` or as the filter) is an agent's own work only;
+what a key that acts for people did for them is under `app`. A script that
+read a portal's use with `agent=<id>` reads it with `app=<id>`.
+
 Errors are 4xx and 5xx answers, refusals included. Refused by policy:
 `no_policy`, `team_disabled`, `provider_not_allowed`, `model_not_allowed`,
 `quota_exceeded`, `sensitive_data_detected`, `agent_model_mismatch`,
