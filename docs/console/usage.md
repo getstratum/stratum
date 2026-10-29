@@ -1,7 +1,7 @@
 # Consumption
 
 **Consumo** shows what gateways reported (ADR-0009), grouped by one
-dimension: team, agent, person, model, provider or label.
+dimension: team, agent, application, person, model, provider or label.
 
 - **Totals:** estimated cost, requests (share with an error, and how many a
   policy refused), tokens in and out, p50/p95 latency, and estimated
@@ -9,11 +9,19 @@ dimension: team, agent, person, model, provider or label.
 - **Per day:** cost, requests or tokens, stacked for the five largest groups;
   the rest add up as "Otros". Days are UTC.
 - **Table:** the same numbers per group, with the last request. A row opens
-  its detail: a team by agent, an agent or person by model, a model by agent,
-  a provider by model, a label by person. The address keeps the selection
-  (`/usage?agent=<id>&by=model`), and **Agentes** links each agent to its own.
-- **Agents and people apart:** "por agente" counts only agent traffic and
-  "por persona" only people's keys; teams, models and providers count both.
+  its detail: a team by agent, an agent or person by model, an application
+  by person, a model by agent, a provider by model, a label by person. The
+  address keeps the selection (`/usage?agent=<id>&by=model`), and **Agentes**
+  links each agent to its own (an agent that acts for people, to
+  `/usage?app=<id>`).
+- **Agents and applications apart:** both are agents' keys. "Agentes" counts
+  what an agent does on its own (no person); "Aplicaciones" what a key that
+  acts for people did on behalf of someone (`X-Stratum-User`: a chat portal,
+  say), with how many people. That use is also each person's, in
+  "Personas", and their team's, never the agent's team. A team manager sees
+  their people's use of an application, by its name.
+- **People:** "por persona" counts people's own keys and what applications
+  did for them; teams, models and providers count everything.
 - **Labels:** what applications put on their requests with the
   `X-Stratum-Labels` header (a chat portal, the topic of each message; an
   agent, the feature that made the call). A request with two labels counts
@@ -22,9 +30,14 @@ dimension: team, agent, person, model, provider or label.
 - **Who sees what:** the same as the rest of the usage views. A team manager
   sees their team only.
 
-API: `GET /api/consumption?by=team|agent|user|model|provider|label` with the
-period (`from`/`to` or `period`) and at most one filter (`team`, `agent`,
-`user`, `model` as `provider/model`, `provider`, `label`). Permission `usage.read`.
+API: `GET /api/consumption?by=team|agent|app|user|model|provider|label` with
+the period (`from`/`to` or `period`) and at most one filter (`team`, `agent`,
+`app`, `user`, `model` as `provider/model`, `provider`, `label`). Rows by
+`app` carry `people`. Permission `usage.read`.
+
+Since 0.4, `agent` (as `by` or as the filter) is an agent's own work only;
+what a key that acts for people did for them is under `app`. A script that
+read a portal's use with `agent=<id>` reads it with `app=<id>`.
 
 Errors are 4xx and 5xx answers, refusals included. Refused by policy:
 `no_policy`, `team_disabled`, `provider_not_allowed`, `model_not_allowed`,

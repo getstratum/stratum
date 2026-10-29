@@ -405,11 +405,14 @@ test('agents: an agent that acts for people follows each person, and stops for o
   await eventually(() => callGateway(key, as), 200, SYNC_MS, 'a request on behalf of a person')
   expect(await callGateway(key, { 'X-Stratum-User': '00000000-0000-4000-8000-000000000000' }), 'a person who does not exist').toBe(403)
 
-  // The request is the person's in the console.
+  // The request is the person's in the console: under the agent as an
+  // application (on behalf of people), never as the agent's own work.
+  const agentId = (((await api('GET', '/api/agents')).body ?? []).find((a) => a.name === name) ?? {}).id
   await eventually(async () => {
-    const row = await api('GET', `/api/consumption?by=user&agent=${(((await api('GET', '/api/agents')).body ?? []).find((a) => a.name === name) ?? {}).id}`)
+    const row = await api('GET', `/api/consumption?by=user&app=${agentId}`)
     return (row.body?.rows ?? []).some((r) => r.key === person.id) ? 'theirs' : 'not yet'
   }, 'theirs', SYNC_MS, "the delegated request in the person's usage")
+  expect((await api('GET', `/api/consumption?by=user&agent=${agentId}`)).body?.rows ?? [], 'not the agent\'s own work').toEqual([])
 
   // Taking their access to applications away reaches the gateway.
   expect((await api('PATCH', `/api/users/${person.id}`, { appAccess: false })).status).toBe(200)
