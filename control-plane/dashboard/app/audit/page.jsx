@@ -41,6 +41,15 @@ const ACTIONS = {
   'gateway.register':       'Registró un gateway',
   'gateway.token.rotate':   'Rotó el token de un gateway',
   'gateway.disable':        'Dio de baja un gateway',
+  'app.create':             'Registró una aplicación',
+  'app.update':             'Modificó una aplicación',
+  'app.secret.rotate':      'Generó un secreto nuevo para una aplicación',
+  'app.revoke':             'Dio de baja una aplicación',
+  'app.login':              'Ingreso a una aplicación',
+  'app.password_ok':        'Contraseña correcta en una aplicación; falta el segundo paso',
+  'usage_report.read':      'Una aplicación pidió un reporte de consumo',
+  'sso.update':             'Configuró el ingreso con SSO',
+  'sso.delete':             'Quitó el ingreso con SSO',
 }
 
 const RESULT = {
@@ -58,6 +67,9 @@ function describe(e) {
   if (d.name) bits.push(d.name)
   if (d.provider) bits.push(d.provider)
   if (d.permission) bits.push(`${d.permission} (${d.method} ${d.path})`)
+  if (d.method === 'sso') bits.push('con SSO')
+  if (Array.isArray(d.domains)) bits.push(d.domains.join(', ') + (d.enforce ? ' (exigido)' : ''))
+  if (d.kind && d.month) bits.push(`${d.kind === 'team' ? 'del equipo' : 'propio'}, ${d.month}`)
   if (d.reason) bits.push(d.reason)
   if (Array.isArray(d.changed) && d.changed.length) bits.push(`cambió: ${d.changed.join(', ')}`)
   if (d.role?.from) bits.push(`rol ${d.role.from} → ${d.role.to}`)

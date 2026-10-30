@@ -81,7 +81,10 @@ paga nada) y una organización de demo con cuatro semanas de uso.
 - Imágenes multiarquitectura firmadas, SBOM y procedencia SLSA en cada
   versión.
 - Cinco roles en la consola verificados en el servidor, sesiones en el
-  servidor, segundo factor obligatorio para Owner y Admin.
+  servidor, segundo factor obligatorio para Owner y Admin; ingreso con el
+  proveedor de identidad de la organización (Google Workspace, Entra ID o
+  cualquiera con OpenID Connect), a la consola y a sus aplicaciones
+  ([docs/console/sso.md](docs/console/sso.md)).
 
 La consola está en español; la API, la documentación y el código, en
 inglés.

@@ -11,7 +11,8 @@
 # policy use every model, registers a gateway and points the ollama provider
 # at the mock. Use a throwaway database.
 #
-# Ports: 3125 (console), 20128/20129 (gateway), 8080 (mock LLM).
+# Ports: 3125 (console), 20128/20129 (gateway), 8080 (mock LLM), 18090 (mock
+# identity provider, for signing in with SSO).
 # STRATUM_E2E_SKIP_BUILD=1 reuses the console's existing .next build;
 # STRATUM_GATEWAY_BIN / STRATUM_MOCK_LLM_BIN reuse built binaries.
 set -euo pipefail
@@ -66,7 +67,7 @@ fi
 # Gateways sync every 5 s instead of 30, so key changes show up quickly.
 ENCRYPTION_KEY="$(openssl rand -hex 32)"
 bg "$WORK/console.log" env DATABASE_URL="$DATABASE_URL" STRATUM_ENCRYPTION_KEY="$ENCRYPTION_KEY" \
-  SECURE_COOKIES=false STRATUM_SYNC_INTERVAL_S=5 STRATUM_MODEL_CATALOG_URL=off NEXT_TELEMETRY_DISABLED=1 \
+  STRATUM_CONSOLE_URL="$CONSOLE" SECURE_COOKIES=false STRATUM_SYNC_INTERVAL_S=5 STRATUM_MODEL_CATALOG_URL=off NEXT_TELEMETRY_DISABLED=1 \
   "$DASH/node_modules/.bin/next" start "$DASH" -p 3125
 wait_for "$CONSOLE/login" 200 "the console"
 
@@ -107,8 +108,9 @@ INSTANCE="$(cp_api POST /api/internal/instances '{"name":"e2e-local"}')" || fail
 cp_api POST /api/internal/providers '{"provider":"ollama","base_url":"http://127.0.0.1:8080","api_key":"mock"}' >/dev/null ||
   fail "could not add the provider"
 
-log "mock LLM and gateway"
+log "mock LLM, mock identity provider and gateway"
 bg "$WORK/mock.log" "$MOCK_BIN"
+bg "$WORK/idp.log" env PORT=18090 node "$HERE/mock-idp.mjs"
 bg "$WORK/gateway.log" env STRATUM_CP_URL=http://127.0.0.1:3125 STRATUM_CP_ALLOW_HTTP=true \
   STRATUM_INSTANCE_ID="$(jq -r .id <<<"$INSTANCE")" STRATUM_SYNC_TOKEN="$(jq -r .sync_token <<<"$INSTANCE")" \
   STRATUM_SNAPSHOT_KEY="$(openssl rand -hex 32)" STRATUM_SNAPSHOT_PATH="$WORK/snapshot.bin" \
@@ -118,7 +120,7 @@ wait_for "$GATEWAY/readyz" 200 "the gateway"
 
 log "functional test"
 cd "$HERE"
-STRATUM_E2E_CONSOLE_URL="$CONSOLE" STRATUM_E2E_GATEWAY_URL="$GATEWAY" \
+STRATUM_E2E_CONSOLE_URL="$CONSOLE" STRATUM_E2E_GATEWAY_URL="$GATEWAY" STRATUM_E2E_IDP_URL=http://127.0.0.1:18090 \
   STRATUM_E2E_EMAIL=dev@acme.com STRATUM_E2E_PASSWORD="$PASSWORD" STRATUM_E2E_TOTP_SECRET="$TOTP_SECRET" \
   STRATUM_E2E_SYNC_TIMEOUT_S=30 \
   npx playwright test "$@" || fail "functional test failed (report: control-plane/e2e/report/index.html)"

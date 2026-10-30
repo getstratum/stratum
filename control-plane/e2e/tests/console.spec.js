@@ -601,6 +601,70 @@ test('teams: create an empty team and delete it; a team with people cannot be de
   await expect(row).toHaveCount(0)
 })
 
+// --- signing in with the organization's identity provider (SSO) -----------------------
+
+const IDP = process.env.STRATUM_E2E_IDP_URL
+const ssoUser = { email: `${RUN}-sso@acme.com`, password: `${RUN}-sso-password` }
+
+/** Signs in with SSO from a fresh page: the mock provider signs in whoever is named. */
+async function ssoSignIn(email) {
+  await page.request.delete('/api/session')
+  await page.goto('/login')
+  await page.locator('input[type=email]').fill(email)
+  await page.getByRole('button', { name: 'Entrar con SSO' }).click()
+}
+
+test('sso: the owner sets up the provider; people of its domain sign in with it, others are refused', async () => {
+  test.skip(!IDP, 'no STRATUM_E2E_IDP_URL (a mock identity provider)')
+  const put = await api('PUT', '/api/sso', { kind: 'oidc', issuer: IDP, clientId: 'stratum-e2e', clientSecret: 'idp-secret', domains: ['acme.com'] })
+  expect(put.status, JSON.stringify(put.body)).toBe(200)
+  expect(put.body.provider.clientSecretHint).toBeTruthy()
+  expect(JSON.stringify(put.body)).not.toContain('idp-secret')
+  const made = await api('POST', '/api/users', { email: ssoUser.email, name: 'SSO', role: 'auditor', password: ssoUser.password })
+  expect(made.status, JSON.stringify(made.body)).toBe(201)
+  created.userEmails.push(ssoUser.email)
+
+  // The auditor, with SSO: no password, no second factor of the console's.
+  await ssoSignIn(ssoUser.email)
+  await page.waitForURL((u) => new URL(u).pathname === '/', { timeout: 30_000 })
+  const me = (await api('GET', '/api/session')).body
+  expect([me.user.email, me.user.role]).toEqual([ssoUser.email, 'auditor'])
+  const { requests } = await (await fetch(`${IDP}/requests`)).json()
+  expect(requests.at(-1)).toEqual({ client_id: 'stratum-e2e', pkce: true })
+
+  // Someone the provider knows and Stratum does not.
+  await ssoSignIn(`${RUN}-nadie@acme.com`)
+  await page.waitForURL('**/login?sso=account')
+  await expect(page.locator('p[role=alert]')).toContainText('dada de alta en Stratum')
+  // A domain without a provider.
+  await page.locator('input[type=email]').fill('alguien@example.org')
+  await page.getByRole('button', { name: 'Entrar con SSO' }).click()
+  await expect(page.locator('p[role=alert]')).toContainText('no tiene ingreso con SSO')
+  await signIn(OWNER.email, OWNER.password)
+})
+
+test('sso: required for the domain, the password stops working except for Owners; removed, it works again', async () => {
+  test.skip(!IDP, 'no STRATUM_E2E_IDP_URL (a mock identity provider)')
+  expect((await api('PUT', '/api/sso', { kind: 'oidc', issuer: IDP, clientId: 'stratum-e2e', domains: ['acme.com'], enforce: true })).status).toBe(200)
+  await page.request.delete('/api/session')
+  const refused = await page.request.post('/api/session', { data: { email: ssoUser.email, password: ssoUser.password } })
+  expect(refused.status()).toBe(401)
+  expect((await refused.json()).error).toBe('sso_required')
+  // A wrong password says nothing about SSO.
+  const wrong = await page.request.post('/api/session', { data: { email: ssoUser.email, password: 'wrong' } })
+  expect((await wrong.json()).error).toBe('invalid_credentials')
+  // The Owner keeps the password (and the second factor): the way in if the provider fails.
+  await signIn(OWNER.email, OWNER.password)
+  await page.goto('/sso')
+  await expect(page.getByTestId('sso-state')).toContainText('la contraseña ya no sirve')
+  expect((await api('DELETE', '/api/sso')).status).toBe(200)
+  await page.request.delete('/api/session')
+  const back = await page.request.post('/api/session', { data: { email: ssoUser.email, password: ssoUser.password } })
+  expect(back.status()).toBe(200)
+  await page.request.delete('/api/session')
+  await signIn(OWNER.email, OWNER.password)
+})
+
 // --- audit log -------------------------------------------------------------------------
 
 test('audit log: everything above is recorded, refusals included', async () => {
@@ -608,7 +672,7 @@ test('audit log: everything above is recorded, refusals included', async () => {
   for (const text of ['Agregó un proveedor', 'Revocó un proveedor', 'Registró un gateway', 'Rotó el token de un gateway',
     'Dio de baja un gateway', 'Creó una persona', 'Intento sin permiso', 'Cambió su contraseña',
     'Activó la verificación en dos pasos', 'Reinició la verificación en dos pasos de una persona',
-    'Creó un equipo', 'Eliminó un equipo']) {
+    'Creó un equipo', 'Eliminó un equipo', ...(IDP ? ['Configuró el ingreso con SSO', 'Quitó el ingreso con SSO'] : [])]) {
     await expect(page.getByText(text).first(), text).toBeVisible()
   }
   if (GATEWAY) await expect(page.getByText('Revocó la key de un agente').first()).toBeVisible()

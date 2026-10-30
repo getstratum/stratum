@@ -101,6 +101,7 @@ a summary.
 | Usage and request logs | all | all | own team | all | — |
 | Audit log | yes | yes | — | yes | — |
 | Applications (OIDC) | yes | yes | — | read | — |
+| Sign-in with the identity provider ([SSO](sso.md)) | yes | read | — | read | — |
 | Sign in to applications | yes | yes | yes | yes | yes |
 
 What a team's policy, quota and budget do: [teams.md](teams.md).

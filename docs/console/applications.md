@@ -32,10 +32,13 @@ codes not yet redeemed.
 |---|---|
 | Flow | Authorization code with PKCE (`S256`, required). No implicit flow, no refresh tokens. |
 | Client authentication | `client_secret_basic` or `client_secret_post`. |
-| ID token | RS256, 5 minutes. `iss`, `sub` (the person's id), `aud` (the client_id), `iat`, `exp`, `auth_time`, `nonce`, `amr` (`pwd`, plus `otp` with a second factor), `org_id`, `team_id`; `email` with scope `email`, `name` with scope `profile`. |
+| ID token | RS256, 5 minutes. `iss`, `sub` (the person's id), `aud` (the client_id), `iat`, `exp`, `auth_time`, `nonce`, `amr` (`pwd`, plus `otp` with a second factor; `fed` when they signed in with the organization's identity provider, [sso.md](sso.md)), `org_id`, `team_id`; `email` with scope `email`, `name` with scope `profile`. |
 | Access token | A JWT for `userinfo` only, 5 minutes. |
 | Usage reports | With the client secret, when the application may ask for them (below). |
 | Keys | `/api/oidc/jwks`. Made on first use, the private key encrypted with `STRATUM_ENCRYPTION_KEY`. If that key changes, the signing key is replaced on the next sign-in. |
+
+People of an organization with its own identity provider can sign in with
+it here too (**Entrar con SSO**, [sso.md](sso.md)).
 
 Applications keep their own session after the sign-in. The console keeps
 none for them: every sign-in asks for the password again.

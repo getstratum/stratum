@@ -19,6 +19,7 @@ import { startChallenge, beginSetup } from '../../../../lib/mfa.js'
 import { qrSvg } from '../../../../lib/qr.js'
 import { audit } from '../../../../lib/audit.js'
 import { loadInteraction, finishInteraction, appUser, EXPIRED } from '../../../../lib/oidc.js'
+import { passwordRefused } from '../../../../lib/sso.js'
 
 export const POST = publicRoute(async (req) => {
   const db = getDb()
@@ -51,6 +52,14 @@ export const POST = publicRoute(async (req) => {
   // access to applications: the same refusal.
   if (u.org_id !== interaction.org_id) return refuse('other_organization')
   if (!await appUser(db, u.id, interaction.org_id)) return refuse('no_app_access')
+  const { rows: [{ role }] } = await db.query('SELECT role FROM users WHERE id = $1', [u.id])
+  if (await passwordRefused(db, { email: u.email, orgId: u.org_id, role })) {
+    await audit(db, {
+      req, orgId: interaction.org_id, actor: u.email, action: 'app.login', result: 'failed',
+      targetType: 'oidc_client', targetId: interaction.client_id, details: { reason: 'sso_required' },
+    })
+    return json({ error: 'sso_required', message: 'Tu organización ingresa con su proveedor de identidad: usá «Entrar con SSO».' }, 401)
+  }
 
   if (needsRehash(u.password_hash)) {
     await db.query('UPDATE users SET password_hash = $2 WHERE id = $1', [u.id, await hashPassword(body.password)])
