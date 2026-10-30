@@ -14,7 +14,7 @@ export const dynamic = 'force-dynamic'
 import { route, readJson, json, badRequest } from '../../../lib/route.js'
 import { audit } from '../../../lib/audit.js'
 import { encryptSecret, secretHint, decryptSecret } from '../../../lib/secrets.js'
-import { GOOGLE_ISSUER, callbackUrl, parseDomains, parseIssuer, providerConfig } from '../../../lib/sso.js'
+import { GOOGLE_ISSUER, callbackUrl, parseDomains, parseIssuer, providerConfig, refusedPublicDomains } from '../../../lib/sso.js'
 
 const shape = (r) => r && ({
   kind: r.kind, issuer: r.issuer, clientId: r.client_id, clientSecretHint: secretHint(decryptSecret(r.client_secret_encrypted)),
@@ -35,6 +35,10 @@ export const PUT = route('sso.manage', async (req, { session, db }) => {
   const clientId = typeof body.clientId === 'string' ? body.clientId.trim() : ''
   if (!clientId || clientId.length > 300) throw badRequest('Falta el client ID.')
   const domains = parseDomains(body.domains)
+  const publicOnes = refusedPublicDomains(domains)
+  if (publicOnes.length) {
+    throw badRequest(`${publicOnes.join(', ')} es un correo público: cualquiera puede tener una dirección ahí, así que no identifica a la organización. Usá el dominio propio de la organización.`)
+  }
   for (const k of ['enforce', 'enabled']) {
     if (body[k] !== undefined && typeof body[k] !== 'boolean') throw badRequest(`${k} tiene que ser true o false.`)
   }

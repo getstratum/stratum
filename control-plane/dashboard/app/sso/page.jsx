@@ -120,7 +120,7 @@ export default function SsoPage() {
         <Field label="Client secret" hint={p ? `Guardado (${p.clientSecretHint}). Dejalo vacío para no cambiarlo.` : 'Se guarda cifrado.'}>
           <Input type="password" value={form.clientSecret} onChange={e => set('clientSecret', e.target.value)} autoComplete="off" />
         </Field>
-        <Field label="Dominios" hint="Los del mail de las personas, separados por comas: acme.com, acme.com.uy">
+        <Field label="Dominios" hint="Los del mail de las personas, separados por comas: acme.com, acme.com.uy. Un correo público (gmail.com, outlook.com…) solo se acepta con la consola en localhost, para probar.">
           <Input value={form.domains} onChange={e => set('domains', e.target.value)} placeholder="acme.com" />
         </Field>
         <label className="flex items-start gap-2.5 text-sm text-default">

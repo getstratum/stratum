@@ -72,6 +72,31 @@ export function parseDomains(value) {
   return out
 }
 
+/**
+ * Domains of public email services: anyone can have an address there, so
+ * none of them identifies an organization. Refused as an SSO domain, except
+ * on a console that runs on this machine (a demo, or a test with a
+ * personal account).
+ */
+export const PUBLIC_DOMAINS = new Set([
+  'gmail.com', 'googlemail.com', 'outlook.com', 'hotmail.com', 'live.com', 'msn.com', 'yahoo.com', 'yahoo.com.ar',
+  'ymail.com', 'icloud.com', 'me.com', 'mac.com', 'aol.com', 'proton.me', 'protonmail.com', 'pm.me', 'gmx.com',
+  'gmx.net', 'mail.com', 'zoho.com', 'yandex.com', 'yandex.ru', 'hey.com', 'fastmail.com', 'tutanota.com', 'qq.com',
+  '163.com', 'hotmail.es', 'outlook.es', 'hotmail.com.ar', 'live.com.ar', 'yahoo.es', 'yahoo.com.mx', 'hotmail.com.mx',
+])
+
+/** Whether the console runs on this machine (its public address is localhost). */
+export function consoleIsLocal(env = process.env) {
+  const iss = consoleIssuer(env)
+  if (!iss) return false
+  return isLoopback(new URL(iss).hostname)
+}
+
+/** The public email domains among `domains` that this console refuses. */
+export function refusedPublicDomains(domains, env = process.env) {
+  return consoleIsLocal(env) ? [] : domains.filter(d => PUBLIC_DOMAINS.has(d))
+}
+
 export const domainOf = (email) => {
   const at = String(email ?? '').lastIndexOf('@')
   return at > 0 ? String(email).slice(at + 1).trim().toLowerCase() : ''

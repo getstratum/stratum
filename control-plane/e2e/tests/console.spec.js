@@ -620,6 +620,10 @@ test('sso: the owner sets up the provider; people of its domain sign in with it,
   expect(put.status, JSON.stringify(put.body)).toBe(200)
   expect(put.body.provider.clientSecretHint).toBeTruthy()
   expect(JSON.stringify(put.body)).not.toContain('idp-secret')
+  // A public email domain would be accepted here only because this console runs on localhost.
+  const gmail = await api('PUT', '/api/sso', { kind: 'oidc', issuer: IDP, clientId: 'stratum-e2e', domains: ['acme.com', 'gmail.com'] })
+  expect(gmail.status).toBe(200)
+  expect((await api('PUT', '/api/sso', { kind: 'oidc', issuer: IDP, clientId: 'stratum-e2e', domains: ['acme.com'] })).status).toBe(200)
   const made = await api('POST', '/api/users', { email: ssoUser.email, name: 'SSO', role: 'auditor', password: ssoUser.password })
   expect(made.status, JSON.stringify(made.body)).toBe(201)
   created.userEmails.push(ssoUser.email)
