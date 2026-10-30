@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.4.0](https://github.com/getstratum/stratum/compare/v0.3.2...v0.4.0) (2026-10-30)
+
+
+### Features
+
+* **console:** Consumo separates agents from applications acting for people ([#95](https://github.com/getstratum/stratum/issues/95)) ([680ef5c](https://github.com/getstratum/stratum/commit/680ef5c11eab8270a9928b16cacfa413f9a5ca05))
+* **console:** sign in with the organization's identity provider (OIDC) ([#98](https://github.com/getstratum/stratum/issues/98)) ([8205d82](https://github.com/getstratum/stratum/commit/8205d823b80c338d6e73544b6b3f904901f89b8b))
+* **console:** usage reports for applications, on behalf of a person ([#97](https://github.com/getstratum/stratum/issues/97)) ([4d6dc4e](https://github.com/getstratum/stratum/commit/4d6dc4e0b4ca4d77a81e0803afc97ded87ebb5ee))
+
+
+### Bug Fixes
+
+* **console:** a public email domain is not an organization's SSO domain ([#99](https://github.com/getstratum/stratum/issues/99)) ([1bbb88c](https://github.com/getstratum/stratum/commit/1bbb88c89d6619eddf30c1f3ea2b69d924b7a722))
+
 ## [0.3.2](https://github.com/getstratum/stratum/compare/v0.3.1...v0.3.2) (2026-10-29)
 
 
