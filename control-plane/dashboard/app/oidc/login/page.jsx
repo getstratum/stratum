@@ -6,6 +6,7 @@
 // application with a code.
 
 import { useEffect, useState } from 'react'
+import { SSO_MESSAGES } from '../../../lib/sso-messages.js'
 
 const INPUT = 'w-full bg-raised border border-border rounded-lg px-3.5 py-2.5 text-sm text-strong placeholder-subtle focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent transition-all disabled:opacity-50'
 const LABEL = 'block text-xs font-semibold text-muted uppercase tracking-wide mb-1.5'
@@ -37,6 +38,7 @@ export default function AppSignIn() {
     const i = q.get('i')
     if (!i) { setFatal('Falta el ingreso. Volvé a la aplicación y empezá de nuevo.'); return }
     setInteraction(i)
+    if (q.get('sso')) setError(SSO_MESSAGES[q.get('sso')] ?? SSO_MESSAGES.provider)
     fetch(`/api/oidc/interaction?i=${encodeURIComponent(i)}`)
       .then(async r => { const d = await r.json(); r.ok ? setInfo(d) : setFatal(d.message) })
       .catch(() => setFatal('No se pudo conectar con la consola.'))
@@ -59,6 +61,13 @@ export default function AppSignIn() {
     } finally {
       setLoading(false)
     }
+  }
+
+  // The organization's identity provider, chosen by the email's domain.
+  async function submitSso() {
+    if (!email || loading) return
+    const d = await post('/api/sso/start', { email })
+    if (d?.redirect) window.location.assign(d.redirect)
   }
 
   async function submitPassword(e) {
@@ -128,6 +137,14 @@ export default function AppSignIn() {
                   {loading ? 'Verificando…' : 'Continuar'}
                 </button>
               </form>
+              <div className="flex items-center gap-3 my-5 text-xs text-subtle" aria-hidden="true">
+                <span className="flex-1 border-t border-border" />o<span className="flex-1 border-t border-border" />
+              </div>
+              <button type="button" onClick={submitSso} disabled={loading || !email}
+                className="w-full border border-border-strong bg-card hover:bg-raised disabled:opacity-40 text-strong font-semibold rounded-lg py-2.5 text-sm transition-colors">
+                Entrar con SSO
+              </button>
+              <p className="text-xs text-subtle mt-2">Con la cuenta de tu organización (Google Workspace, Microsoft…): escribí tu email y tocá el botón.</p>
             </>
           ) : step === 'code' ? (
             <>

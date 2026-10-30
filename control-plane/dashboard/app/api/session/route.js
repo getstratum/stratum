@@ -9,6 +9,7 @@ import { audit, clientIp } from '../../../lib/audit.js'
 import { mfaRequired, startChallenge, status as mfaStatus } from '../../../lib/mfa.js'
 
 import { reserveAttempt, recordFailure, recordSuccess, INVALID } from '../../../lib/login.js'
+import { passwordRefused } from '../../../lib/sso.js'
 
 // POST /api/session  { email, password }  → sign in
 //
@@ -53,6 +54,12 @@ export const POST = publicRoute(async (req) => {
   if (!u.is_active) return refuse('inactive')
   if (u.org_status !== 'active') return refuse('org_suspended')
   if (!CONSOLE_ROLES.includes(u.role)) return refuse('role_without_console')
+  // The organization signs in with its identity provider (lib/sso.js): only
+  // after a right password, so this says nothing about who has an account.
+  if (await passwordRefused(db, { email: u.email, orgId: u.org_id, role: u.role })) {
+    await audit(db, { req, orgId: u.org_id, actor: u.email, action: 'session.login', result: 'failed', details: { reason: 'sso_required' } })
+    return json({ error: 'sso_required', message: 'Tu organización ingresa con su proveedor de identidad: usá «Entrar con SSO».' }, 401)
+  }
 
   // Second factor set up: the password only earns a challenge. The attempt
   // stays counted until the code is right (POST /api/session/mfa).

@@ -29,6 +29,7 @@ const NAV = [
     { href: '/alerts',    label: 'Alertas',     permission: 'alerts.read' },
   ] },
   { group: 'Seguridad', items: [
+    { href: '/sso',       label: 'Ingreso con SSO', permission: 'sso.read' },
     { href: '/audit',     label: 'Auditoría',   permission: 'audit.read' },
   ] },
 ]

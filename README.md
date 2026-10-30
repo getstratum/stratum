@@ -74,7 +74,10 @@ Details and the demo accounts: [deploy/demo](deploy/demo/README.md).
   plane, [report](docs/testing/gcp-2026-10-18.md)).
 - Signed multi-arch images, SBOM and SLSA provenance on every release.
 - Five console roles checked on the server, sessions on the server,
-  required second factor for Owner and Admin.
+  required second factor for Owner and Admin; sign-in with the
+  organization's identity provider (Google Workspace, Entra ID or any
+  OpenID Connect provider), to the console and to its applications
+  ([docs/console/sso.md](docs/console/sso.md)).
 
 The console speaks Spanish for now; the API, the docs and the code are in
 English.

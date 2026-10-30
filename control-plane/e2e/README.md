@@ -67,4 +67,4 @@ DATABASE_URL=postgres://stratum:stratum@localhost:5432/stratum control-plane/e2e
 ```
 
 It needs Node.js, Go, `psql`, `jq`, `openssl`, `base32` and `python3`, and ports 3125, 8080,
-20128 and 20129.
+18090 (a mock identity provider, `mock-idp.mjs`, for signing in with SSO), 20128 and 20129.

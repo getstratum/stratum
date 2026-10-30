@@ -45,6 +45,9 @@ export const PERMISSIONS = {
   // Applications that sign people in with their console account (OIDC)
   'apps.read':         { owner: 'org', admin: 'org', auditor: 'org' },
   'apps.manage':       { owner: 'org', admin: 'org' },
+  // Signing in with the organization's identity provider (SSO)
+  'sso.read':          { owner: 'org', admin: 'org', auditor: 'org' },
+  'sso.manage':        { owner: 'org' },
   'models.read':       ALL,
   'models.manage':     { owner: 'org', admin: 'org' },
 

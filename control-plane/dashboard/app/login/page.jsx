@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { SSO_MESSAGES } from '../../lib/sso-messages.js'
 
 const INPUT = 'w-full bg-raised border border-border rounded-lg px-3.5 py-2.5 text-sm text-strong placeholder-subtle focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent transition-all disabled:opacity-50'
 const LABEL = 'block text-xs font-semibold text-muted uppercase tracking-wide mb-1.5'
@@ -19,6 +20,8 @@ export default function LoginPage() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     if (params.get('reason') === 'session_expired') setError('Tu sesión terminó. Volvé a ingresar.')
+    const sso = params.get('sso')
+    if (sso) setError(SSO_MESSAGES[sso] ?? SSO_MESSAGES.provider)
   }, [])
 
   function go(path) {
@@ -69,6 +72,16 @@ export default function LoginPage() {
     go(r.data.recovery_codes_left !== undefined ? `/account?recovery_left=${r.data.recovery_codes_left}` : '/')
   }
 
+  // The organization's identity provider, chosen by the email's domain.
+  async function handleSso() {
+    if (!email || loading) return
+    const r = await post('/api/sso/start', { email })
+    if (!r) return
+    if (!r.ok) return setError(r.data.message ?? 'No se pudo ingresar con SSO.')
+    setRedirecting(true)
+    window.location.assign(r.data.redirect)
+  }
+
   function restart() {
     setChallenge(null)
     setCode('')
@@ -107,6 +120,14 @@ export default function LoginPage() {
                   {redirecting ? 'Entrando…' : loading ? 'Verificando…' : 'Continuar'}
                 </button>
               </form>
+              <div className="flex items-center gap-3 my-5 text-xs text-subtle" aria-hidden="true">
+                <span className="flex-1 border-t border-border" />o<span className="flex-1 border-t border-border" />
+              </div>
+              <button type="button" onClick={handleSso} disabled={loading || redirecting || !email}
+                className="w-full border border-border-strong bg-card hover:bg-raised disabled:opacity-40 text-strong font-semibold rounded-lg py-2.5 text-sm transition-colors">
+                Entrar con SSO
+              </button>
+              <p className="text-xs text-subtle mt-2">Con la cuenta de tu organización (Google Workspace, Microsoft…): escribí tu email y tocá el botón.</p>
             </>
           ) : (
             <>

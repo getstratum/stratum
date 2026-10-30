@@ -31,6 +31,9 @@ const PUBLIC = {
   'oidc/userinfo/route.js:GET':    'an application reads who signed in, with an access token',
   'oidc/jwks/route.js:GET':        'public keys of the ID tokens',
   'oidc/usage-report/route.js:GET': 'an allowed application asks for a person\'s usage report with its client secret',
+  // Signing in with the organization's identity provider (lib/sso.js).
+  'sso/start/route.js:POST':        'a sign-in with the organization\'s identity provider starts (by email domain)',
+  'sso/callback/route.js:GET':      'back from the identity provider: state, browser cookie, code and ID token checked',
 }
 // Routes a session that must set up the second factor first may use.
 const DURING_ENROLLMENT = new Set([
