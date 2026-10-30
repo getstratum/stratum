@@ -180,3 +180,10 @@ test('a sign-in round trip: PKCE, nonce, the browser half of the state, and only
   await refuses(sso.finishSso(db, { state: q5.get('state'), code: 'c', browser: s5.browser, fetchImpl: fakeFetch }), 'other_domain')
   await refuses(sso.startSso(db, { email: 'x@nobody.example', fetchImpl: fakeFetch }), 'no_provider')
 })
+
+test('public email domains: refused, except on a console that runs on this machine', () => {
+  const env = (url) => ({ STRATUM_CONSOLE_URL: url })
+  assert.deepEqual(sso.refusedPublicDomains(['acme.com', 'gmail.com', 'Outlook.com'.toLowerCase()], env('https://stratum.acme.com')), ['gmail.com', 'outlook.com'])
+  assert.deepEqual(sso.refusedPublicDomains(['gmail.com'], env('http://localhost:3000')), [], 'a demo, with a personal account')
+  assert.deepEqual(sso.refusedPublicDomains(['acme.com'], env('https://stratum.acme.com')), [])
+})

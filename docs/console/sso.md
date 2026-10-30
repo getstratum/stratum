@@ -9,7 +9,7 @@ Keycloak...). The console is an OpenID Connect client of that provider
 | | |
 |---|---|
 | Who gets in | Someone already in **Usuarios**, with that email, active. Nobody is created by signing in: add people first. |
-| Which provider | The one whose domains include the email's domain (one provider per organization). |
+| Which provider | The one whose domains include the email's domain (one provider per organization). A public email domain (gmail.com, outlook.com, yahoo.com...) is refused: anyone can have an address there. Only a console on localhost accepts one, to try SSO with a personal account. |
 | What is checked | Authorization code with PKCE (S256), a nonce, and a state bound to the browser that started; the ID token's signature (the provider's JWKS, RS256 or ES256), issuer, audience, expiry and nonce; `email_verified`; the email's domain. With Google, a Workspace account of that domain (`hd`): a personal Google account with the same address does not get in. |
 | Second factor | The provider's. A sign-in this way counts as one with two factors, for Owners and Admins and for applications that ask for them (`amr: ["fed"]`). Make the provider require it: in Google Workspace, enforce 2-Step Verification. |
 | Console or applications | The console takes its roles (Owner, Admin, Team manager, Auditor); applications take anyone with access to applications, as with a password. |
