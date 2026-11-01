@@ -55,6 +55,9 @@ export const PERMISSIONS = {
   'usage.read':        ALL,
   'logs.read':         ALL,
   'audit.read':        { owner: 'org', admin: 'org', auditor: 'org' },
+  // Service tokens: the console's API for automation (lib/service-tokens.js)
+  'tokens.read':       { owner: 'org', admin: 'org', auditor: 'org' },
+  'tokens.manage':     { owner: 'org' },
 }
 
 /** The scope `role` has for `permission`, or null. */
@@ -73,5 +76,7 @@ export function assignableRoles(actorRole) {
   if (actorRole === 'owner') return ROLES
   if (actorRole === 'admin') return ['admin', 'team_manager', 'auditor', 'member']
   if (actorRole === 'team_manager') return ['member']
+  // A service token (lib/service-tokens.js) provisions people, never Owners.
+  if (actorRole === 'service') return ['admin', 'team_manager', 'auditor', 'member']
   return []
 }

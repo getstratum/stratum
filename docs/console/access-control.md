@@ -131,6 +131,30 @@ Also:
   console access or their own API key. Deactivating a person, or leaving
   them without a team, does the same.
 
+## Service tokens
+
+For automation (scripts, Terraform, a service that provisions people from
+the organization's identity provider with SCIM): **Seguridad → Tokens de
+servicio**. An Owner makes one with a name, the permissions it carries and
+an expiry of 30, 90, 180 or 365 days (a year at most); Owners, Admins and
+Auditors see them. The value is shown once; the console keeps its SHA-256.
+
+    Authorization: Bearer stsvc_...
+
+A token acts on its whole organization, never as a person, and only
+through routes whose permission it carries. It can be given the read
+permissions, and to manage users, agent keys, teams, budgets, policies,
+alerts and models. Never: anything that holds or hands out a secret of the
+organization (providers, gateways, applications, SSO), the session's own
+routes, or tokens. And whatever its permissions, a token makes no Owners
+and changes none, sets no passwords, gives no person an API key and resets
+no second factor. A person it creates needs neither a password nor a key:
+they sign in with SSO.
+
+What a token does is in the audit log as `token:<name>`, role `service`,
+refusals included. Revoking takes effect at the next request; an expired
+token answers 401 like an unknown one.
+
 ## Enforcement
 
 - Every console API route is built with `route(permission, handler)`
