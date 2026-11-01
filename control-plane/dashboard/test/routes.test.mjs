@@ -31,6 +31,8 @@ const PUBLIC = {
   'oidc/userinfo/route.js:GET':    'an application reads who signed in, with an access token',
   'oidc/jwks/route.js:GET':        'public keys of the ID tokens',
   'oidc/usage-report/route.js:GET': 'an allowed application asks for a person\'s usage report with its client secret',
+  'oidc/history-audit/route.js:GET':  'an allowed application asks who audits, and for people of the organization, with its client secret',
+  'oidc/history-audit/route.js:POST': 'an allowed application records what an Auditor did with a history, with its client secret',
   // Signing in with the organization's identity provider (lib/sso.js).
   'sso/start/route.js:POST':        'a sign-in with the organization\'s identity provider starts (by email domain)',
   'sso/callback/route.js:GET':      'back from the identity provider: state, browser cookie, code and ID token checked',

@@ -50,6 +50,7 @@ function AppModal({ app, onSave, onClose }) {
   const [uris, setUris] = useState((app?.redirect_uris ?? []).join('\n'))
   const [requireMfa, setRequireMfa] = useState(app?.require_mfa ?? true)
   const [usageReports, setUsageReports] = useState(app?.usage_reports ?? false)
+  const [historyAudit, setHistoryAudit] = useState(app?.history_audit ?? false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -59,7 +60,7 @@ function AppModal({ app, onSave, onClose }) {
       const res = await fetch(isEdit ? `/api/apps/${app.id}` : '/api/apps', {
         method: isEdit ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, redirectUris: uris.split('\n').map(s => s.trim()).filter(Boolean), requireMfa, usageReports }),
+        body: JSON.stringify({ name, redirectUris: uris.split('\n').map(s => s.trim()).filter(Boolean), requireMfa, usageReports, historyAudit }),
       })
       const data = await res.json()
       if (!res.ok) { setError(data.message ?? 'No se pudo guardar.'); return }
@@ -95,6 +96,17 @@ function AppModal({ app, onSave, onClose }) {
             <span className="block text-xs text-muted mt-0.5">
               La aplicación puede pedir, por cada persona que ingresó, el reporte de su propio consumo y, si administra un
               equipo, el del equipo sumado, sin el detalle por persona. Cada pedido queda en Auditoría.
+            </span>
+          </span>
+        </label>
+        <label className="flex items-start gap-2.5 text-sm text-default">
+          <input type="checkbox" className="mt-0.5 h-4 w-4" checked={historyAudit} onChange={e => setHistoryAudit(e.target.checked)} />
+          <span>
+            Auditoría de conversaciones
+            <span className="block text-xs text-muted mt-0.5">
+              Para una aplicación que guarda conversaciones, como el portal de chat: puede preguntar quién tiene el rol
+              Auditor/a u Owner, buscar personas de la organización y registrar acá cada pedido, aprobación y lectura del
+              historial de alguien. La consola decide quién puede qué; las conversaciones nunca llegan a la consola.
             </span>
           </span>
         </label>
@@ -187,6 +199,7 @@ export default function AppsPage() {
                 <span className="text-sm font-semibold text-strong">{app.name}</span>
                 {app.require_mfa && <span className="text-xs text-default border border-border rounded px-2 py-0.5">2 pasos</span>}
                 {app.usage_reports && <span className="text-xs text-default border border-border rounded px-2 py-0.5">reportes de consumo</span>}
+                {app.history_audit && <span className="text-xs text-default border border-border rounded px-2 py-0.5">auditoría de conversaciones</span>}
                 {app.revoked_at && <span className="text-xs text-warn">dada de baja</span>}
               </div>
               <div className="text-xs font-mono text-muted break-all">{app.id}</div>

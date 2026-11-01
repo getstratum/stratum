@@ -83,3 +83,32 @@ two, the total less one's own is the other's. Months go back two years.
 
 Every report given, or refused for lack of permission, is in the audit log
 (`usage_report.read`, by `app:<name>`), with the person and the kind.
+
+## Conversation audit
+
+An application that keeps people's conversations, such as a chat portal,
+may let an Auditor read a person's history. The application keeps the
+conversations and the requests; the console decides who may do what and
+keeps the record. It is off until an Owner or Admin turns on **Auditoría de
+conversaciones** for that application.
+
+    GET  /api/oidc/history-audit?person=<id>&kind=roles
+    GET  /api/oidc/history-audit?person=<id>&kind=people&q=<text>
+    GET  /api/oidc/history-audit?person=<id>&kind=subject&subject=<id>
+    POST /api/oidc/history-audit   { person, action, subject, details }
+    Authorization: Basic <client_id:client_secret>
+
+| | |
+|---|---|
+| `kind=roles` | What the person signed in may do: `{ person, audit, approve }`. `audit` for an Auditor; `approve` for an Auditor or an Owner. |
+| `kind=people` | Up to 10 people of the organization whose name or email has `q` (two characters at least), people who left included. Only for an Auditor; never themselves. |
+| `kind=subject` | One person of the organization, for an Auditor or an Owner. |
+| `POST` | Records an action in the audit log, as the person's, about the subject: `history.request` (with `from`, `to`, `reason`), `history.approve` and `history.deny` (with `requester`), `history.revoke`, `history.read` (with `request`, and the `conversation` read). |
+
+The console holds these rules whatever the application does: only an
+Auditor asks and reads; an Auditor or an Owner approves, refuses or
+revokes; nobody asks for their own history, and nobody decides on a request
+of their own. What it refuses is recorded too (`denied`). Details are kept
+only in known shapes: ids, dates (`AAAA-MM-DD`), the reason (up to 1,000
+characters) and a note (up to 500). No conversation text ever reaches the
+console.

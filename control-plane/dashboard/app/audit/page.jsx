@@ -48,6 +48,11 @@ const ACTIONS = {
   'app.login':              'Ingreso a una aplicación',
   'app.password_ok':        'Contraseña correcta en una aplicación; falta el segundo paso',
   'usage_report.read':      'Una aplicación pidió un reporte de consumo',
+  'history.request':        'Pidió leer el historial de una persona',
+  'history.approve':        'Aprobó leer el historial de una persona',
+  'history.deny':           'Rechazó leer el historial de una persona',
+  'history.revoke':         'Revocó el acceso a un historial',
+  'history.read':           'Leyó una conversación de otra persona',
   'sso.update':             'Configuró el ingreso con SSO',
   'sso.delete':             'Quitó el ingreso con SSO',
 }
@@ -70,7 +75,11 @@ function describe(e) {
   if (d.method === 'sso') bits.push('con SSO')
   if (Array.isArray(d.domains)) bits.push(d.domains.join(', ') + (d.enforce ? ' (exigido)' : ''))
   if (d.kind && d.month) bits.push(`${d.kind === 'team' ? 'del equipo' : 'propio'}, ${d.month}`)
+  if (d.subject_email) bits.push(`historial de ${d.subject_email}`)
+  if (d.from && d.to) bits.push(`${d.from} a ${d.to}`)
   if (d.reason) bits.push(d.reason)
+  if (d.note) bits.push(d.note)
+  if (d.app && d.subject_email) bits.push(`en ${d.app}`)
   if (Array.isArray(d.changed) && d.changed.length) bits.push(`cambió: ${d.changed.join(', ')}`)
   if (d.role?.from) bits.push(`rol ${d.role.from} → ${d.role.to}`)
   return bits.join(' · ')
