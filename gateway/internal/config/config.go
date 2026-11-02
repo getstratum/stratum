@@ -11,10 +11,12 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/getstratum/stratum/gateway/internal/trace"
 	"github.com/getstratum/stratum/gateway/internal/valkey"
 )
 
@@ -78,6 +80,19 @@ type Config struct {
 	DecisionToken      string        // bearer token sent to them
 	DecisionTimeout    time.Duration // per check, all services at once
 	DecisionFailClosed bool          // a service that does not answer refuses the request
+
+	// Traces (ADR-0013), from the standard OpenTelemetry variables. An empty
+	// TracesEndpoint: no spans; the client's traceparent is still passed on
+	// to the provider unless TracePropagation is off.
+	TracesEndpoint   string
+	TracesHeaders    map[string]string
+	TracesSampler    trace.Sampler
+	TracesResource   []trace.Attr
+	TracesTimeout    time.Duration
+	TracesQueue      int
+	TracesBatch      int
+	TracesInterval   time.Duration
+	TracePropagation bool
 
 	// Shared quota store (optional). Empty ValkeyURL means local counters.
 	ValkeyURL         string
@@ -164,6 +179,7 @@ func Load(getenv func(string) string) (*Config, error) {
 		e.fail("STRATUM_BREAKER_COOLDOWN must be at least 1s")
 	}
 	c.validateDecision(e)
+	c.loadTraces(e)
 
 	if k := e.str("STRATUM_SNAPSHOT_KEY", ""); k != "" {
 		key, err := hex.DecodeString(k)
@@ -422,4 +438,109 @@ func (c *Config) validateDecision(e *env) {
 	if c.DecisionTimeout < 10*time.Millisecond || c.DecisionTimeout > 5*time.Second {
 		e.fail("STRATUM_DECISION_TIMEOUT must be between 10ms and 5s")
 	}
+}
+
+// loadTraces reads the OpenTelemetry SDK's variables the gateway honours
+// (ADR-0013): the OTLP endpoint (http/json only: the gateway has no
+// protobuf or gRPC), its headers and timeout, the sampler, the service name
+// and resource attributes, and the batch span processor's sizes.
+func (c *Config) loadTraces(e *env) {
+	c.TracePropagation = e.bool("STRATUM_TRACE_PROPAGATION", true)
+	exporter := strings.ToLower(e.str("OTEL_TRACES_EXPORTER", "otlp"))
+	if exporter != "otlp" && exporter != "none" {
+		e.fail("OTEL_TRACES_EXPORTER must be otlp or none")
+	}
+	endpoint := e.str("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "")
+	if endpoint == "" {
+		if base := strings.TrimRight(e.str("OTEL_EXPORTER_OTLP_ENDPOINT", ""), "/"); base != "" {
+			endpoint = base + "/v1/traces"
+		}
+	}
+	if exporter == "none" || endpoint == "" {
+		return
+	}
+	if u, err := url.Parse(endpoint); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		e.fail(fmt.Sprintf("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: %q is not an http(s) URL", endpoint))
+		return
+	}
+	proto := strings.ToLower(e.str("OTEL_EXPORTER_OTLP_TRACES_PROTOCOL", e.str("OTEL_EXPORTER_OTLP_PROTOCOL", "http/json")))
+	if proto != "http/json" {
+		e.fail(fmt.Sprintf("OTEL_EXPORTER_OTLP_PROTOCOL: %q is not supported; the gateway sends http/json (a collector takes it on its OTLP/HTTP port, 4318)", proto))
+	}
+	c.TracesEndpoint = endpoint
+	c.TracesHeaders = map[string]string{}
+	for k, v := range pairs(e, "OTEL_EXPORTER_OTLP_HEADERS") {
+		c.TracesHeaders[k] = v
+	}
+	for k, v := range pairs(e, "OTEL_EXPORTER_OTLP_TRACES_HEADERS") {
+		c.TracesHeaders[k] = v
+	}
+	var err error
+	if c.TracesSampler, err = trace.ParseSampler(e.str("OTEL_TRACES_SAMPLER", ""), e.str("OTEL_TRACES_SAMPLER_ARG", "")); err != nil {
+		e.fail(err.Error())
+	}
+	res := pairs(e, "OTEL_RESOURCE_ATTRIBUTES")
+	if name := e.str("OTEL_SERVICE_NAME", ""); name != "" {
+		res["service.name"] = name
+	}
+	if res["service.name"] == "" {
+		res["service.name"] = "stratum-gateway"
+	}
+	keys := make([]string, 0, len(res))
+	for k := range res {
+		keys = append(keys, k)
+	}
+	slices.Sort(keys)
+	for _, k := range keys {
+		c.TracesResource = append(c.TracesResource, trace.Attr{Key: k, Value: res[k]})
+	}
+	c.TracesTimeout = e.millis("OTEL_EXPORTER_OTLP_TRACES_TIMEOUT", e.millis("OTEL_EXPORTER_OTLP_TIMEOUT", 10*time.Second))
+	c.TracesQueue = e.int("OTEL_BSP_MAX_QUEUE_SIZE", 2048)
+	c.TracesBatch = e.int("OTEL_BSP_MAX_EXPORT_BATCH_SIZE", 512)
+	c.TracesInterval = e.millis("OTEL_BSP_SCHEDULE_DELAY", 5*time.Second)
+	if c.TracesQueue < 1 || c.TracesBatch < 1 || c.TracesBatch > c.TracesQueue {
+		e.fail("OTEL_BSP_MAX_EXPORT_BATCH_SIZE must be between 1 and OTEL_BSP_MAX_QUEUE_SIZE")
+	}
+	if c.TracesTimeout <= 0 || c.TracesInterval <= 0 {
+		e.fail("OTEL_EXPORTER_OTLP_TIMEOUT and OTEL_BSP_SCHEDULE_DELAY must be positive (milliseconds)")
+	}
+}
+
+// pairs reads variable k as "k1=v1,k2=v2" with percent-encoded values
+// (W3C Baggage style, as OTEL_EXPORTER_OTLP_HEADERS and
+// OTEL_RESOURCE_ATTRIBUTES use it). Errors never echo a value: headers
+// carry tokens.
+func pairs(e *env, k string) map[string]string {
+	out := map[string]string{}
+	for i, p := range strings.Split(e.str(k, ""), ",") {
+		if p = strings.TrimSpace(p); p == "" {
+			continue
+		}
+		name, v, ok := strings.Cut(p, "=")
+		name = strings.TrimSpace(name)
+		if !ok || name == "" {
+			e.fail(fmt.Sprintf("%s: entry %d is not key=value", k, i+1))
+			continue
+		}
+		if dv, err := url.PathUnescape(strings.TrimSpace(v)); err == nil {
+			v = dv
+		}
+		out[name] = strings.TrimSpace(v)
+	}
+	return out
+}
+
+// millis reads a whole number of milliseconds, the unit of the
+// OpenTelemetry variables.
+func (e *env) millis(k string, def time.Duration) time.Duration {
+	v := e.str(k, "")
+	if v == "" {
+		return def
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n < 0 {
+		e.fail(fmt.Sprintf("%s: %q is not a number of milliseconds", k, v))
+		return def
+	}
+	return time.Duration(n) * time.Millisecond
 }

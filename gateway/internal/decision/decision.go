@@ -54,6 +54,10 @@ type Request struct {
 	Labels        []string `json:"labels,omitempty"`
 	ContentSHA256 string   `json:"content_sha256,omitempty"`
 	ContentBytes  int      `json:"content_bytes"`
+
+	// Traceparent, when set, goes to the services as the W3C header, so
+	// their spans join the request's trace (ADR-0013). Not in the body.
+	Traceparent string `json:"-"`
 }
 
 // Decision is the combined answer of every service.
@@ -172,7 +176,7 @@ func (c *Client) Check(ctx context.Context, req Request) Decision {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			answers[i], errs[i] = c.ask(ctx, u, body)
+			answers[i], errs[i] = c.ask(ctx, u, body, req.Traceparent)
 		}()
 	}
 	wg.Wait()
@@ -214,12 +218,15 @@ func (c *Client) Check(ctx context.Context, req Request) Decision {
 	return out
 }
 
-func (c *Client) ask(ctx context.Context, base string, body []byte) (answer, error) {
+func (c *Client) ask(ctx context.Context, base string, body []byte, traceparent string) (answer, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+"/v1/check", bytes.NewReader(body))
 	if err != nil {
 		return answer{}, err
 	}
 	c.headers(req)
+	if traceparent != "" {
+		req.Header.Set("Traceparent", traceparent)
+	}
 	res, err := c.opts.HTTP.Do(req)
 	if err != nil {
 		return answer{}, err

@@ -7,6 +7,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"fmt"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -304,5 +305,75 @@ func TestDecisionServices(t *testing.T) {
 		if _, err := Load(envOf(with(bad))); err == nil {
 			t.Errorf("accepted %v", bad)
 		}
+	}
+}
+
+func TestTraces(t *testing.T) {
+	base := map[string]string{"STRATUM_CONFIG_FILE": "/etc/stratum.yaml"}
+	with := func(extra map[string]string) map[string]string {
+		m := map[string]string{}
+		for k, v := range base {
+			m[k] = v
+		}
+		for k, v := range extra {
+			m[k] = v
+		}
+		return m
+	}
+	c, err := Load(envOf(base))
+	if err != nil || c.TracesEndpoint != "" || !c.TracePropagation {
+		t.Fatalf("defaults: %+v %v", c, err)
+	}
+	c, err = Load(envOf(with(map[string]string{
+		"OTEL_EXPORTER_OTLP_ENDPOINT":    "http://collector:4318/",
+		"OTEL_EXPORTER_OTLP_HEADERS":     "Authorization=Bearer%20a+b/c==, x-tenant = acme",
+		"OTEL_TRACES_SAMPLER":            "parentbased_traceidratio",
+		"OTEL_TRACES_SAMPLER_ARG":        "0.25",
+		"OTEL_RESOURCE_ATTRIBUTES":       "deployment.environment=prod,service.name=ignored",
+		"OTEL_SERVICE_NAME":              "gw-eu",
+		"OTEL_EXPORTER_OTLP_TIMEOUT":     "3000",
+		"OTEL_BSP_MAX_QUEUE_SIZE":        "100",
+		"OTEL_BSP_MAX_EXPORT_BATCH_SIZE": "10",
+		"OTEL_BSP_SCHEDULE_DELAY":        "250",
+		"STRATUM_TRACE_PROPAGATION":      "false",
+	})))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.TracesEndpoint != "http://collector:4318/v1/traces" || c.TracesHeaders["Authorization"] != "Bearer a+b/c==" ||
+		c.TracesHeaders["x-tenant"] != "acme" || c.TracesSampler.Name != "parentbased_traceidratio" || c.TracesSampler.Ratio != 0.25 ||
+		c.TracesTimeout != 3*time.Second || c.TracesQueue != 100 || c.TracesBatch != 10 || c.TracesInterval != 250*time.Millisecond ||
+		c.TracePropagation {
+		t.Fatalf("parsed: %+v", c)
+	}
+	if fmt.Sprint(c.TracesResource) != "[{deployment.environment prod} {service.name gw-eu}]" {
+		t.Errorf("resource %v", c.TracesResource)
+	}
+	// The traces endpoint wins over the base one, as is.
+	c, _ = Load(envOf(with(map[string]string{"OTEL_EXPORTER_OTLP_ENDPOINT": "http://a:4318", "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": "https://b/otlp"})))
+	if c.TracesEndpoint != "https://b/otlp" || fmt.Sprint(c.TracesResource) != "[{service.name stratum-gateway}]" {
+		t.Errorf("traces endpoint %q, resource %v", c.TracesEndpoint, c.TracesResource)
+	}
+	c, _ = Load(envOf(with(map[string]string{"OTEL_EXPORTER_OTLP_ENDPOINT": "http://a:4318", "OTEL_TRACES_EXPORTER": "none"})))
+	if c.TracesEndpoint != "" {
+		t.Error("OTEL_TRACES_EXPORTER=none still exports")
+	}
+	for _, bad := range []map[string]string{
+		{"OTEL_EXPORTER_OTLP_ENDPOINT": "collector:4318"},
+		{"OTEL_EXPORTER_OTLP_ENDPOINT": "http://c:4318", "OTEL_EXPORTER_OTLP_PROTOCOL": "grpc"},
+		{"OTEL_EXPORTER_OTLP_ENDPOINT": "http://c:4318", "OTEL_EXPORTER_OTLP_TRACES_PROTOCOL": "http/protobuf"},
+		{"OTEL_EXPORTER_OTLP_ENDPOINT": "http://c:4318", "OTEL_TRACES_SAMPLER": "xray"},
+		{"OTEL_EXPORTER_OTLP_ENDPOINT": "http://c:4318", "OTEL_EXPORTER_OTLP_TIMEOUT": "10s"},
+		{"OTEL_EXPORTER_OTLP_ENDPOINT": "http://c:4318", "OTEL_BSP_MAX_EXPORT_BATCH_SIZE": "5000"},
+		{"OTEL_TRACES_EXPORTER": "zipkin"},
+	} {
+		if _, err := Load(envOf(with(bad))); err == nil {
+			t.Errorf("accepted %v", bad)
+		}
+	}
+	// A malformed header never shows its value.
+	_, err = Load(envOf(with(map[string]string{"OTEL_EXPORTER_OTLP_ENDPOINT": "http://c:4318", "OTEL_EXPORTER_OTLP_HEADERS": "Authorization: Bearer s3cr3t"})))
+	if err == nil || strings.Contains(err.Error(), "s3cr3t") {
+		t.Errorf("error %v", err)
 	}
 }

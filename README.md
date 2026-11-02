@@ -59,7 +59,8 @@ Details and the demo accounts: [deploy/demo](deploy/demo/README.md).
   missing, never as zero.
 - Request logs (metadata only, never prompts) with CSV export, an audit log of every change
   in the console, alerts by email or Slack webhook, a live model catalog
-  with prices, and Prometheus metrics with the GenAI semantic conventions.
+  with prices, and Prometheus metrics and OpenTelemetry traces with the GenAI
+  semantic conventions.
 
 **Operations**
 
@@ -220,6 +221,14 @@ its task with `X-Stratum-Task: <1 to 100 letters, digits and . _ : ->`.
 Protocol: [Decision services](docs/architecture/decision-services.md);
 why: [ADR-0014](docs/adr/0014-decision-services.md).
 
+**Traces.** With `OTEL_EXPORTER_OTLP_ENDPOINT` set, the gateway sends
+OpenTelemetry spans to your collector (OTLP/HTTP in JSON, no dependencies):
+its own span as a child of the client's `traceparent`, one for the decision
+services and one for the call to the provider with the GenAI conventions'
+attributes. Metadata only, never the prompt. The provider gets a
+`traceparent`, so the trace goes on through it.
+See [Traces](docs/architecture/traces.md) and [ADR-0013](docs/adr/0013-traces.md).
+
 ## Gateway configuration
 
 | Variable | Default | Purpose |
@@ -244,6 +253,10 @@ why: [ADR-0014](docs/adr/0014-decision-services.md).
 | `STRATUM_DECISION_URLS` | | Up to four external decision services, comma-separated base URLs, asked before each request goes to the provider (below). Empty: off. |
 | `STRATUM_DECISION_TIMEOUT` / `STRATUM_DECISION_FAIL` | `200ms` / `open` | How long the gateway waits for all of them, and what it does when one does not answer: `open` sends the request, labelled `decision_skipped`; `closed` refuses it with 503 `decision_unavailable`. |
 | `STRATUM_DECISION_TOKEN` | | Bearer token sent to the decision services. |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` / `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | | OpenTelemetry collector for the gateway's spans, OTLP/HTTP in JSON (port 4318). The first gets `/v1/traces` appended, the second is used as is. Empty, or `OTEL_TRACES_EXPORTER=none`: no spans. |
+| `OTEL_TRACES_SAMPLER` / `OTEL_TRACES_SAMPLER_ARG` | `parentbased_always_on` | Which requests are traced: `always_on`, `always_off`, `traceidratio` with a ratio, and their `parentbased_` forms, which follow the client's decision. |
+| `OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES`, `OTEL_EXPORTER_OTLP_HEADERS`, `OTEL_EXPORTER_OTLP_TIMEOUT`, `OTEL_BSP_*` | `stratum-gateway`, ... | As in the OpenTelemetry SDKs (timeouts and delays in milliseconds). `OTEL_EXPORTER_OTLP_PROTOCOL` may only be `http/json`. |
+| `STRATUM_TRACE_PROPAGATION` | `true` | Send `traceparent` to the provider and the decision services: the gateway's span with traces on, the client's own with them off. `false` sends none. |
 | `STRATUM_DRAIN_DELAY` / `STRATUM_SHUTDOWN_TIMEOUT` | `5s` / `10m` | Graceful shutdown: readiness fails first, then in-flight streams get up to the timeout to finish. |
 | `STRATUM_PII_ENABLED` | `true` | Global switch for PII/DLP scanning (actions are set per policy). |
 | `STRATUM_CORS_ALLOWED_ORIGINS` | | Comma-separated origins allowed to call the gateway from a browser. |

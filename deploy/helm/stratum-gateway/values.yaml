@@ -71,6 +71,28 @@ decision:
   tokenSecret: ""
   tokenSecretKey: token
 
+# OpenTelemetry traces (docs/architecture/traces.md): spans sent to a
+# collector over OTLP/HTTP in JSON, metadata only. Empty endpoint: no spans
+# (the client's traceparent still reaches the provider, unless propagation
+# is false). Other OTEL_* variables go in extraEnv.
+traces:
+  # e.g. http://otel-collector.observability:4318 (/v1/traces is appended).
+  endpoint: ""
+  # always_on, always_off, traceidratio, or their parentbased_ forms.
+  sampler: parentbased_always_on
+  # The ratio, for the traceidratio samplers.
+  samplerArg: ""
+  # service.name; empty: stratum-gateway.
+  serviceName: ""
+  # More resource attributes: "deployment.environment=prod,cloud.region=x".
+  resourceAttributes: ""
+  # A Secret whose key holds OTEL_EXPORTER_OTLP_HEADERS
+  # ("Authorization=Bearer%20<token>"), for a backend that needs one.
+  headersSecret: ""
+  headersSecretKey: headers
+  # Send traceparent to the provider and the decision services.
+  propagation: true
+
 gateway:
   maxInflight: 1024
   maxRequestBytes: 10485760

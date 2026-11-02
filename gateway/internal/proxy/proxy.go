@@ -32,6 +32,7 @@ import (
 	"github.com/getstratum/stratum/gateway/internal/quota"
 	"github.com/getstratum/stratum/gateway/internal/resilience"
 	"github.com/getstratum/stratum/gateway/internal/snapshot"
+	"github.com/getstratum/stratum/gateway/internal/trace"
 	"github.com/getstratum/stratum/gateway/internal/usage"
 )
 
@@ -60,6 +61,12 @@ type Handler struct {
 	RequestID         func(context.Context) string
 	Usage             UsageSink // optional
 	Decision          Decider   // optional: external decision services (ADR-0014)
+
+	// OpenTelemetry traces (ADR-0013). A nil Traces turns them off; the
+	// client's traceparent then goes to the provider unchanged.
+	Traces    *trace.Exporter
+	Sampler   trace.Sampler
+	Propagate bool // send the gateway's own span as the provider's parent
 
 	// Provider failures (ADR-0010). All optional: nil Breakers or Budget
 	// turn that part off, Retry.Max 0 turns retries off.
@@ -114,10 +121,27 @@ type record struct {
 	task       string // X-Stratum-Task, for the decision services
 	content    string // SHA-256 of the request's content (contentHash)
 	checked    bool   // the decision services were asked
+
+	// For the trace (ADR-0013).
+	span, parent     trace.SpanContext
+	hasParent        bool
+	clientSpan       [8]byte
+	upStart, upEnd   time.Time
+	attempts         int
+	decStart, decEnd time.Time
+	decSpan          [8]byte
+	decResult        string // allow, deny or skipped
+	decCode          string
+	upHost           string // server.address of the provider
+	upStatus         int    // the provider's HTTP status, when it answered
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	rec := &record{start: time.Now()}
+	rec.parent, rec.hasParent = trace.Parse(r.Header.Get("Traceparent"), r.Header.Get("Tracestate"))
+	if h.Traces != nil {
+		rec.span = trace.Start(rec.parent, rec.hasParent, h.Sampler)
+	}
 	defer h.finish(r, rec)
 
 	if r.Method != http.MethodPost {
@@ -149,9 +173,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// ── The task an application names, for the decision services ────────
-	if h.Decision != nil {
-		rec.task = strings.TrimSpace(r.Header.Get("X-Stratum-Task"))
-		if rec.task != "" && !validTask(rec.task) {
+	// and the trace. Only the decision services refuse a malformed one.
+	if t := strings.TrimSpace(r.Header.Get("X-Stratum-Task")); t != "" {
+		switch {
+		case validTask(t):
+			rec.task = t
+		case h.Decision != nil:
 			h.fail(w, rec, &policy.Violation{Status: http.StatusBadRequest, Code: "invalid_task",
 				Message: "X-Stratum-Task takes 1 to 100 letters, digits and . _ : -"})
 			return
@@ -308,12 +335,29 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if h.RequestID != nil {
 			requestID = h.RequestID(r.Context())
 		}
+		var traceparent string
+		if h.Traces != nil {
+			rec.decSpan = trace.NewSpanID()
+			if h.Propagate {
+				traceparent = trace.SpanContext{TraceID: rec.span.TraceID, SpanID: rec.decSpan, Sampled: rec.span.Sampled}.Traceparent()
+			}
+		}
+		rec.decStart = time.Now()
 		d := h.Decision.Check(r.Context(), decision.Request{
 			RequestID: requestID, Time: rec.start.UTC().Format(time.RFC3339Nano),
 			KeyID: rec.keyID, KeyLabel: rec.keyLabel, TeamID: rec.teamID, UserID: rec.userID, Task: rec.task,
 			Provider: rec.provider, Model: rec.model, Operation: operationName(upstreamPath, kind), Stream: rec.stream,
-			Labels: rec.labels, ContentSHA256: rec.content, ContentBytes: len(final),
+			Labels: rec.labels, ContentSHA256: rec.content, ContentBytes: len(final), Traceparent: traceparent,
 		})
+		rec.decEnd = time.Now()
+		switch {
+		case !d.Allow:
+			rec.decResult, rec.decCode = "deny", d.Code
+		case d.Skipped:
+			rec.decResult = "skipped"
+		default:
+			rec.decResult = "allow"
+		}
 		for k, v := range d.Headers {
 			w.Header().Set(k, v)
 		}
@@ -332,11 +376,17 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
 	target := provider.TargetURL(prov, base, upstreamPath, r.URL.RawQuery)
+	if h.Traces != nil {
+		rec.clientSpan = trace.NewSpanID()
+	}
 	build := func() (*http.Request, error) {
+		rec.attempts++
 		ureq, err := http.NewRequestWithContext(ctx, http.MethodPost, target, bytes.NewReader(final))
 		if err != nil {
 			return nil, err
 		}
+		rec.upHost = ureq.URL.Hostname()
+		h.traceHeaders(ureq.Header, r.Header, rec)
 		ureq.Header.Set("Content-Type", "application/json")
 		for _, name := range []string{"Accept", "Anthropic-Version", "Anthropic-Beta", "OpenAI-Beta"} {
 			if v := r.Header.Get(name); v != "" {
@@ -350,11 +400,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return ureq, nil
 	}
 
-	upStart := time.Now()
+	rec.upStart = time.Now()
 	rec.sent, rec.operation = true, operationName(upstreamPath, kind)
 	res, att, err := h.send(ctx, prov.ID, build)
-	rec.upstreamMs = time.Since(upStart).Milliseconds()
+	rec.upstreamMs = time.Since(rec.upStart).Milliseconds()
 	if err != nil {
+		rec.upEnd = time.Now()
 		var paused *breakerOpenError
 		switch {
 		case errors.As(err, &paused):
@@ -374,13 +425,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	copyResponseHeaders(w.Header(), res.Header)
 	w.WriteHeader(res.StatusCode)
-	rec.status, rec.reason = res.StatusCode, "ok"
+	rec.status, rec.reason, rec.upStatus = res.StatusCode, "ok", res.StatusCode
 	if res.StatusCode >= 400 {
 		rec.reason = "upstream_status"
 	}
 
 	usage, perr := pump(w, res.Body, cancel, h.StreamIdleTimeout, rec.stream && res.StatusCode == http.StatusOK, kind)
-	rec.usage = usage
+	rec.usage, rec.upEnd = usage, time.Now()
 	switch {
 	case perr == nil:
 	case errors.Is(perr, errIdle):
@@ -605,7 +656,13 @@ func (h *Handler) finish(r *http.Request, rec *record) {
 	if len(rec.labels) > 0 {
 		attrs = append(attrs, "labels", rec.labels)
 	}
+	if rec.span.Valid() {
+		attrs = append(attrs, "trace_id", rec.span.TraceHex())
+	} else if rec.hasParent {
+		attrs = append(attrs, "trace_id", rec.parent.TraceHex())
+	}
 	h.Log.Info("request", attrs...)
+	h.exportSpans(r, rec)
 
 	if h.Decision != nil && rec.checked {
 		h.Decision.Report(decision.Report{

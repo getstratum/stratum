@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/getstratum/stratum/gateway/internal/decision"
+	"github.com/getstratum/stratum/gateway/internal/trace"
 )
 
 type Metrics struct {
@@ -66,6 +67,10 @@ type Metrics struct {
 	// External decision services (ADR-0014); nil when there are none.
 	Decision        *decision.Counters
 	DecisionPending func() int
+
+	// OpenTelemetry traces (ADR-0013); nil when they are off.
+	Traces       *trace.Counters
+	TracesQueued func() int
 }
 
 type reqKey struct {
@@ -175,6 +180,15 @@ func (m *Metrics) WriteTo(w io.Writer, now time.Time) {
 		counter(&b, "stratum_decision_reports_dropped_total", "Reports of finished requests lost: buffer full.", d.ReportsDropped.Load())
 		if m.DecisionPending != nil {
 			gauge(&b, "stratum_decision_reports_buffered", "Reports waiting to be sent to the decision services.", int64(m.DecisionPending()))
+		}
+	}
+
+	if t := m.Traces; t != nil {
+		counter(&b, "stratum_trace_spans_exported_total", "Spans the OpenTelemetry collector took.", t.Exported.Load())
+		counter(&b, "stratum_trace_spans_dropped_total", "Spans lost: queue full, or a batch the collector did not take.", t.Dropped.Load())
+		counter(&b, "stratum_trace_export_failures_total", "Exports of a batch of spans that failed.", t.Failures.Load())
+		if m.TracesQueued != nil {
+			gauge(&b, "stratum_trace_spans_queued", "Spans waiting to be sent to the collector.", int64(m.TracesQueued()))
 		}
 	}
 

@@ -104,6 +104,7 @@ certificate names that IP. deploy/gcp does this with Memorystore.
 | `gen_ai_client_token_usage` | Histogram of tokens per request, `gen_ai_token_type="input"` or `"output"`. OpenTelemetry `gen_ai.client.token.usage` |
 | `stratum_snapshot_age_seconds` | Seconds since the control plane last confirmed the configuration |
 | `stratum_upstream_retries_total`, `stratum_provider_breaker_trips_total` | Provider failures (ADR-0010) |
+| `stratum_trace_spans_exported_total`, `…_dropped_total`, `stratum_trace_spans_queued` | OpenTelemetry spans, with `traces.endpoint` set ([Traces](../../docs/architecture/traces.md)) |
 
 The `gen_ai_*` histograms follow the OpenTelemetry semantic conventions for
 generative AI, under the names an OpenTelemetry Collector gives them in
@@ -112,6 +113,17 @@ conventions' value where there is one: `azure.ai.openai`, `gcp.gemini`, ...),
 `gen_ai_request_model` and, for failures, `error_type` (the provider's HTTP
 status, or the gateway's reason). The model comes from the request: past
 1,000 label sets, new models are counted as `_other`.
+
+## Traces
+
+`traces.endpoint` (an OpenTelemetry Collector's OTLP/HTTP port, e.g.
+`http://otel-collector.observability:4318`) turns on the gateway's spans:
+one per request, one for the decision services and one for the call to the
+provider, with the GenAI conventions' attributes and never the content. Use
+`traces.sampler`/`traces.samplerArg` to keep a share of them, and
+`traces.headersSecret` for a backend that needs a token. With spans on and
+`metrics.prometheusRule.enabled`, the `StratumGatewaySpansDropped` alert
+fires when spans are lost. See [Traces](../../docs/architecture/traces.md).
 
 ## Exposing the gateway
 
