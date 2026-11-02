@@ -8,6 +8,8 @@ package proxy
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -16,11 +18,13 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/getstratum/stratum/gateway/internal/auth"
+	"github.com/getstratum/stratum/gateway/internal/decision"
 	"github.com/getstratum/stratum/gateway/internal/metrics"
 	"github.com/getstratum/stratum/gateway/internal/pii"
 	"github.com/getstratum/stratum/gateway/internal/policy"
@@ -30,6 +34,12 @@ import (
 	"github.com/getstratum/stratum/gateway/internal/snapshot"
 	"github.com/getstratum/stratum/gateway/internal/usage"
 )
+
+// Decider is the external decision services (ADR-0014, package decision).
+type Decider interface {
+	Check(context.Context, decision.Request) decision.Decision
+	Report(decision.Report)
+}
 
 // UsageSink receives one record per authenticated request. Add must not
 // block (usage.Pusher only appends to a buffer).
@@ -49,6 +59,7 @@ type Handler struct {
 	UserAgent         string
 	RequestID         func(context.Context) string
 	Usage             UsageSink // optional
+	Decision          Decider   // optional: external decision services (ADR-0014)
 
 	// Provider failures (ADR-0010). All optional: nil Breakers or Budget
 	// turn that part off, Retry.Max 0 turns retries off.
@@ -99,6 +110,10 @@ type record struct {
 	providerOK bool     // rec.provider is a configured provider
 	operation  string   // gen_ai.operation.name, from the path
 	sent       bool     // the request went to the provider
+	keyLabel   string
+	task       string // X-Stratum-Task, for the decision services
+	content    string // SHA-256 of the request's content (contentHash)
+	checked    bool   // the decision services were asked
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -122,7 +137,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, rec, v)
 		return
 	}
-	rec.teamID, rec.userID = teamID, userID
+	rec.teamID, rec.userID, rec.keyLabel = teamID, userID, key.Label
 
 	// ── Labels from the application ─────────────────────────────────────
 	labels, valid := parseLabels(r.Header.Values("X-Stratum-Labels"))
@@ -131,6 +146,16 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, rec, &policy.Violation{Status: http.StatusBadRequest, Code: "invalid_labels",
 			Message: "X-Stratum-Labels takes up to 8 comma-separated labels of lowercase letters, digits and _ (1 to 40 each)"})
 		return
+	}
+
+	// ── The task an application names, for the decision services ────────
+	if h.Decision != nil {
+		rec.task = strings.TrimSpace(r.Header.Get("X-Stratum-Task"))
+		if rec.task != "" && !validTask(rec.task) {
+			h.fail(w, rec, &policy.Violation{Status: http.StatusBadRequest, Code: "invalid_task",
+				Message: "X-Stratum-Task takes 1 to 100 letters, digits and . _ : -"})
+			return
+		}
 	}
 
 	// ── Route ───────────────────────────────────────────────────────────
@@ -155,6 +180,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		h.fail(w, rec, &policy.Violation{Status: http.StatusBadRequest, Code: "invalid_json", Message: "request body must be a JSON object"})
 		return
+	}
+	if h.Decision != nil {
+		rec.content = contentHash(body)
 	}
 	model, _ := body["model"].(string)
 	rec.model = model // as asked, until the route is resolved: errors before that still say what was asked
@@ -271,6 +299,33 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			h.fail(w, rec, v)
 			return
 		}
+	}
+
+	// ── External decision services (ADR-0014) ───────────────────────────
+	if h.Decision != nil {
+		rec.checked = true
+		var requestID string
+		if h.RequestID != nil {
+			requestID = h.RequestID(r.Context())
+		}
+		d := h.Decision.Check(r.Context(), decision.Request{
+			RequestID: requestID, Time: rec.start.UTC().Format(time.RFC3339Nano),
+			KeyID: rec.keyID, KeyLabel: rec.keyLabel, TeamID: rec.teamID, UserID: rec.userID, Task: rec.task,
+			Provider: rec.provider, Model: rec.model, Operation: operationName(upstreamPath, kind), Stream: rec.stream,
+			Labels: rec.labels, ContentSHA256: rec.content, ContentBytes: len(final),
+		})
+		for k, v := range d.Headers {
+			w.Header().Set(k, v)
+		}
+		if !d.Allow {
+			h.fail(w, rec, &policy.Violation{Status: d.Status, Code: d.Code, Message: d.Message})
+			return
+		}
+		extra := d.Labels
+		if d.Skipped {
+			extra = append(extra, "decision_skipped")
+		}
+		rec.labels = mergeLabels(rec.labels, extra)
 	}
 
 	// ── Forward, retrying before the first byte (ADR-0010) ──────────────
@@ -551,6 +606,67 @@ func (h *Handler) finish(r *http.Request, rec *record) {
 		attrs = append(attrs, "labels", rec.labels)
 	}
 	h.Log.Info("request", attrs...)
+
+	if h.Decision != nil && rec.checked {
+		h.Decision.Report(decision.Report{
+			RequestID: usage.Clip(requestID, 128), Time: rec.start.UTC().Format(time.RFC3339Nano),
+			KeyID: rec.keyID, TeamID: rec.teamID, UserID: rec.userID, Task: rec.task,
+			Provider: usage.Clip(rec.provider, 50), Model: usage.Clip(rec.model, 100), ContentSHA256: rec.content,
+			Status: rec.status, Reason: rec.reason, TokensIn: rec.usage.Input, TokensOut: rec.usage.Output,
+			DurationMs: duration, UpstreamMs: rec.upstreamMs,
+		})
+	}
+}
+
+// contentHash is the SHA-256 of what a request asks, without how: the
+// messages, prompt or input, and the system prompt, not the model or the
+// sampling settings. Two requests with the same content have the same
+// hash, so a decision service can tell a loop without seeing the text.
+// json.Marshal sorts map keys, so the hash does not depend on key order.
+func contentHash(body map[string]any) string {
+	content := map[string]any{}
+	for _, k := range []string{"messages", "prompt", "input", "system", "instructions", "contents"} {
+		if v, ok := body[k]; ok {
+			content[k] = v
+		}
+	}
+	if len(content) == 0 {
+		return ""
+	}
+	b, err := json.Marshal(content)
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:])
+}
+
+func validTask(t string) bool {
+	if len(t) > 100 {
+		return false
+	}
+	for _, c := range t {
+		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '.' || c == '_' || c == ':' || c == '-') {
+			return false
+		}
+	}
+	return true
+}
+
+// mergeLabels adds a decision service's labels to the application's,
+// sorted, without repeats, at most maxLabels: the application's first.
+func mergeLabels(have, add []string) []string {
+	out := append([]string(nil), have...)
+	for _, l := range add {
+		if len(out) >= maxLabels {
+			break
+		}
+		if !slices.Contains(out, l) && validLabel(l) {
+			out = append(out, l)
+		}
+	}
+	slices.Sort(out)
+	return out
 }
 
 // operationName is gen_ai.operation.name for a provider path.

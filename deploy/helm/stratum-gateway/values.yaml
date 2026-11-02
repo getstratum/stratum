@@ -56,6 +56,21 @@ snapshot:
   # copy in Valkey. In normal operation pods start from the control plane.
   bootstrapTimeout: 10s
 
+# External decision services (docs/adr/0014-decision-services.md): up to
+# four base URLs the gateway asks before each request goes to the provider,
+# for example Stratum Enterprise's agent guard. They get metadata and a hash
+# of the content, never the text. Empty: off.
+decision:
+  urls: []
+  # For all of them at once, per request.
+  timeout: 200ms
+  # open: a service that does not answer in time is skipped (the request is
+  # marked decision_skipped); closed: the request is refused (503).
+  failMode: open
+  # A Secret holding the bearer token the services expect.
+  tokenSecret: ""
+  tokenSecretKey: token
+
 gateway:
   maxInflight: 1024
   maxRequestBytes: 10485760

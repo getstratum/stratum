@@ -73,6 +73,12 @@ type Config struct {
 	BreakerThreshold     int           // failures in a row that open a provider's breaker; 0 = off
 	BreakerCooldown      time.Duration // how long it stays open before a probe
 
+	// External decision services (ADR-0014). None: off.
+	DecisionURLs       []string
+	DecisionToken      string        // bearer token sent to them
+	DecisionTimeout    time.Duration // per check, all services at once
+	DecisionFailClosed bool          // a service that does not answer refuses the request
+
 	// Shared quota store (optional). Empty ValkeyURL means local counters.
 	ValkeyURL         string
 	ValkeyPassword    string // overrides the password in ValkeyURL
@@ -128,6 +134,9 @@ func Load(getenv func(string) string) (*Config, error) {
 		RetryBudgetRatio:      e.float("STRATUM_RETRY_BUDGET_RATIO", 0.2),
 		BreakerThreshold:      e.int("STRATUM_BREAKER_THRESHOLD", 5),
 		BreakerCooldown:       e.dur("STRATUM_BREAKER_COOLDOWN", 30*time.Second),
+		DecisionURLs:          e.list("STRATUM_DECISION_URLS"),
+		DecisionToken:         e.str("STRATUM_DECISION_TOKEN", ""),
+		DecisionTimeout:       e.dur("STRATUM_DECISION_TIMEOUT", 200*time.Millisecond),
 
 		ValkeyURL:         e.str("STRATUM_VALKEY_URL", ""),
 		ValkeyPassword:    e.str("STRATUM_VALKEY_PASSWORD", ""),
@@ -154,6 +163,7 @@ func Load(getenv func(string) string) (*Config, error) {
 	if c.BreakerCooldown < time.Second {
 		e.fail("STRATUM_BREAKER_COOLDOWN must be at least 1s")
 	}
+	c.validateDecision(e)
 
 	if k := e.str("STRATUM_SNAPSHOT_KEY", ""); k != "" {
 		key, err := hex.DecodeString(k)
@@ -386,4 +396,30 @@ func (e *env) list(k string) []string {
 		}
 	}
 	return out
+}
+
+// validateDecision checks the external decision services (ADR-0014): up to
+// four http(s) base URLs, a timeout between 10ms and 5s, and the fail mode.
+func (c *Config) validateDecision(e *env) {
+	switch strings.ToLower(e.str("STRATUM_DECISION_FAIL", "open")) {
+	case "open":
+	case "closed":
+		c.DecisionFailClosed = true
+	default:
+		e.fail("STRATUM_DECISION_FAIL must be open or closed")
+	}
+	if len(c.DecisionURLs) > 4 {
+		e.fail("STRATUM_DECISION_URLS takes at most 4 services")
+	}
+	for i, raw := range c.DecisionURLs {
+		u, err := url.Parse(raw)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.RawQuery != "" || u.Fragment != "" || u.User != nil {
+			e.fail(fmt.Sprintf("STRATUM_DECISION_URLS: %q is not an http(s) base URL", raw))
+			continue
+		}
+		c.DecisionURLs[i] = strings.TrimRight(raw, "/")
+	}
+	if c.DecisionTimeout < 10*time.Millisecond || c.DecisionTimeout > 5*time.Second {
+		e.fail("STRATUM_DECISION_TIMEOUT must be between 10ms and 5s")
+	}
 }

@@ -27,6 +27,7 @@ import (
 
 	"github.com/getstratum/stratum/gateway/internal/auth"
 	"github.com/getstratum/stratum/gateway/internal/config"
+	"github.com/getstratum/stratum/gateway/internal/decision"
 	"github.com/getstratum/stratum/gateway/internal/health"
 	"github.com/getstratum/stratum/gateway/internal/metrics"
 	"github.com/getstratum/stratum/gateway/internal/proxy"
@@ -187,6 +188,22 @@ func serve() int {
 	if pusher != nil {
 		px.Usage = pusher
 	}
+	// External decision services (ADR-0014).
+	var decider *decision.Client
+	decisionDone := make(chan struct{})
+	if len(cfg.DecisionURLs) > 0 {
+		decider = decision.New(decision.Options{
+			URLs: cfg.DecisionURLs, Token: cfg.DecisionToken, Timeout: cfg.DecisionTimeout, FailClosed: cfg.DecisionFailClosed,
+			HTTP: &http.Client{Transport: &http.Transport{Proxy: http.ProxyFromEnvironment, MaxIdleConnsPerHost: 64, IdleConnTimeout: 90 * time.Second}},
+			Log:  log.With("component", "decision"),
+		})
+		m.Decision, m.DecisionPending = &decider.Counters, decider.Pending
+		px.Decision = decider
+		go func() { defer close(decisionDone); decider.Run(ctx) }()
+		log.Info("decision services on", "services", len(cfg.DecisionURLs), "timeout", cfg.DecisionTimeout, "fail_closed", cfg.DecisionFailClosed)
+	} else {
+		close(decisionDone)
+	}
 	// Provider failures (ADR-0010).
 	px.Retry = proxy.RetryOptions{Max: cfg.UpstreamRetries, MaxWait: cfg.UpstreamRetryMaxWait}
 	px.Budget = resilience.NewBudget(cfg.RetryBudgetRatio, 1, 100)
@@ -251,6 +268,12 @@ func serve() int {
 	stopBackground()
 	<-quotaDone // last flush of token usage, bounded
 	<-usageDone
+	<-decisionDone
+	if decider != nil {
+		flushCtx, c := context.WithTimeout(context.Background(), 5*time.Second)
+		decider.Flush(flushCtx)
+		c()
+	}
 	if pusher != nil {
 		// Every request has finished: send what they recorded.
 		flushCtx, c := context.WithTimeout(context.Background(), 15*time.Second)
