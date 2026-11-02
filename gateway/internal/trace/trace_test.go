@@ -84,6 +84,7 @@ func TestSampler(t *testing.T) {
 	zero, _ := ParseSampler("traceidratio", "0")
 	one, _ := ParseSampler("traceidratio", "1")
 	half, _ := ParseSampler("parentbased_traceidratio", "0.5")
+	other, _ := ParseSampler("traceidratio", "0.5") // another service, same ratio
 	kept := 0
 	for range 4000 {
 		id := newTraceID()
@@ -93,8 +94,8 @@ func TestSampler(t *testing.T) {
 		if half.Sample(SpanContext{}, false, id) {
 			kept++
 		}
-		// Every service decides the same for the same trace.
-		if half.Sample(SpanContext{}, false, id) != half.Sample(SpanContext{}, false, id) {
+		// Every service with the same ratio decides the same for the same trace.
+		if half.Sample(SpanContext{}, false, id) != other.Sample(SpanContext{}, false, id) {
 			t.Fatal("not deterministic")
 		}
 	}
