@@ -22,12 +22,13 @@ type service struct {
 	checks  []Request
 	reports []Report
 	auth    string
-	refuse  bool // /v1/report answers 503
+	tp      string // the traceparent of the last call
+	refuse  bool   // /v1/report answers 503
 }
 
 func (s *service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
-	s.auth = r.Header.Get("Authorization")
+	s.auth, s.tp = r.Header.Get("Authorization"), r.Header.Get("Traceparent")
 	s.mu.Unlock()
 	switch r.URL.Path {
 	case "/v1/check":
@@ -93,10 +94,15 @@ func TestAllowCarriesTheRequestAndTheToken(t *testing.T) {
 	if got.V != 1 || got.KeyID != "agent:a1" || got.Task != "ticket-42" || got.ContentSHA256 != "abc" {
 		t.Errorf("request = %+v", got)
 	}
-	if s.auth != "Bearer tok" {
-		t.Errorf("auth = %q", s.auth)
+	if s.auth != "Bearer tok" || s.tp != "" {
+		t.Errorf("auth = %q, traceparent = %q", s.auth, s.tp)
 	}
-	if c.Counters.Allowed.Load() != 1 {
+	const tp = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+	c.Check(context.Background(), Request{Traceparent: tp})
+	if s.tp != tp || strings.Contains(string(mustJSON(t, s.checks[1])), "4bf92f") {
+		t.Errorf("traceparent %q; in the body: %s", s.tp, mustJSON(t, s.checks[1]))
+	}
+	if c.Counters.Allowed.Load() != 2 {
 		t.Error("allowed not counted")
 	}
 }
@@ -198,4 +204,13 @@ func TestClipKeepsRunesWhole(t *testing.T) {
 	if got := printable("a\nb\x00c"); got != "abc" {
 		t.Errorf("printable = %q", got)
 	}
+}
+
+func mustJSON(t *testing.T, v any) []byte {
+	t.Helper()
+	b, err := json.Marshal(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
 }

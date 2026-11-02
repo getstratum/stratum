@@ -37,6 +37,7 @@ import (
 	"github.com/getstratum/stratum/gateway/internal/snapshot"
 	"github.com/getstratum/stratum/gateway/internal/snapstore"
 	"github.com/getstratum/stratum/gateway/internal/syncer"
+	"github.com/getstratum/stratum/gateway/internal/trace"
 	"github.com/getstratum/stratum/gateway/internal/usage"
 	"github.com/getstratum/stratum/gateway/internal/valkey"
 )
@@ -204,6 +205,24 @@ func serve() int {
 	} else {
 		close(decisionDone)
 	}
+	// OpenTelemetry traces (ADR-0013).
+	var tracer *trace.Exporter
+	tracesDone := make(chan struct{})
+	px.Propagate = cfg.TracePropagation
+	if cfg.TracesEndpoint != "" {
+		tracer = trace.NewExporter(trace.ExporterOptions{
+			Endpoint: cfg.TracesEndpoint, Headers: cfg.TracesHeaders, Resource: cfg.TracesResource, ScopeVersion: version,
+			Timeout: cfg.TracesTimeout, QueueSize: cfg.TracesQueue, BatchSize: cfg.TracesBatch, Interval: cfg.TracesInterval,
+			HTTP: &http.Client{Transport: &http.Transport{Proxy: http.ProxyFromEnvironment, IdleConnTimeout: 90 * time.Second}},
+			Log:  log.With("component", "trace"),
+		})
+		m.Traces, m.TracesQueued = &tracer.Counters, tracer.Queued
+		px.Traces, px.Sampler = tracer, cfg.TracesSampler
+		go func() { defer close(tracesDone); tracer.Run(ctx) }()
+		log.Info("traces on", "endpoint", cfg.TracesEndpoint, "sampler", cfg.TracesSampler.Name, "ratio", cfg.TracesSampler.Ratio)
+	} else {
+		close(tracesDone)
+	}
 	// Provider failures (ADR-0010).
 	px.Retry = proxy.RetryOptions{Max: cfg.UpstreamRetries, MaxWait: cfg.UpstreamRetryMaxWait}
 	px.Budget = resilience.NewBudget(cfg.RetryBudgetRatio, 1, 100)
@@ -269,6 +288,12 @@ func serve() int {
 	<-quotaDone // last flush of token usage, bounded
 	<-usageDone
 	<-decisionDone
+	<-tracesDone
+	if tracer != nil {
+		flushCtx, c := context.WithTimeout(context.Background(), 5*time.Second)
+		tracer.Flush(flushCtx)
+		c()
+	}
 	if decider != nil {
 		flushCtx, c := context.WithTimeout(context.Background(), 5*time.Second)
 		decider.Flush(flushCtx)

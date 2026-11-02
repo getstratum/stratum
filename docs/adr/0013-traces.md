@@ -1,7 +1,7 @@
 # ADR-0013: Traces from the gateway
 
-- **Status:** Proposed
-- **Date:** 2026-10-20
+- **Status:** Accepted (option B)
+- **Date:** 2026-10-20; decided 2026-11-02
 
 ## Context
 
@@ -53,27 +53,46 @@ the usage record. No spans from the gateway: the operator's collector can
 make them from the logs, or join the client's span to the provider's. A few
 lines.
 
-## Decision (proposed)
+## Decision
 
-C now, B when an operator needs gateway spans; A only if ADR-0001 is
-revisited for other reasons.
+B, which includes C. The gateway has its own OTLP/HTTP exporter in the
+standard library (`gateway/internal/trace`), on only when an endpoint is set;
+without one it still passes the client's `traceparent` on (C). A stays out
+unless ADR-0001 is revisited for other reasons.
 
-- C costs nothing and makes traces continue through Stratum where the
-  provider supports them, without a dependency or a new failure mode.
-- B keeps ADR-0001 and gives real spans, but it is code to maintain against
-  a specification. It is worth it when someone asks for it, not before.
-- Metrics already follow the GenAI conventions, so dashboards built for them
-  work today.
+- B keeps ADR-0001 and gives operators real spans for the gateway's own time
+  (policy, PII scanning, the decision services of ADR-0014), which C cannot.
+- The decision services made it worth doing now: their time and their
+  answers belong in the request's trace, and a service can join it.
 
-To be decided by the maintainers; nothing is implemented yet.
+What was built, against the plan above:
+
+- the client's `traceparent`/`tracestate` is read (any version, W3C rules),
+  or a trace is started;
+- one SERVER span per request, an INTERNAL span `stratum.decision` when the
+  decision services are asked, and a CLIENT span for the call to the provider
+  named and labelled as the GenAI conventions say (`{operation} {model}`,
+  `gen_ai.*`, `server.address`, `error.type`);
+- retries are an attribute of the CLIENT span (`stratum.attempts`), not
+  events: the attempts are already counted in the metrics;
+- the provider and the decision services get a `traceparent` with the
+  gateway's span as parent;
+- `OTEL_TRACES_SAMPLER` with `always_on`, `always_off`, `traceidratio` and
+  their `parentbased_` forms (default `parentbased_always_on`, as the SDKs);
+- the SDKs' variables for the endpoint, headers, timeout, resource and batch
+  processor; `http/json` is the only protocol (a collector takes it on 4318);
+- spans carry metadata only, never content, as usage records.
+
+Details: [Traces](../architecture/traces.md).
 
 ## Consequences
 
-- With C, the gateway's own time (policy checks, PII scanning, queueing) is
-  visible only in its logs and in `gen_ai_client_operation_duration_seconds`,
-  not as a span.
-- With B, the exporter's buffer is a new place where data can be dropped; it
-  gets a metric and an alert like the usage buffer.
-- Either way, `traceparent` reaches the provider: a client that did not want
-  its trace IDs sent to the provider loses that choice unless it is made
-  configurable (`STRATUM_TRACE_PROPAGATION=off`).
+- The exporter's queue (`OTEL_BSP_MAX_QUEUE_SIZE`, 2,048 spans) is a new place
+  where data can be dropped: `stratum_trace_spans_dropped_total`, and the
+  chart's `StratumGatewaySpansDropped` alert.
+- `traceparent` reaches the provider by default, as it reaches any HTTP
+  service the client calls. `STRATUM_TRACE_PROPAGATION=false` stops it, for
+  the provider and the decision services alike; the gateway still records
+  its spans.
+- No gRPC, no protobuf, no metrics or logs over OTLP: metrics stay on
+  `/metrics` (the collector's Prometheus receiver reads them).

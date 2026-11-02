@@ -99,6 +99,11 @@ The client gets a denial in the gateway's usual error format, with the
 service's status, code and message. The denial is in the usage record with
 the code as its reason.
 
+With traces on ([Traces](traces.md)), the call carries a W3C `traceparent`
+whose parent is the gateway's `stratum.decision` span, so a service that
+traces joins the request's trace. `STRATUM_TRACE_PROPAGATION=false` leaves it
+out.
+
 ## `POST /v1/report`
 
 How each checked request ended, in batches of up to 500, about once a

@@ -89,6 +89,16 @@ spec:
           annotations:
             summary: A Stratum gateway dropped usage records.
             description: Its buffer filled while the control plane was unreachable, or the control plane refused a batch. The console's usage and spend are missing those requests.
+        {{- if $.Values.traces.endpoint }}
+        - alert: StratumGatewaySpansDropped
+          expr: sum by (namespace, job) (increase(stratum_trace_spans_dropped_total{ {{- $sel }}}[15m])) > 0
+          for: 15m
+          labels:
+            severity: {{ $r.severity.slow }}
+          annotations:
+            summary: A Stratum gateway is dropping trace spans.
+            description: The OpenTelemetry collector is unreachable, slow or refusing batches, or the span queue is too small for the traffic (OTEL_BSP_MAX_QUEUE_SIZE). Requests are not affected; their traces are incomplete.
+        {{- end }}
         - alert: StratumGatewayQuotaStoreDown
           expr: max by (namespace, job) (stratum_quota_store_age_seconds{ {{- $sel }}}) > 60
           for: 5m

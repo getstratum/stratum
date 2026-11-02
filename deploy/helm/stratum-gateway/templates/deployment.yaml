@@ -133,6 +133,30 @@ spec:
               valueFrom: { secretKeyRef: { name: {{ .Values.decision.tokenSecret | quote }}, key: {{ .Values.decision.tokenSecretKey | quote }} } }
             {{- end }}
             {{- end }}
+            - name: STRATUM_TRACE_PROPAGATION
+              value: {{ .Values.traces.propagation | quote }}
+            {{- if .Values.traces.endpoint }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ .Values.traces.endpoint | quote }}
+            - name: OTEL_TRACES_SAMPLER
+              value: {{ .Values.traces.sampler | quote }}
+            {{- with .Values.traces.samplerArg }}
+            - name: OTEL_TRACES_SAMPLER_ARG
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.traces.serviceName }}
+            - name: OTEL_SERVICE_NAME
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.traces.resourceAttributes }}
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: {{ . | quote }}
+            {{- end }}
+            {{- if .Values.traces.headersSecret }}
+            - name: OTEL_EXPORTER_OTLP_HEADERS
+              valueFrom: { secretKeyRef: { name: {{ .Values.traces.headersSecret | quote }}, key: {{ .Values.traces.headersSecretKey | quote }} } }
+            {{- end }}
+            {{- end }}
             {{- with .Values.gateway.corsAllowedOrigins }}
             - name: STRATUM_CORS_ALLOWED_ORIGINS
               value: {{ . | quote }}

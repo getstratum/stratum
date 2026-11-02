@@ -63,7 +63,8 @@ paga nada) y una organización de demo con cuatro semanas de uso.
 - Registro de consultas (solo metadatos, nunca prompts) con exportación a
   CSV, auditoría de cada cambio en la consola, alertas por email o webhook
   de Slack, un catálogo de modelos con precios que se actualiza solo, y
-  métricas de Prometheus con las convenciones semánticas de GenAI.
+  métricas de Prometheus y trazas OpenTelemetry con las convenciones
+  semánticas de GenAI.
 
 **Operación**
 
