@@ -30,6 +30,7 @@ const NAV = [
   ] },
   { group: 'Seguridad', items: [
     { href: '/sso',       label: 'Ingreso con SSO', permission: 'sso.read' },
+    { href: '/service-tokens', label: 'Tokens de servicio', permission: 'tokens.read' },
     { href: '/audit',     label: 'Auditoría',   permission: 'audit.read' },
   ] },
 ]
