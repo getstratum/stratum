@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.5.0](https://github.com/getstratum/stratum/compare/v0.4.0...v0.5.0) (2026-11-02)
+
+
+### Features
+
+* **console:** applications may let an Auditor read a person's history ([#100](https://github.com/getstratum/stratum/issues/100)) ([35308ca](https://github.com/getstratum/stratum/commit/35308ca27eebe2bb5fe59eb6da4df126706ec7bb))
+* **console:** service tokens, the console's API for automation ([#103](https://github.com/getstratum/stratum/issues/103)) ([ba5d2c8](https://github.com/getstratum/stratum/commit/ba5d2c821156105446cc25ede1c8b2e2e871c81c))
+* **gateway:** external decision services, asked before each request ([#102](https://github.com/getstratum/stratum/issues/102)) ([37ccc78](https://github.com/getstratum/stratum/commit/37ccc78799a192ad16476b3611d7b6e4af02f48a))
+* **gateway:** OpenTelemetry traces over OTLP/HTTP, standard library only ([#104](https://github.com/getstratum/stratum/issues/104)) ([26c6835](https://github.com/getstratum/stratum/commit/26c68352d13e88d41855159d7ef68395011cb290))
+
 ## [0.4.0](https://github.com/getstratum/stratum/compare/v0.3.2...v0.4.0) (2026-10-30)
 
 
