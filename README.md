@@ -209,6 +209,17 @@ in the response names the version), never in an agent's or a key's own. The
 application can read them from `GET /v1/stratum/instructions` and show them.
 See [Teams, limits and alerts](docs/console/teams.md).
 
+**External decision services** (`STRATUM_DECISION_URLS`) let other services
+decide on each request after the gateway's own checks and before it goes to
+the provider, for rules that do not belong in the gateway: an agent repeating
+the same request, a budget per task, an agent paused by hand. They get
+metadata and a SHA-256 of the content, never the text; they answer allow
+(optionally adding labels and `X-Stratum-*` response headers) or deny with a
+status and a code, and later get how each request ended. A request may name
+its task with `X-Stratum-Task: <1 to 100 letters, digits and . _ : ->`.
+Protocol: [Decision services](docs/architecture/decision-services.md);
+why: [ADR-0014](docs/adr/0014-decision-services.md).
+
 ## Gateway configuration
 
 | Variable | Default | Purpose |
@@ -230,6 +241,9 @@ See [Teams, limits and alerts](docs/console/teams.md).
 | `STRATUM_UPSTREAM_RETRIES` / `STRATUM_UPSTREAM_RETRY_MAX_WAIT` | `2` / `5s` | Retries before the first byte reaches the client, after an error connecting to the provider or a 429/502/503/504 from it, and the most time spent waiting between them (ADR-0010). `0` turns retries off. |
 | `STRATUM_RETRY_BUDGET_RATIO` | `0.2` | Retries allowed per request on average, so a provider that is down does not get the traffic multiplied. |
 | `STRATUM_BREAKER_THRESHOLD` / `STRATUM_BREAKER_COOLDOWN` | `5` / `30s` | Provider failures in a row after which requests to it are answered at once with 503 `provider_unavailable`, and for how long before a probe. `0` turns the breaker off. |
+| `STRATUM_DECISION_URLS` | | Up to four external decision services, comma-separated base URLs, asked before each request goes to the provider (below). Empty: off. |
+| `STRATUM_DECISION_TIMEOUT` / `STRATUM_DECISION_FAIL` | `200ms` / `open` | How long the gateway waits for all of them, and what it does when one does not answer: `open` sends the request, labelled `decision_skipped`; `closed` refuses it with 503 `decision_unavailable`. |
+| `STRATUM_DECISION_TOKEN` | | Bearer token sent to the decision services. |
 | `STRATUM_DRAIN_DELAY` / `STRATUM_SHUTDOWN_TIMEOUT` | `5s` / `10m` | Graceful shutdown: readiness fails first, then in-flight streams get up to the timeout to finish. |
 | `STRATUM_PII_ENABLED` | `true` | Global switch for PII/DLP scanning (actions are set per policy). |
 | `STRATUM_CORS_ALLOWED_ORIGINS` | | Comma-separated origins allowed to call the gateway from a browser. |

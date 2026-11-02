@@ -121,6 +121,18 @@ spec:
               value: {{ .Values.quota.staleAfter | quote }}
             - name: STRATUM_QUOTA_FAIL_MODE
               value: {{ .Values.quota.failMode | quote }}
+            {{- if .Values.decision.urls }}
+            - name: STRATUM_DECISION_URLS
+              value: {{ join "," .Values.decision.urls | quote }}
+            - name: STRATUM_DECISION_TIMEOUT
+              value: {{ .Values.decision.timeout | quote }}
+            - name: STRATUM_DECISION_FAIL
+              value: {{ .Values.decision.failMode | quote }}
+            {{- if .Values.decision.tokenSecret }}
+            - name: STRATUM_DECISION_TOKEN
+              valueFrom: { secretKeyRef: { name: {{ .Values.decision.tokenSecret | quote }}, key: {{ .Values.decision.tokenSecretKey | quote }} } }
+            {{- end }}
+            {{- end }}
             {{- with .Values.gateway.corsAllowedOrigins }}
             - name: STRATUM_CORS_ALLOWED_ORIGINS
               value: {{ . | quote }}

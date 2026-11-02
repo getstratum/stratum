@@ -12,6 +12,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/getstratum/stratum/gateway/internal/decision"
 )
 
 type Metrics struct {
@@ -60,6 +62,10 @@ type Metrics struct {
 	// The control plane's count of each team's usage this month, used by
 	// quotas and budgets: unix seconds of the last one received.
 	MonthUsageReported atomic.Int64
+
+	// External decision services (ADR-0014); nil when there are none.
+	Decision        *decision.Counters
+	DecisionPending func() int
 }
 
 type reqKey struct {
@@ -158,6 +164,18 @@ func (m *Metrics) WriteTo(w io.Writer, now time.Time) {
 		counter(&b, "stratum_usage_records_dropped_total", "Usage records lost: buffer full, or a batch the control plane refused.", m.UsageDropped.Load())
 		gauge(&b, "stratum_usage_records_buffered", "Usage records waiting to be sent to the control plane.", m.UsageBuffered.Load())
 		counter(&b, "stratum_usage_push_failures_total", "Usage sends that failed and will be retried.", m.UsagePushFailures.Load())
+	}
+
+	if d := m.Decision; d != nil {
+		counter(&b, "stratum_decision_allowed_total", "Requests the decision services let through.", d.Allowed.Load())
+		counter(&b, "stratum_decision_denied_total", "Requests a decision service refused (or refused because one did not answer, when failing closed).", d.Denied.Load())
+		counter(&b, "stratum_decision_errors_total", "Checks a decision service did not answer in time or answered wrong.", d.Errors.Load())
+		counter(&b, "stratum_decision_skipped_total", "Requests let through without every decision service's answer (failing open).", d.Skipped.Load())
+		counter(&b, "stratum_decision_reports_sent_total", "Reports of finished requests the decision services took.", d.ReportsSent.Load())
+		counter(&b, "stratum_decision_reports_dropped_total", "Reports of finished requests lost: buffer full.", d.ReportsDropped.Load())
+		if m.DecisionPending != nil {
+			gauge(&b, "stratum_decision_reports_buffered", "Reports waiting to be sent to the decision services.", int64(m.DecisionPending()))
+		}
 	}
 
 	rage := int64(-1)

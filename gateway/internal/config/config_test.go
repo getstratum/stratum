@@ -262,3 +262,47 @@ func TestValkeyCAFile(t *testing.T) {
 		}
 	}
 }
+
+func TestDecisionServices(t *testing.T) {
+	base := map[string]string{"STRATUM_CONFIG_FILE": "/etc/stratum.yaml"}
+	with := func(extra map[string]string) map[string]string {
+		m := map[string]string{}
+		for k, v := range base {
+			m[k] = v
+		}
+		for k, v := range extra {
+			m[k] = v
+		}
+		return m
+	}
+	c, err := Load(envOf(base))
+	if err != nil || len(c.DecisionURLs) != 0 || c.DecisionTimeout != 200*time.Millisecond || c.DecisionFailClosed {
+		t.Fatalf("defaults: %+v %v", c, err)
+	}
+	c, err = Load(envOf(with(map[string]string{
+		"STRATUM_DECISION_URLS":    "http://127.0.0.1:8090/, https://guard.svc:8443",
+		"STRATUM_DECISION_TIMEOUT": "150ms",
+		"STRATUM_DECISION_FAIL":    "closed",
+		"STRATUM_DECISION_TOKEN":   "tok",
+	})))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(c.DecisionURLs, " ") != "http://127.0.0.1:8090 https://guard.svc:8443" || c.DecisionTimeout != 150*time.Millisecond ||
+		!c.DecisionFailClosed || c.DecisionToken != "tok" {
+		t.Fatalf("parsed: %+v", c)
+	}
+	for _, bad := range []map[string]string{
+		{"STRATUM_DECISION_URLS": "guard:8090"},
+		{"STRATUM_DECISION_URLS": "ftp://guard"},
+		{"STRATUM_DECISION_URLS": "http://a,http://b,http://c,http://d,http://e"},
+		{"STRATUM_DECISION_URLS": "http://a?x=1"},
+		{"STRATUM_DECISION_TIMEOUT": "6s"},
+		{"STRATUM_DECISION_TIMEOUT": "1ms"},
+		{"STRATUM_DECISION_FAIL": "sometimes"},
+	} {
+		if _, err := Load(envOf(with(bad))); err == nil {
+			t.Errorf("accepted %v", bad)
+		}
+	}
+}
