@@ -65,6 +65,7 @@ export const PATCH = route('users.manage', async (req, { session, db: pool, para
       // would still work if the member were promoted later.
       if (self) throw forbidden('Tu contraseña se cambia desde Mi cuenta.')
       if (session.role === 'team_manager') throw forbidden('Tu rol no puede definir contraseñas.')
+      if (session.role === 'service') throw forbidden('Un token de servicio no define contraseñas.')
       if (body.newPassword != null) {
         const problem = passwordProblem(body.newPassword)
         if (problem) throw badRequest(problem)
@@ -108,6 +109,8 @@ export const POST = route('keys.manage', async (req, { session, db, params }) =>
   const { action } = await readJson(req)
 
   if (action === 'rotate-key') {
+    // A person's key is theirs to hold: automation does not get one.
+    if (session.role === 'service') throw forbidden('Un token de servicio no genera keys de personas.')
     const key = newApiKey('aig_sk_')
     await db.query(
       'UPDATE users SET api_key_hash = $1, api_key_prefix = $2 WHERE id = $3 AND org_id = $4',

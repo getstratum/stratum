@@ -54,6 +54,8 @@ const ACTIONS = {
   'history.revoke':         'Revocó el acceso a un historial',
   'history.read':           'Leyó una conversación de otra persona',
   'sso.update':             'Configuró el ingreso con SSO',
+  'service_token.create':   'Creó un token de servicio',
+  'service_token.revoke':   'Revocó un token de servicio',
   'sso.delete':             'Quitó el ingreso con SSO',
 }
 
@@ -80,6 +82,7 @@ function describe(e) {
   if (d.reason) bits.push(d.reason)
   if (d.note) bits.push(d.note)
   if (d.app && d.subject_email) bits.push(`en ${d.app}`)
+  if (Array.isArray(d.scopes)) bits.push(`${d.scopes.join(', ')}${d.days ? `, ${d.days} días` : ''}`)
   if (Array.isArray(d.changed) && d.changed.length) bits.push(`cambió: ${d.changed.join(', ')}`)
   if (d.role?.from) bits.push(`rol ${d.role.from} → ${d.role.to}`)
   return bits.join(' · ')

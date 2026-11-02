@@ -30,11 +30,15 @@ export const POST = route('users.manage', async (req, { session, db }) => {
   if (body.password != null && session.role === 'team_manager') {
     throw forbidden('Tu rol no puede definir contraseñas.')
   }
+  // A service token provisions people who sign in with the organization's
+  // identity provider (SSO): it sets no passwords, and they need none.
+  if (session.role === 'service' && body.password != null) throw forbidden('Un token de servicio no define contraseñas.')
+  if (session.role === 'service' && body.giveApiKey) throw forbidden('Un token de servicio no genera keys de personas.')
   if (body.password != null) {
     const problem = passwordProblem(body.password)
     if (problem) throw badRequest(problem)
   }
-  if (body.password == null && !body.giveApiKey) {
+  if (body.password == null && !body.giveApiKey && session.role !== 'service') {
     throw badRequest('La persona necesita contraseña o API key (o ambas).')
   }
 

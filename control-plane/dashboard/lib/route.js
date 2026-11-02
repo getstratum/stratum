@@ -9,6 +9,10 @@
  * handler receives the session with `scope` set to what the role may reach
  * for that permission: 'org', 'team' or 'self' (lib/authz.js).
  *
+ * A service token (Authorization: Bearer stsvc_…, lib/service-tokens.js)
+ * stands in for a session on routes whose permission is one of its scopes,
+ * with scope 'org', unless the route says { serviceTokens: false }.
+ *
  * publicRoute() and tokenRoute() mark the few routes that do not use a
  * console session. test/routes.test.mjs fails if a route file exports a
  * handler that went through none of the three.
@@ -19,6 +23,7 @@ import { getDb } from './db.js'
 import { COOKIE, loadSession } from './session.js'
 import { scopeFor } from './authz.js'
 import { audit } from './audit.js'
+import { bearerToken, loadServiceSession } from './service-tokens.js'
 
 export const GUARD = Symbol.for('stratum.route.guard')
 
@@ -101,10 +106,12 @@ function failure(err) {
 /**
  * @param {string} permission  a key of PERMISSIONS in lib/authz.js
  * @param {(req, ctx: {session, db, params}) => Promise<Response>} handler
- * @param {{duringEnrollment?: boolean}} options  duringEnrollment: also open
- *   to a session that must set up the second factor first (lib/mfa.js)
+ * @param {{duringEnrollment?: boolean, serviceTokens?: boolean}} options
+ *   duringEnrollment: also open to a session that must set up the second
+ *   factor first (lib/mfa.js); serviceTokens: false keeps service tokens out
+ *   even when they carry the permission
  */
-export function route(permission, handler, { duringEnrollment = false } = {}) {
+export function route(permission, handler, { duringEnrollment = false, serviceTokens = true } = {}) {
   scopeFor('owner', permission) // throws at import time on an unknown permission
   const wrapped = async (req, ctx) => {
     try {
@@ -112,6 +119,21 @@ export function route(permission, handler, { duringEnrollment = false } = {}) {
         return json({ error: 'forbidden', message: 'Pedido de otro sitio rechazado.' }, 403)
       }
       const db = getDb()
+      const bearer = bearerToken(req)
+      if (bearer) {
+        const session = await loadServiceSession(db, bearer)
+        if (!session) return json({ error: 'invalid_token', message: 'El token no existe, venció o fue revocado.' }, 401)
+        const allowed = serviceTokens && session.service.scopes.includes(permission) && scopeFor('owner', permission) === 'org'
+        if (!allowed) {
+          await audit(db, {
+            req, session, action: 'permission.denied', result: 'denied',
+            details: { permission, method: req.method, path: new URL(req.url).pathname, token: session.service.id },
+          })
+          return json({ error: 'forbidden', message: 'El token no tiene permiso para esto.' }, 403)
+        }
+        const params = ctx?.params ? await ctx.params : {}
+        return await handler(req, { session: { ...session, scope: 'org' }, db, params })
+      }
       const session = await loadSession(db, req.cookies?.get(COOKIE)?.value)
       if (!session) {
         return json({ error: 'unauthorized', message: 'Iniciá sesión.' }, 401)
@@ -143,7 +165,7 @@ export function route(permission, handler, { duringEnrollment = false } = {}) {
       return failure(err)
     }
   }
-  wrapped[GUARD] = { kind: 'session', permission, duringEnrollment }
+  wrapped[GUARD] = { kind: 'session', permission, duringEnrollment, serviceTokens }
   return wrapped
 }
 
