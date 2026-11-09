@@ -379,6 +379,69 @@ test('agents: a new key works through the gateway, and stops working when revoke
   console.log(`  key refused ${((Date.now() - t1) / 1000).toFixed(1)} s after revocation`)
 })
 
+test('routes: an agent on a route answers through its next model while the first provider is down', async () => {
+  test.skip(!GATEWAY, 'no STRATUM_E2E_GATEWAY_URL')
+  // A provider nobody answers at.
+  const dead = `custom-${RUN}-down`
+  expect((await api('POST', '/api/internal/providers', { provider: dead, base_url: 'http://127.0.0.1:9', api_key: 'x' })).status).toBeLessThan(300)
+  created.providerIds.push(((await api('GET', '/api/internal/providers')).body.providers ?? []).find((p) => p.provider === dead).id)
+
+  // The route, in Modelos: first the dead provider, then the mock.
+  const route = `${RUN}-ruta`
+  await page.goto('/models')
+  const section = page.getByTestId('aliases')
+  await section.getByRole('button', { name: 'Nueva ruta' }).click()
+  const d = dialog('Nueva ruta')
+  await d.getByLabel('Nombre').fill(route)
+  for (const target of [`${dead}/nada`, MODEL]) {
+    await d.getByLabel('Otro modelo').fill(target)
+    await d.getByRole('button', { name: 'Agregar este' }).click()
+  }
+  await expect(d.getByRole('list', { name: 'Modelos de la ruta' }).getByRole('listitem')).toHaveCount(2)
+  await d.getByRole('button', { name: 'Guardar' }).click()
+  const row = section.getByTestId('alias').filter({ hasText: `stratum/${route}` })
+  await expect(row).toContainText(`${dead}/nada`)
+  await expect(row).toContainText(MODEL)
+
+  // An agent whose fixed model is the route.
+  const name = `${RUN}-routed`
+  created.agentNames.push(name)
+  await page.goto('/agents')
+  await page.getByRole('button', { name: '+ Nuevo agente' }).click()
+  const a = dialog('Nuevo agente')
+  await a.getByLabel('Nombre').fill(name)
+  const team = a.getByLabel('Equipo')
+  await team.selectOption(await team.locator('option', { hasText: TEAM }).first().getAttribute('value'))
+  await a.getByLabel('Modelo fijo').selectOption(`stratum/${route}`)
+  await a.getByRole('button', { name: 'Crear agente' }).click()
+  const reveal = dialog('Key del agente generada')
+  const key = (await reveal.getByTestId('revealed-key').textContent()).trim()
+  await reveal.getByRole('button', { name: /cerrar/ }).click()
+
+  // Through the gateway: the dead provider fails before anything reaches the
+  // client, and the mock answers.
+  let routedTo = ''
+  await eventually(async () => {
+    const res = await fetch(`${GATEWAY}/v1/chat/completions`, {
+      method: 'POST', headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ model: 'cualquiera', max_tokens: 8, messages: [{ role: 'user', content: 'ping' }] }),
+      signal: AbortSignal.timeout(30_000),
+    })
+    await res.arrayBuffer()
+    routedTo = res.headers.get('x-stratum-routed-to') ?? ''
+    return res.status
+  }, 200, SYNC_MS, 'the agent on the route through the gateway')
+  expect(routedTo).toBe(MODEL)
+
+  // While the agent uses it, the route cannot be deleted.
+  await page.goto('/models')
+  await page.getByTestId('aliases').getByRole('button', { name: `Borrar stratum/${route}` }).click()
+  await expect(page.getByTestId('aliases').getByRole('alert')).toContainText(name)
+  const agent = ((await api('GET', '/api/agents')).body ?? []).find((x) => x.name === name)
+  expect((await api('PATCH', `/api/agents/${agent.id}`, { defaultProvider: null, defaultModel: null })).status).toBe(200)
+  expect((await api('DELETE', `/api/model-aliases/${route}`)).status).toBe(200)
+})
+
 test('agents: an agent that acts for people follows each person, and stops for one whose access is taken away', async () => {
   test.skip(!GATEWAY, 'no STRATUM_E2E_GATEWAY_URL')
   const name = `${RUN}-portal`

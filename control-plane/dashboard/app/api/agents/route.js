@@ -1,6 +1,7 @@
 export const dynamic = 'force-dynamic'
 import { route, readJson, json, badRequest, assertTeamInScope } from '../../../lib/route.js'
 import { newApiKey, AGENT_COLUMNS, fixedModel, fixedModelProvider, delegatesFlag } from '../../../lib/users.js'
+import { assertAliasExists, PREFIX as ALIAS_PREFIX } from '../../../lib/model-aliases.js'
 import { audit } from '../../../lib/audit.js'
 
 export const GET = route('users.read', async (req, { session, db }) => {
@@ -34,6 +35,8 @@ export const POST = route('keys.manage', async (req, { session, db }) => {
   await assertTeamInScope(db, session, teamId)
 
   const delegates = delegatesFlag(body.delegates, session) ?? false
+  // A fixed model can be a model alias (provider "stratum", ADR-0015).
+  if (fixedModelProvider(body.defaultProvider) === ALIAS_PREFIX) await assertAliasExists(db, session.orgId, fixedModel(body.defaultModel))
 
   const key = newApiKey('aig_agt_')
   const { rows } = await db.query(`

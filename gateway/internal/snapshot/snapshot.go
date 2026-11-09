@@ -1,6 +1,7 @@
 package snapshot
 
 import (
+	"regexp"
 	"slices"
 	"strings"
 	"sync/atomic"
@@ -43,6 +44,17 @@ type Policy struct {
 	Revoked            bool
 }
 
+// AliasTarget is one model a model alias may go to (ADR-0015).
+type AliasTarget struct {
+	Provider string
+	Model    string
+}
+
+// MaxAliasTargets bounds how many models one request may be tried on.
+const MaxAliasTargets = 4
+
+var aliasNameRE = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,49}$`)
+
 // Provider is an enabled upstream provider configuration.
 type Provider struct {
 	ID          string
@@ -63,6 +75,8 @@ type Snapshot struct {
 	providersBySlug map[string][]Provider
 	people          map[string]string // person id → team id; active people only
 	models          []WireModel       // the organization's, sorted by provider and id
+	aliases         map[string][]AliasTarget
+	aliasNames      []string // sorted
 	activeKeys      int
 }
 
@@ -98,6 +112,32 @@ func Build(st *State, syncedAt time.Time) *Snapshot {
 		return strings.Compare(a.Provider+"/"+a.ID, b.Provider+"/"+b.ID)
 	})
 	s.models = slices.CompactFunc(s.models, func(a, b WireModel) bool { return a.Provider == b.Provider && a.ID == b.ID })
+
+	for _, a := range st.Aliases {
+		name := strings.ToLower(strings.TrimSpace(a.Name))
+		if !aliasNameRE.MatchString(name) {
+			continue
+		}
+		var targets []AliasTarget
+		for _, t := range a.Targets {
+			p, m := strings.ToLower(strings.TrimSpace(t.Provider)), strings.TrimSpace(t.Model)
+			if p == "" || m == "" || p == "stratum" || len(targets) == MaxAliasTargets {
+				continue
+			}
+			targets = append(targets, AliasTarget{Provider: p, Model: m})
+		}
+		if len(targets) == 0 {
+			continue
+		}
+		if s.aliases == nil {
+			s.aliases = map[string][]AliasTarget{}
+		}
+		if _, dup := s.aliases[name]; !dup {
+			s.aliasNames = append(s.aliasNames, name)
+		}
+		s.aliases[name] = targets
+	}
+	slices.Sort(s.aliasNames)
 
 	for id, p := range st.People {
 		if !p.Revoked && p.TeamID != "" {
@@ -176,6 +216,16 @@ func (s *Snapshot) Person(id string) (teamID string, ok bool) {
 // control plane sent no list (before 0.4, or a standalone config file
 // without one). Callers must not modify it.
 func (s *Snapshot) Models() []WireModel { return s.models }
+
+// Alias returns a model alias's targets, in order (ADR-0015). Callers must
+// not modify them.
+func (s *Snapshot) Alias(name string) ([]AliasTarget, bool) {
+	t, ok := s.aliases[strings.ToLower(name)]
+	return t, ok
+}
+
+// AliasNames lists the aliases, sorted.
+func (s *Snapshot) AliasNames() []string { return s.aliasNames }
 
 // PolicyForTeam returns the team's policy.
 func (s *Snapshot) PolicyForTeam(teamID string) (Policy, bool) {

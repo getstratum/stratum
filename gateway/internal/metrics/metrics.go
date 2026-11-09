@@ -68,6 +68,9 @@ type Metrics struct {
 	Decision        *decision.Counters
 	DecisionPending func() int
 
+	// Model aliases (ADR-0015): requests sent on to an alias's next model.
+	AliasFallbacks atomic.Int64
+
 	// OpenTelemetry traces (ADR-0013); nil when they are off.
 	Traces       *trace.Counters
 	TracesQueued func() int
@@ -182,6 +185,8 @@ func (m *Metrics) WriteTo(w io.Writer, now time.Time) {
 			gauge(&b, "stratum_decision_reports_buffered", "Reports waiting to be sent to the decision services.", int64(m.DecisionPending()))
 		}
 	}
+
+	counter(&b, "stratum_alias_fallbacks_total", "Requests sent on to a model alias's next model after the one before failed (ADR-0015).", m.AliasFallbacks.Load())
 
 	if t := m.Traces; t != nil {
 		counter(&b, "stratum_trace_spans_exported_total", "Spans the OpenTelemetry collector took.", t.Exported.Load())
