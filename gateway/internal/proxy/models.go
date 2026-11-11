@@ -22,6 +22,9 @@ import (
 //
 // Without a list from the control plane (before 0.4, or a standalone
 // config file), the policy's own "provider/model" entries are listed.
+//
+// Model aliases come first, as "stratum/<name>" (ADR-0015): each one with
+// at least one model the caller may use.
 func (h *Handler) Models(w http.ResponseWriter, r *http.Request) {
 	rec := &record{start: time.Now()}
 	defer h.finishModels(rec)
@@ -60,7 +63,20 @@ func (h *Handler) Models(w http.ResponseWriter, r *http.Request) {
 		out = append(out, model{ID: provider + "/" + id, Object: "model", OwnedBy: provider, Name: name})
 	}
 
+	addAlias := func(name string) {
+		targets, _ := snap.Alias(name)
+		for _, t := range targets {
+			if _, configured := snap.Provider(t.Provider); configured && policy.Check(pol, found, t.Provider, t.Model) == nil {
+				out = append(out, model{ID: AliasPrefix + "/" + name, Object: "model", OwnedBy: AliasPrefix})
+				return
+			}
+		}
+	}
+
 	switch list := snap.Models(); {
+	case key.Model != "" && key.Provider == AliasPrefix:
+		// An agent whose fixed model is an alias.
+		addAlias(strings.ToLower(key.Model))
 	case key.Model != "":
 		// An agent with a fixed model: every request goes there.
 		prov := key.Provider
@@ -71,16 +87,23 @@ func (h *Handler) Models(w http.ResponseWriter, r *http.Request) {
 			add(prov, key.Model, nameIn(list, prov, key.Model))
 		}
 	case list != nil:
+		for _, name := range snap.AliasNames() {
+			addAlias(name)
+		}
 		for _, m := range list {
 			add(m.Provider, m.ID, m.Name)
 		}
 	default:
+		for _, name := range snap.AliasNames() {
+			addAlias(name)
+		}
+		n := len(out)
 		for name := range pol.AllowedModels {
 			if prov, id, ok := strings.Cut(name, "/"); ok {
 				add(strings.ToLower(prov), id, "")
 			}
 		}
-		slices.SortFunc(out, func(a, b model) int { return strings.Compare(a.ID, b.ID) })
+		slices.SortFunc(out[n:], func(a, b model) int { return strings.Compare(a.ID, b.ID) })
 	}
 
 	rec.status, rec.reason = http.StatusOK, "ok"

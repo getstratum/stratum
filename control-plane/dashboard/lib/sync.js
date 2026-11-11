@@ -15,7 +15,8 @@
  *     act for, and with which team;
  *   - provider configs;
  *   - with every sync, unversioned: the models the organization can use
- *     (GET /v1/models) and each team's usage this month;
+ *     (GET /v1/models), its model aliases (ADR-0015, "Rutas") and each
+ *     team's usage this month;
  *   - deletions, from stratum_sync_tombstones.
  *
  * All reads run in one REPEATABLE READ transaction, so current_version and
@@ -47,7 +48,7 @@ export async function buildSyncResponse(client, { orgId, sinceVersion, syncInter
   const q = async (sql, params) => (await client.query(sql, params)).rows
 
   await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY')
-  let version, policies, apiKeys, people, providerConfigs, tombstones, usage, usageMonth, models
+  let version, policies, apiKeys, people, providerConfigs, tombstones, usage, usageMonth, models, aliases
   try {
     ;[{ v: version }] = await q('SELECT stratum_sync_version($1)::bigint AS v', [orgId])
 
@@ -205,6 +206,11 @@ export async function buildSyncResponse(client, { orgId, sinceVersion, syncInter
        ORDER BY 1, 2
     `, [orgId])
 
+    // Model aliases (migration 037): sent with every sync, the whole list.
+    aliases = await q(`
+      SELECT name, targets FROM model_aliases WHERE org_id = $1 ORDER BY name
+    `, [orgId])
+
     await client.query('COMMIT')
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {})
@@ -250,6 +256,10 @@ export async function buildSyncResponse(client, { orgId, sinceVersion, syncInter
       }
     }).filter(Boolean),
     models: models.map(m => (m.name ? m : { provider: m.provider, id: m.id })),
+    model_aliases: aliases.map(a => ({
+      name: a.name,
+      targets: (Array.isArray(a.targets) ? a.targets : []).map(t => ({ provider: t.provider, model: t.model })),
+    })),
     month_usage: {
       month: usageMonth,
       teams: usage.map(u => ({ team_id: u.team_id, tokens: num(u.tokens), cost_usd: num(u.cost_usd) })),

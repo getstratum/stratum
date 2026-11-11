@@ -109,5 +109,14 @@
       { "team_id": "team_engineering", "tokens": 1843200, "cost_usd": 12.84 },
       { "team_id": "team_marketing", "tokens": "96000", "cost_usd": "0.31" }
     ]
-  }
+  },
+  "model_aliases": [
+    {
+      "name": "rapido",
+      "targets": [
+        { "provider": "openai", "model": "gpt-4o-mini" },
+        { "provider": "groq", "model": "llama-3.3-70b-versatile" }
+      ]
+    }
+  ]
 }

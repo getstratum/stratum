@@ -77,6 +77,24 @@ type SyncResponse struct {
 	// sent with every sync, full or delta, and replaces what the gateway
 	// had. Absent from control planes before 0.4.
 	Models []WireModel `json:"models,omitempty"`
+	// ModelAliases are the organization's model aliases (ADR-0015): a
+	// request for "stratum/<name>" goes to the first target its policy
+	// allows, and on to the next while a provider fails. Not versioned:
+	// sent with every sync, and replaces what the gateway had. Absent from
+	// control planes before 0.5.
+	ModelAliases []WireAlias `json:"model_aliases,omitempty"`
+}
+
+// WireAlias is a model alias: a name and its targets, in order.
+type WireAlias struct {
+	Name    string            `json:"name"`
+	Targets []WireAliasTarget `json:"targets"`
+}
+
+// WireAliasTarget is one model an alias may go to.
+type WireAliasTarget struct {
+	Provider string `json:"provider"`
+	Model    string `json:"model"`
 }
 
 // WireModel is one model the organization can use. Each policy shows the

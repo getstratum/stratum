@@ -121,6 +121,9 @@ type record struct {
 	task       string // X-Stratum-Task, for the decision services
 	content    string // SHA-256 of the request's content (contentHash)
 	checked    bool   // the decision services were asked
+	raw        []byte // the request body as it came, for an alias's later routes
+	alias      string // the model alias the request named (ADR-0015)
+	fallbacks  int    // how many of the alias's models failed before the one that answered
 
 	// For the trace (ADR-0013).
 	span, parent     trace.SpanContext
@@ -204,6 +207,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	body, err := decodeObject(raw)
+	rec.raw = raw
 	if err != nil {
 		h.fail(w, rec, &policy.Violation{Status: http.StatusBadRequest, Code: "invalid_json", Message: "request body must be a JSON object"})
 		return
@@ -217,116 +221,102 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// The request's API format: Anthropic Messages or OpenAI-compatible.
 	anthropicFormat := strings.HasPrefix(upstreamPath, "v1/messages")
-	switch {
-	case explicit:
-		slug = strings.ToLower(slug)
-		anthropicFormat = provider.KindOf(slug) == provider.KindAnthropic
-		if pfx, rest, cut := strings.Cut(model, "/"); cut && strings.EqualFold(pfx, slug) {
-			model = rest
-		}
-	case key.Provider != "" && key.Model != "":
-		// An agent with a fixed model need not name one.
-		slug = key.Provider
-	default:
-		if slug, model, ok = pickProvider(snap, pol, polFound, model); !ok {
-			h.fail(w, rec, &policy.Violation{Status: http.StatusBadRequest, Code: "ambiguous_provider",
-				Message: `cannot infer the provider; send "model": "provider/model" or call /proxy/{provider}/...`})
-			return
-		}
-	}
 
-	// ── Agent's fixed model ─────────────────────────────────────────────
-	// Set in the console: every request of the key goes to that model,
-	// whatever it asked for, so an administrator can change it centrally.
-	// It still has to pass the team's policy below.
-	if key.Model != "" {
-		to := key.Provider
-		if to == "" {
-			to = slug // only the model is fixed
-		}
-		if (provider.KindOf(to) == provider.KindAnthropic) != anthropicFormat {
-			h.fail(w, rec, &policy.Violation{Status: http.StatusBadRequest, Code: "agent_model_mismatch",
-				Message: "this agent is set to use " + to + "/" + key.Model + ", which takes a different API format than this request"})
+	// ── Where it goes: one route, or an alias's (ADR-0015) ──────────────
+	var routes []route
+	if alias := aliasName(explicit, key, model); alias != "" {
+		var v *policy.Violation
+		if routes, v = aliasRoutes(snap, pol, polFound, alias, upstreamPath, anthropicFormat); v != nil {
+			h.fail(w, rec, v)
 			return
 		}
-		slug, model = to, key.Model
-		w.Header().Set("X-Stratum-Routed-To", slug+"/"+model)
-	}
-	// Azure picks the model by the deployment in the URL, not the body: the
-	// policy checks that name, and an agent's fixed model replaces it.
-	if provider.KindOf(slug) == provider.KindAzure {
-		if before, dep, after, found := cutDeployment(upstreamPath); found {
-			if key.Model != "" {
-				upstreamPath = before + url.PathEscape(key.Model) + after
-			} else {
-				model = dep
+		rec.alias = alias
+	} else {
+		switch {
+		case explicit:
+			slug = strings.ToLower(slug)
+			anthropicFormat = provider.KindOf(slug) == provider.KindAnthropic
+			if pfx, rest, cut := strings.Cut(model, "/"); cut && strings.EqualFold(pfx, slug) {
+				model = rest
+			}
+		case key.Provider != "" && key.Model != "":
+			// An agent with a fixed model need not name one.
+			slug = key.Provider
+		default:
+			if slug, model, ok = pickProvider(snap, pol, polFound, model); !ok {
+				h.fail(w, rec, &policy.Violation{Status: http.StatusBadRequest, Code: "ambiguous_provider",
+					Message: `cannot infer the provider; send "model": "provider/model" or call /proxy/{provider}/...`})
+				return
 			}
 		}
-	}
-	rec.provider, rec.model = slug, model
-	if model != "" {
-		body["model"] = model
-	}
 
-	// ── Policy and quota ────────────────────────────────────────────────
-	if v := policy.Check(pol, polFound, slug, model); v != nil {
-		h.fail(w, rec, v)
-		return
+		// ── Agent's fixed model ─────────────────────────────────────────
+		// Set in the console: every request of the key goes to that model,
+		// whatever it asked for, so an administrator can change it centrally.
+		// It still has to pass the team's policy below.
+		if key.Model != "" {
+			to := key.Provider
+			if to == "" {
+				to = slug // only the model is fixed
+			}
+			if (provider.KindOf(to) == provider.KindAnthropic) != anthropicFormat {
+				h.fail(w, rec, &policy.Violation{Status: http.StatusBadRequest, Code: "agent_model_mismatch",
+					Message: "this agent is set to use " + to + "/" + key.Model + ", which takes a different API format than this request"})
+				return
+			}
+			slug, model = to, key.Model
+			w.Header().Set("X-Stratum-Routed-To", slug+"/"+model)
+		}
+		// Azure picks the model by the deployment in the URL, not the body: the
+		// policy checks that name, and an agent's fixed model replaces it.
+		if provider.KindOf(slug) == provider.KindAzure {
+			if before, dep, after, found := cutDeployment(upstreamPath); found {
+				if key.Model != "" {
+					upstreamPath = before + url.PathEscape(key.Model) + after
+				} else {
+					model = dep
+				}
+			}
+		}
+		rec.provider, rec.model = slug, model
+
+		// ── Policy ──────────────────────────────────────────────────────
+		if v := policy.Check(pol, polFound, slug, model); v != nil {
+			h.fail(w, rec, v)
+			return
+		}
+		prov, ok := snap.Provider(slug)
+		rec.providerOK = ok
+		if !ok {
+			h.fail(w, rec, &policy.Violation{Status: http.StatusBadRequest, Code: "provider_not_configured",
+				Message: "provider " + slug + " is not configured for this organization"})
+			return
+		}
+		base, ok := provider.BaseURL(prov)
+		if !ok {
+			h.fail(w, rec, &policy.Violation{Status: http.StatusBadGateway, Code: "provider_misconfigured",
+				Message: "provider " + slug + " has no base_url"})
+			return
+		}
+		routes = []route{{slug: slug, model: model, prov: prov, base: base, kind: provider.KindOf(slug), path: upstreamPath}}
 	}
+	first := &routes[0]
+	rec.provider, rec.model, rec.providerOK = first.slug, first.model, true
+	kind := first.kind
+
+	// ── Quota ───────────────────────────────────────────────────────────
 	if v := h.Quota.Check(teamID, pol); v != nil {
 		h.fail(w, rec, v)
 		return
 	}
 
-	prov, ok := snap.Provider(slug)
-	rec.providerOK = ok
-	if !ok {
-		h.fail(w, rec, &policy.Violation{Status: http.StatusBadRequest, Code: "provider_not_configured",
-			Message: "provider " + slug + " is not configured for this organization"})
-		return
-	}
-	base, ok := provider.BaseURL(prov)
-	if !ok {
-		h.fail(w, rec, &policy.Violation{Status: http.StatusBadGateway, Code: "provider_misconfigured",
-			Message: "provider " + slug + " has no base_url"})
-		return
-	}
-	kind := provider.KindOf(slug)
-
+	// ── The body for the provider, and PII / DLP ─────────────────────────
 	rec.stream, _ = body["stream"].(bool)
-	if rec.stream && kind != provider.KindAnthropic {
-		if _, set := body["stream_options"]; !set {
-			// Ask OpenAI-compatible providers to report usage in the last chunk.
-			body["stream_options"] = map[string]any{"include_usage": true}
-		}
-	}
-	// The policy's maximum output tokens per request (from 0.3).
-	if polFound && pol.MaxTokensPerRequest != nil && *pol.MaxTokensPerRequest > 0 {
-		if capOutputTokens(body, upstreamPath, slug, kind, *pol.MaxTokensPerRequest) {
-			w.Header().Set("X-Stratum-Max-Tokens", strconv.FormatInt(*pol.MaxTokensPerRequest, 10))
-		}
-	}
-	// The team's instructions, only for a person (see instructions.go).
-	if rec.userID != "" && polFound && pol.PeopleInstructions != "" {
-		if addInstructions(body, upstreamPath, kind, pol.PeopleInstructions) {
-			w.Header().Set("X-Stratum-Instructions", instructionsID(pol.PeopleInstructions))
-		}
-	}
-	final, err := json.Marshal(body)
-	if err != nil {
-		h.fail(w, rec, &policy.Violation{Status: http.StatusInternalServerError, Code: "internal", Message: "could not encode request"})
+	if v := h.prepare(w, rec, body, first, pol, polFound); v != nil {
+		h.fail(w, rec, v)
 		return
 	}
-
-	// ── PII / DLP ───────────────────────────────────────────────────────
-	if h.PIIEnabled && polFound {
-		var v *policy.Violation
-		final, rec.piiTypes, v = applyContentRules(final, pol)
-		if v != nil {
-			h.fail(w, rec, v)
-			return
-		}
-	}
+	final := first.final
 
 	// ── External decision services (ADR-0014) ───────────────────────────
 	if h.Decision != nil {
@@ -346,7 +336,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		d := h.Decision.Check(r.Context(), decision.Request{
 			RequestID: requestID, Time: rec.start.UTC().Format(time.RFC3339Nano),
 			KeyID: rec.keyID, KeyLabel: rec.keyLabel, TeamID: rec.teamID, UserID: rec.userID, Task: rec.task,
-			Provider: rec.provider, Model: rec.model, Operation: operationName(upstreamPath, kind), Stream: rec.stream,
+			Provider: rec.provider, Model: rec.model, Operation: operationName(first.path, kind), Stream: rec.stream,
 			Labels: rec.labels, ContentSHA256: rec.content, ContentBytes: len(final), Traceparent: traceparent,
 		})
 		rec.decEnd = time.Now()
@@ -372,38 +362,72 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		rec.labels = mergeLabels(rec.labels, extra)
 	}
 
-	// ── Forward, retrying before the first byte (ADR-0010) ──────────────
+	// ── Forward, retrying before the first byte (ADR-0010), then the
+	//    alias's next model while nothing reached the client (ADR-0015) ──
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
-	target := provider.TargetURL(prov, base, upstreamPath, r.URL.RawQuery)
 	if h.Traces != nil {
 		rec.clientSpan = trace.NewSpanID()
 	}
-	build := func() (*http.Request, error) {
-		rec.attempts++
-		ureq, err := http.NewRequestWithContext(ctx, http.MethodPost, target, bytes.NewReader(final))
-		if err != nil {
-			return nil, err
-		}
-		rec.upHost = ureq.URL.Hostname()
-		h.traceHeaders(ureq.Header, r.Header, rec)
-		ureq.Header.Set("Content-Type", "application/json")
-		for _, name := range []string{"Accept", "Anthropic-Version", "Anthropic-Beta", "OpenAI-Beta"} {
-			if v := r.Header.Get(name); v != "" {
-				ureq.Header.Set(name, v)
-			}
-		}
-		if h.UserAgent != "" {
-			ureq.Header.Set("User-Agent", h.UserAgent)
-		}
-		provider.SetAuth(ureq.Header, prov)
-		return ureq, nil
-	}
-
 	rec.upStart = time.Now()
-	rec.sent, rec.operation = true, operationName(upstreamPath, kind)
-	res, att, err := h.send(ctx, prov.ID, build)
+	rec.sent, rec.operation = true, operationName(first.path, first.kind)
+	var (
+		res *http.Response
+		att sent
+		rt  *route
+	)
+	for i := range routes {
+		rt = &routes[i]
+		rec.provider, rec.model = rt.slug, rt.model
+		target := provider.TargetURL(rt.prov, rt.base, rt.path, r.URL.RawQuery)
+		build := func() (*http.Request, error) {
+			rec.attempts++
+			ureq, err := http.NewRequestWithContext(ctx, http.MethodPost, target, bytes.NewReader(rt.final))
+			if err != nil {
+				return nil, err
+			}
+			rec.upHost = ureq.URL.Hostname()
+			h.traceHeaders(ureq.Header, r.Header, rec)
+			ureq.Header.Set("Content-Type", "application/json")
+			for _, name := range []string{"Accept", "Anthropic-Version", "Anthropic-Beta", "OpenAI-Beta"} {
+				if v := r.Header.Get(name); v != "" {
+					ureq.Header.Set(name, v)
+				}
+			}
+			if h.UserAgent != "" {
+				ureq.Header.Set("User-Agent", h.UserAgent)
+			}
+			provider.SetAuth(ureq.Header, rt.prov)
+			return ureq, nil
+		}
+		res, att, err = h.send(ctx, rt.prov.ID, build)
+		if i+1 == len(routes) || r.Context().Err() != nil || !fallsOver(res, err) {
+			break
+		}
+		next := &routes[i+1]
+		if v := h.prepare(w, rec, nil, next, pol, polFound); v != nil {
+			break // cannot happen with a body the first route took; keep this answer
+		}
+		why := "error"
+		if res != nil {
+			why = strconv.Itoa(res.StatusCode)
+			h.outcome(rt.prov.ID, att, false, false)
+			io.Copy(io.Discard, io.LimitReader(res.Body, 64<<10))
+			res.Body.Close()
+		} else if errors.As(err, new(*breakerOpenError)) {
+			why = "paused"
+		}
+		rec.fallbacks++
+		h.Metrics.AliasFallbacks.Add(1)
+		h.Log.Warn("alias falling back", "alias", rec.alias, "from", rt.slug+"/"+rt.model, "to", next.slug+"/"+next.model, "why", why)
+	}
 	rec.upstreamMs = time.Since(rec.upStart).Milliseconds()
+	if rec.alias != "" {
+		w.Header().Set("X-Stratum-Routed-To", rt.slug+"/"+rt.model)
+		if rec.fallbacks > 0 {
+			rec.labels = mergeLabels(rec.labels, []string{"routed_fallback"})
+		}
+	}
 	if err != nil {
 		rec.upEnd = time.Now()
 		var paused *breakerOpenError
@@ -430,7 +454,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		rec.reason = "upstream_status"
 	}
 
-	usage, perr := pump(w, res.Body, cancel, h.StreamIdleTimeout, rec.stream && res.StatusCode == http.StatusOK, kind)
+	usage, perr := pump(w, res.Body, cancel, h.StreamIdleTimeout, rec.stream && res.StatusCode == http.StatusOK, rt.kind)
 	rec.usage, rec.upEnd = usage, time.Now()
 	switch {
 	case perr == nil:
@@ -441,7 +465,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	default:
 		rec.reason = "upstream_aborted"
 	}
-	h.outcome(prov.ID, att, rec.reason == "stream_idle_timeout" || rec.reason == "upstream_aborted",
+	h.outcome(rt.prov.ID, att, rec.reason == "stream_idle_timeout" || rec.reason == "upstream_aborted",
 		rec.reason == "client_closed")
 
 	if total := usage.Input + usage.Output; total > 0 {
@@ -655,6 +679,9 @@ func (h *Handler) finish(r *http.Request, rec *record) {
 	}
 	if len(rec.labels) > 0 {
 		attrs = append(attrs, "labels", rec.labels)
+	}
+	if rec.alias != "" {
+		attrs = append(attrs, "alias", rec.alias, "fallbacks", rec.fallbacks)
 	}
 	if rec.span.Valid() {
 		attrs = append(attrs, "trace_id", rec.span.TraceHex())

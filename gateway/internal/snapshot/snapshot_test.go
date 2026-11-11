@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -227,5 +228,38 @@ func TestHolderReplace(t *testing.T) {
 	h.Store(c, Build(c, time.Time{})) // the primary source wins meanwhile
 	if h.Replace(a, b, Build(b, time.Time{})) || h.State() != c {
 		t.Fatal("replace must not overwrite what the primary source stored")
+	}
+}
+
+func TestModelAliases(t *testing.T) {
+	resp := &SyncResponse{CurrentVersion: 1, ModelAliases: []WireAlias{
+		{Name: " Rapido ", Targets: []WireAliasTarget{{"OpenAI", " gpt-4o-mini "}, {"stratum", "loop"}, {"", "x"},
+			{"groq", "a"}, {"groq", "b"}, {"groq", "c"}, {"groq", "d"}}},
+		{Name: "bad name!", Targets: []WireAliasTarget{{"openai", "gpt-4o"}}},
+		{Name: "vacio", Targets: nil},
+		{Name: "claude", Targets: []WireAliasTarget{{"anthropic", "claude-haiku-4-5"}}},
+	}}
+	st, err := (*State)(nil).Apply(resp, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := Build(st, time.Now())
+	got, ok := s.Alias("RAPIDO")
+	want := []AliasTarget{{"openai", "gpt-4o-mini"}, {"groq", "a"}, {"groq", "b"}, {"groq", "c"}}
+	if !ok || !slices.Equal(got, want) {
+		t.Errorf("rapido = %v (at most %d targets, never stratum, lowercase providers)", got, MaxAliasTargets)
+	}
+	if names := s.AliasNames(); !slices.Equal(names, []string{"claude", "rapido"}) {
+		t.Errorf("names %v", names)
+	}
+
+	// A delta without the list keeps it; a list replaces it, an empty one too.
+	st2, _ := st.Apply(&SyncResponse{CurrentVersion: 2}, false)
+	if _, ok := Build(st2, time.Now()).Alias("rapido"); !ok {
+		t.Error("a delta without aliases dropped them")
+	}
+	st3, _ := st2.Apply(&SyncResponse{CurrentVersion: 3, ModelAliases: []WireAlias{}}, false)
+	if _, ok := Build(st3, time.Now()).Alias("rapido"); ok {
+		t.Error("an empty list kept them")
 	}
 }
