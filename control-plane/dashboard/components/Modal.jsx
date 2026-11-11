@@ -12,8 +12,10 @@ export default function Modal({ title, onClose, children, width = 'max-w-lg' }) 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/30" onClick={onClose} />
-      <div role="dialog" aria-modal="true" aria-label={title} className={`relative w-full ${width} bg-card border border-border rounded-xl shadow-dropdown`}>
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+      {/* At most the window's height: a long form (a policy with every
+          model of several providers) scrolls inside, under its title. */}
+      <div role="dialog" aria-modal="true" aria-label={title} className={`relative w-full ${width} max-h-[calc(100dvh-2rem)] flex flex-col bg-card border border-border rounded-xl shadow-dropdown`}>
+        <div className="flex shrink-0 items-center justify-between px-6 py-4 border-b border-border">
           <h2 className="text-base font-semibold text-strong">{title}</h2>
           <button
             onClick={onClose}
@@ -23,7 +25,7 @@ export default function Modal({ title, onClose, children, width = 'max-w-lg' }) 
             ✕
           </button>
         </div>
-        <div className="px-6 py-5">{children}</div>
+        <div className="px-6 py-5 overflow-y-auto overscroll-contain">{children}</div>
       </div>
     </div>
   )
