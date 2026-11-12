@@ -139,3 +139,49 @@ func TestRedactJSON_PreservesLargeIntegers(t *testing.T) {
 		t.Fatalf("email not redacted: %s", out)
 	}
 }
+
+// A card number also matches the loose phone pattern in its first digits.
+// Both replacements used to apply, the second on shifted offsets, and two
+// digits of the card reached the provider; and the card was flagged as a
+// phone too.
+func TestRedactJSON_OverlappingDetections(t *testing.T) {
+	text := "Escribime a juana.perez@ejemplo.com, mi tarjeta es 4111 1111 1111 1111."
+	if got := scanText(text, enabledSet(PersonalTypes)); len(got) != 2 || got[0].Type != TypeEmail || got[1].Type != TypeCreditCard {
+		t.Fatalf("detections = %+v, want an email and a card", got)
+	}
+	body, _ := json.Marshal(map[string]any{"messages": []any{map[string]any{"role": "user", "content": text}}})
+	redacted, res, err := RedactJSON(body, PersonalTypes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var parsed struct {
+		Messages []struct{ Content string } `json:"messages"`
+	}
+	if err := json.Unmarshal(redacted, &parsed); err != nil {
+		t.Fatal(err)
+	}
+	want := "Escribime a [REDACTED:EMAIL], mi tarjeta es [REDACTED:CREDIT_CARD]."
+	if got := parsed.Messages[0].Content; got != want {
+		t.Fatalf("redacted = %q, want %q", got, want)
+	}
+	if strings.Join(res.Types, ",") != "email,credit_card" {
+		t.Fatalf("types = %v, want email and credit_card only", res.Types)
+	}
+}
+
+// A match that starts inside another and runs past it extends the
+// redacted stretch: no character of either reaches the provider.
+func TestDisjoint_ExtendsPartialOverlap(t *testing.T) {
+	text := "abcdefghij"
+	got := disjoint(text, []Detection{
+		{Type: TypePhone, Start: 4, End: 9},
+		{Type: TypeCreditCard, Start: 1, End: 6},
+		{Type: TypeEmail, Start: 9, End: 10},
+	})
+	if len(got) != 2 || got[0].Type != TypeCreditCard || got[0].Start != 1 || got[0].End != 9 || got[0].Value != "bcdefghi" {
+		t.Fatalf("got %+v, want card 1-9 then email 9-10", got)
+	}
+	if out := redactText(text, got); out != "a[REDACTED:CREDIT_CARD][REDACTED:EMAIL]" {
+		t.Fatalf("redacted = %q", out)
+	}
+}
