@@ -228,7 +228,11 @@ export default function UsagePage() {
 
       {t && (
         <section aria-label="Resumen" className="grid gap-3 grid-cols-[repeat(auto-fit,minmax(200px,1fr))]">
-          <Tile label="Costo estimado" value={usd(t.cost)} note="Tokens × precio de lista del catálogo" />
+          <Tile label="Costo estimado" value={usd(t.cost)}
+            note={t.unpriced
+              ? `Sin contar ${nf(t.unpriced)} ${t.unpriced === 1 ? 'request' : 'requests'} de modelos sin precio: ponéselo en Modelos`
+              : 'Tokens × precio de lista del catálogo'}
+            tone={t.unpriced ? 'warn' : undefined} />
           <Tile label="Requests" value={nf(t.requests)}
             note={`${pct(t.errors, t.requests)} con error · ${nf(t.blocked)} rechazados por política`}
             tone={t.requests && t.errors / t.requests > 0.05 ? 'warn' : undefined} />
@@ -332,7 +336,12 @@ export default function UsagePage() {
                       <td className={`px-3 py-2.5 text-right ${r.requests && r.errors / r.requests > 0.05 ? 'text-warn font-semibold' : ''}`}>{pct(r.errors, r.requests)}</td>
                       <td className="px-3 py-2.5 text-right">{nf(r.blocked)}</td>
                       <td className="px-3 py-2.5 text-right whitespace-nowrap">{tokens(r.tokens_in)} / {tokens(r.tokens_out)}</td>
-                      <td className="px-3 py-2.5 text-right whitespace-nowrap">{usd(r.cost)}</td>
+                      <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                        {r.unpriced && r.unpriced === r.requests ? <span className="text-muted">Sin precio</span> : usd(r.cost)}
+                        {r.unpriced > 0 && r.unpriced < r.requests && (
+                          <span className="block text-xs text-warn">+ {nf(r.unpriced)} sin precio</span>
+                        )}
+                      </td>
                       <td className="px-3 py-2.5 text-right whitespace-nowrap"><Emissions impact={r.impact} /></td>
                       <td className="px-3 py-2.5 text-right whitespace-nowrap">{ms(r.p50_ms)} / {ms(r.p95_ms)}</td>
                       <td className="px-5 py-2.5 text-muted whitespace-nowrap">{ago(r.last_at)}</td>

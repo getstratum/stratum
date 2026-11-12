@@ -117,11 +117,15 @@ export async function ingest(db, instance, records) {
        impact_adpe_mg_min, impact_adpe_mg_max, impact_zone, impact_method)
      SELECT r.id, r.ts, $1::uuid, tm.id, u.id, a.id, r.provider, r.model,
             r.tokens_in, r.tokens_out,
+            -- No price for a request that used tokens: NULL, "sin precio",
+            -- not a 0 that reads as free and leaves totals short.
             -- request_logs.cost_usd is DECIMAL(10,6): a cost past it would
             -- fail the whole batch, and the gateway would resend it forever.
-            LEAST(COALESCE(round((r.tokens_in * m.cost_per_1k_input_tokens
-                                + r.tokens_out * m.cost_per_1k_output_tokens) / 1000.0, 6), 0),
-                  9999.999999),
+            CASE WHEN COALESCE(r.tokens_in, 0) + COALESCE(r.tokens_out, 0) = 0 THEN 0
+                 WHEN m.cost_per_1k_input_tokens IS NULL OR m.cost_per_1k_output_tokens IS NULL THEN NULL
+                 ELSE LEAST(round((r.tokens_in * m.cost_per_1k_input_tokens
+                                 + r.tokens_out * m.cost_per_1k_output_tokens) / 1000.0, 6), 9999.999999)
+            END,
             r.status, r.duration_ms, r.upstream_ms,
             r.stream, NULLIF(r.reason, 'ok'), r.flags <> '',
             COALESCE(string_to_array(NULLIF(r.flags, ''), ','), '{}'), $2, r.request_id,

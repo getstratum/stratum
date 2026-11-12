@@ -171,6 +171,8 @@ by pull request.
 - Models a provider lists in a connection test but the catalog does not
   have are kept for the organization: they appear in Modelos (outside the
   catalog, no price) and can be chosen in policies, turned off or priced.
+  Proveedores counts them apart ("N del proveedor, sin precio"), and the
+  policy dialog says "Sin precio" for them.
 
 ### Modelos
 

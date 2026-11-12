@@ -44,7 +44,8 @@ export const LOG_COLUMNS = [
   { key: 'agent_name',   label: 'Agent' },
   { key: 'tokens_input', label: 'Tokens In' },
   { key: 'tokens_output',label: 'Tokens Out' },
-  { key: 'cost_usd',     label: 'Cost USD',      format: v => parseFloat(v ?? 0).toFixed(8) },
+  // Empty: the model has no price (not a cost of 0).
+  { key: 'cost_usd',     label: 'Cost USD',      format: v => (v == null ? '' : parseFloat(v).toFixed(8)) },
   { key: 'latency_ms',   label: 'Latency ms' },
   { key: 'status_code',  label: 'Status' },
   { key: 'is_stream',    label: 'Streaming' },

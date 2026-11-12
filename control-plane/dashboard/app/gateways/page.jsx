@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import Modal, { Field, Input, Btn } from '../../components/Modal'
 import { ignoresModelSwitch, olderThan, MODEL_SWITCH_SINCE } from '../../lib/gateway-version'
+import { formatInterval } from '../../lib/format'
 
 const API = '/api/internal/instances'
 
@@ -167,7 +168,7 @@ export default function GatewaysPage() {
         <div className="max-w-2xl">
           <h1 className="text-[26px] font-semibold text-strong tracking-tight">Gateways</h1>
           <p className="text-sm text-muted mt-1">
-            Los gateways corren en tu infraestructura y le piden la configuración a este control plane cada 30 s.
+            Los gateways corren en tu infraestructura y le piden la configuración a este control plane cada {formatInterval(data.sync_interval_s ?? 30)}.
             Si el control plane no responde, siguen sirviendo con la última que tienen.
           </p>
         </div>

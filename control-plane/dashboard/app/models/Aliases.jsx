@@ -11,13 +11,13 @@ import { allowedBy } from '../../lib/catalog'
 const MAX = 4
 const formatOf = (provider) => (provider === 'anthropic' ? 'anthropic' : 'openai')
 const keyOf = (t) => `${t.provider}/${t.model}`
+const TYPED_RE = /^[a-z0-9][a-z0-9-]*\/.+/
 
 function AliasModal({ alias, options, onClose, onSaved }) {
   const editing = Boolean(alias)
   const [name, setName] = useState(alias?.name ?? '')
   const [description, setDescription] = useState(alias?.description ?? '')
   const [targets, setTargets] = useState(alias?.targets ?? [])
-  const [pick, setPick] = useState('')
   const [typed, setTyped] = useState('')
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
@@ -31,7 +31,21 @@ function AliasModal({ alias, options, onClose, onSaved }) {
     return out
   })
 
+  // A model typed in "Otro": checked, then added (button or Enter).
+  function addTyped() {
+    const v = typed.trim()
+    if (!TYPED_RE.test(v)) return setError('Escribí proveedor/modelo, por ejemplo groq/llama-3.3-70b.')
+    const [provider, ...rest] = v.split('/')
+    const t = { provider, model: rest.join('/') }
+    if (provider === 'stratum') return setError('stratum/… es una ruta, no un modelo.')
+    if (targets.some(x => keyOf(x) === keyOf(t))) return setError('Ese modelo ya está en la ruta.')
+    if (format && formatOf(provider) !== format) return setError('Anthropic y los demás proveedores usan formatos de API distintos: la ruta va solo a uno de los dos.')
+    setError(''); setTargets(ts => [...ts, t]); setTyped('')
+  }
+
   async function save() {
+    // Something typed and not added would be lost without a word: say so.
+    if (typed.trim()) return setError(`Agregá ${typed.trim()} con "Agregar este", o borralo, antes de guardar.`)
     setSaving(true); setError('')
     const res = await fetch(editing ? `/api/model-aliases/${encodeURIComponent(alias.name)}` : '/api/model-aliases', {
       method: editing ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' },
@@ -72,30 +86,23 @@ function AliasModal({ alias, options, onClose, onSaved }) {
           {targets.length < MAX && (
             <>
             <div className="flex gap-2">
+              {/* Choosing a model adds it: no second step to forget. */}
               <label htmlFor="alias-pick" className="sr-only">Modelo para agregar</label>
-              <select id="alias-pick" value={pick} onChange={e => setPick(e.target.value)}
+              <select id="alias-pick" value="" onChange={e => {
+                const o = options.find(x => keyOf(x) === e.target.value)
+                if (o) { setError(''); setTargets(ts => [...ts, { provider: o.provider, model: o.model }]) }
+              }}
                       className="flex-1 min-w-0 bg-card border border-border rounded-lg px-3 h-10 text-sm text-strong">
                 <option value="">{targets.length ? 'Si ese falla, probar con…' : 'Elegí un modelo'}</option>
                 {choices.map(o => <option key={keyOf(o)} value={keyOf(o)}>{o.name} · {o.provider}</option>)}
               </select>
-              <Btn variant="secondary" disabled={!pick} onClick={() => {
-                const o = options.find(x => keyOf(x) === pick)
-                if (o) setTargets(ts => [...ts, { provider: o.provider, model: o.model }])
-                setPick('')
-              }}>Agregar</Btn>
             </div>
             <div className="flex gap-2">
               <label htmlFor="alias-typed" className="sr-only">Otro modelo</label>
               <input id="alias-typed" value={typed} onChange={e => setTyped(e.target.value)} placeholder="Otro: proveedor/modelo"
+                     onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addTyped() } }}
                      className="flex-1 min-w-0 bg-card border border-border-strong rounded-md px-3 h-10 text-sm text-strong placeholder-subtle" />
-              <Btn variant="secondary" disabled={!/^[a-z0-9][a-z0-9-]*\/.+/.test(typed.trim())} onClick={() => {
-                const [provider, ...rest] = typed.trim().split('/')
-                const t = { provider, model: rest.join('/') }
-                if (provider === 'stratum') return setError('stratum/… es una ruta, no un modelo.')
-                if (targets.some(x => keyOf(x) === keyOf(t))) return setError('Ese modelo ya está en la ruta.')
-                if (format && formatOf(provider) !== format) return setError('Anthropic y los demás proveedores usan formatos de API distintos: la ruta va solo a uno de los dos.')
-                setError(''); setTargets(ts => [...ts, t]); setTyped('')
-              }}>Agregar este</Btn>
+              <Btn variant="secondary" disabled={!TYPED_RE.test(typed.trim())} onClick={addTyped}>Agregar este</Btn>
             </div>
             </>
           )}
