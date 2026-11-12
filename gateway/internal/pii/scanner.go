@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -43,11 +44,54 @@ func scanText(text string, enabledTypes map[string]bool) []Detection {
 			out = append(out, Detection{Type: typ, Start: loc[0], End: loc[1], Value: match})
 		}
 	}
+	return disjoint(text, out)
+}
+
+// rank orders detectors for the same text: the more specific (validated)
+// one names it. "4111 1111 1111 1111" is a card, not the phone number the
+// loose phone pattern also finds in its first 14 characters.
+var rank = map[string]int{
+	TypeEmail: 0, TypeCreditCard: 1, TypeSSN: 2, TypeCIUY: 3, TypeAPIKey: 4, TypeIPAddress: 5, TypePhone: 6,
+}
+
+// disjoint turns detections that overlap into one, so redaction replaces
+// each stretch of text once. Replacing two overlapping matches one after
+// the other used offsets the first replacement had shifted, and left part
+// of the data in the text ("[REDACTED:CREDIT_CARD]11"). The first match,
+// then the longest, then the most specific, names the stretch; a match
+// that runs past it extends it.
+func disjoint(text string, dets []Detection) []Detection {
+	if len(dets) < 2 {
+		return dets
+	}
+	sort.SliceStable(dets, func(i, j int) bool {
+		a, b := dets[i], dets[j]
+		if a.Start != b.Start {
+			return a.Start < b.Start
+		}
+		if la, lb := a.End-a.Start, b.End-b.Start; la != lb {
+			return la > lb
+		}
+		return rank[a.Type] < rank[b.Type]
+	})
+	out := dets[:1]
+	for _, d := range dets[1:] {
+		last := &out[len(out)-1]
+		if d.Start >= last.End {
+			out = append(out, d)
+			continue
+		}
+		if d.End > last.End {
+			last.End = d.End
+			last.Value = text[last.Start:last.End]
+		}
+	}
 	return out
 }
 
 // redactText replaces each detection with a [REDACTED:TYPE] marker,
-// processing right-to-left so earlier byte offsets stay valid.
+// processing right-to-left so earlier byte offsets stay valid. The
+// detections must not overlap (scanText makes them disjoint).
 func redactText(text string, detections []Detection) string {
 	if len(detections) == 0 {
 		return text
