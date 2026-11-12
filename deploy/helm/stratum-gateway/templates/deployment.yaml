@@ -93,6 +93,8 @@ spec:
               value: {{ .Values.gateway.maxInflight | quote }}
             - name: STRATUM_MAX_REQUEST_BYTES
               value: {{ .Values.gateway.maxRequestBytes | int64 | quote }}
+            - name: STRATUM_UPSTREAM_CONNECT_TIMEOUT
+              value: {{ .Values.gateway.upstreamConnectTimeout | default "5s" | quote }}
             - name: STRATUM_UPSTREAM_HEADER_TIMEOUT
               value: {{ .Values.gateway.upstreamHeaderTimeout | quote }}
             - name: STRATUM_STREAM_IDLE_TIMEOUT

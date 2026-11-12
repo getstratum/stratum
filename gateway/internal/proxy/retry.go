@@ -41,7 +41,11 @@ type sent struct {
 // generation costs money), 500 and other answers (they may come from the
 // request itself). Each retry needs a token from the budget, so retries
 // stay a bounded share of traffic.
-func (h *Handler) send(ctx context.Context, provID string, build func() (*http.Request, error)) (*http.Response, sent, error) {
+//
+// next says the request has somewhere else to go (an alias's next model,
+// ADR-0015): an error connecting is then final here, so the next model is
+// tried at once instead of after a backoff and a second wait to connect.
+func (h *Handler) send(ctx context.Context, provID string, build func() (*http.Request, error), next bool) (*http.Response, sent, error) {
 	if h.Budget != nil {
 		h.Budget.Request()
 	}
@@ -62,7 +66,7 @@ func (h *Handler) send(ctx context.Context, provID string, build func() (*http.R
 		res, err := h.Client.Do(req)
 		failed, retryable, after := classify(res, err)
 
-		final := !retryable || attempt >= h.Retry.Max || ctx.Err() != nil
+		final := !retryable || attempt >= h.Retry.Max || ctx.Err() != nil || (next && err != nil)
 		wait := after
 		if wait == 0 {
 			wait = backoff(attempt)

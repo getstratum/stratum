@@ -83,12 +83,13 @@ type RetryOptions struct {
 
 // NewTransport returns the upstream transport. There is deliberately no
 // overall request timeout: a streamed completion can legitimately run for
-// many minutes. Instead each phase has its own bound, and the stream idle
-// watchdog in pump catches a provider that goes silent mid-stream.
-func NewTransport(headerTimeout time.Duration) *http.Transport {
+// many minutes. Instead each phase has its own bound (connecting, DNS
+// included; TLS; the first byte), and the stream idle watchdog in pump
+// catches a provider that goes silent mid-stream.
+func NewTransport(connectTimeout, headerTimeout time.Duration) *http.Transport {
 	return &http.Transport{
 		Proxy:                 http.ProxyFromEnvironment,
-		DialContext:           (&net.Dialer{Timeout: 5 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
+		DialContext:           (&net.Dialer{Timeout: connectTimeout, KeepAlive: 30 * time.Second}).DialContext,
 		TLSHandshakeTimeout:   5 * time.Second,
 		ResponseHeaderTimeout: headerTimeout,
 		ExpectContinueTimeout: time.Second,
@@ -400,7 +401,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			provider.SetAuth(ureq.Header, rt.prov)
 			return ureq, nil
 		}
-		res, att, err = h.send(ctx, rt.prov.ID, build)
+		// With another model to go to, an error connecting is not retried
+		// here: the next route answers sooner than a retry with backoff.
+		res, att, err = h.send(ctx, rt.prov.ID, build, i+1 < len(routes))
 		if i+1 == len(routes) || r.Context().Err() != nil || !fallsOver(res, err) {
 			break
 		}
@@ -408,18 +411,19 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if v := h.prepare(w, rec, nil, next, pol, polFound); v != nil {
 			break // cannot happen with a body the first route took; keep this answer
 		}
-		why := "error"
+		why := fallbackReason(res, err)
 		if res != nil {
-			why = strconv.Itoa(res.StatusCode)
 			h.outcome(rt.prov.ID, att, false, false)
 			io.Copy(io.Discard, io.LimitReader(res.Body, 64<<10))
 			res.Body.Close()
-		} else if errors.As(err, new(*breakerOpenError)) {
-			why = "paused"
 		}
 		rec.fallbacks++
 		h.Metrics.AliasFallbacks.Add(1)
-		h.Log.Warn("alias falling back", "alias", rec.alias, "from", rt.slug+"/"+rt.model, "to", next.slug+"/"+next.model, "why", why)
+		attrs := []any{"alias", rec.alias, "from", rt.slug + "/" + rt.model, "to", next.slug + "/" + next.model, "why", why}
+		if err != nil && why != "paused" {
+			attrs = append(attrs, "error", err.Error())
+		}
+		h.Log.Warn("alias falling back", attrs...)
 	}
 	rec.upstreamMs = time.Since(rec.upStart).Milliseconds()
 	if rec.alias != "" {

@@ -60,8 +60,8 @@ Before the first byte reaches the client, a connection error or a
 a retry budget), and a provider that keeps failing trips a circuit breaker
 that answers 503 at once for 30 s (ADR-0010).
 
-Timeouts are per phase: connect 5 s, TLS 5 s, first byte
-`STRATUM_UPSTREAM_HEADER_TIMEOUT`, and an idle watchdog between streamed chunks
+Timeouts are per phase: connect `STRATUM_UPSTREAM_CONNECT_TIMEOUT` (5 s, DNS
+included), TLS 5 s, first byte `STRATUM_UPSTREAM_HEADER_TIMEOUT`, and an idle watchdog between streamed chunks
 (`STRATUM_STREAM_IDLE_TIMEOUT`). There is no overall timeout, because a
 streamed completion can legitimately take minutes.
 

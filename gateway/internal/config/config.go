@@ -61,12 +61,13 @@ type Config struct {
 	SnapshotBootstrapTimeout time.Duration // wait for the control plane before using the shared copy
 
 	// Request path
-	MaxInflight           int
-	MaxRequestBytes       int64
-	UpstreamHeaderTimeout time.Duration // time to first byte from the provider
-	StreamIdleTimeout     time.Duration // max silence between upstream chunks
-	PIIEnabled            bool
-	CORSAllowedOrigins    []string
+	MaxInflight            int
+	MaxRequestBytes        int64
+	UpstreamHeaderTimeout  time.Duration // time to first byte from the provider
+	UpstreamConnectTimeout time.Duration // time to connect to the provider (DNS and TCP)
+	StreamIdleTimeout      time.Duration // max silence between upstream chunks
+	PIIEnabled             bool
+	CORSAllowedOrigins     []string
 
 	// Provider failures (ADR-0010)
 	UpstreamRetries      int           // retries before the first byte; 0 = off
@@ -138,20 +139,21 @@ func Load(getenv func(string) string) (*Config, error) {
 		SnapshotShared:           e.bool("STRATUM_SNAPSHOT_SHARED", true),
 		SnapshotBootstrapTimeout: e.dur("STRATUM_SNAPSHOT_BOOTSTRAP_TIMEOUT", 10*time.Second),
 
-		MaxInflight:           e.int("STRATUM_MAX_INFLIGHT", 1024),
-		MaxRequestBytes:       int64(e.int("STRATUM_MAX_REQUEST_BYTES", 10<<20)),
-		UpstreamHeaderTimeout: e.dur("STRATUM_UPSTREAM_HEADER_TIMEOUT", 120*time.Second),
-		StreamIdleTimeout:     e.dur("STRATUM_STREAM_IDLE_TIMEOUT", 60*time.Second),
-		PIIEnabled:            e.bool("STRATUM_PII_ENABLED", true),
-		CORSAllowedOrigins:    e.list("STRATUM_CORS_ALLOWED_ORIGINS"),
-		UpstreamRetries:       e.int("STRATUM_UPSTREAM_RETRIES", 2),
-		UpstreamRetryMaxWait:  e.dur("STRATUM_UPSTREAM_RETRY_MAX_WAIT", 5*time.Second),
-		RetryBudgetRatio:      e.float("STRATUM_RETRY_BUDGET_RATIO", 0.2),
-		BreakerThreshold:      e.int("STRATUM_BREAKER_THRESHOLD", 5),
-		BreakerCooldown:       e.dur("STRATUM_BREAKER_COOLDOWN", 30*time.Second),
-		DecisionURLs:          e.list("STRATUM_DECISION_URLS"),
-		DecisionToken:         e.str("STRATUM_DECISION_TOKEN", ""),
-		DecisionTimeout:       e.dur("STRATUM_DECISION_TIMEOUT", 200*time.Millisecond),
+		MaxInflight:            e.int("STRATUM_MAX_INFLIGHT", 1024),
+		MaxRequestBytes:        int64(e.int("STRATUM_MAX_REQUEST_BYTES", 10<<20)),
+		UpstreamHeaderTimeout:  e.dur("STRATUM_UPSTREAM_HEADER_TIMEOUT", 120*time.Second),
+		UpstreamConnectTimeout: e.dur("STRATUM_UPSTREAM_CONNECT_TIMEOUT", 5*time.Second),
+		StreamIdleTimeout:      e.dur("STRATUM_STREAM_IDLE_TIMEOUT", 60*time.Second),
+		PIIEnabled:             e.bool("STRATUM_PII_ENABLED", true),
+		CORSAllowedOrigins:     e.list("STRATUM_CORS_ALLOWED_ORIGINS"),
+		UpstreamRetries:        e.int("STRATUM_UPSTREAM_RETRIES", 2),
+		UpstreamRetryMaxWait:   e.dur("STRATUM_UPSTREAM_RETRY_MAX_WAIT", 5*time.Second),
+		RetryBudgetRatio:       e.float("STRATUM_RETRY_BUDGET_RATIO", 0.2),
+		BreakerThreshold:       e.int("STRATUM_BREAKER_THRESHOLD", 5),
+		BreakerCooldown:        e.dur("STRATUM_BREAKER_COOLDOWN", 30*time.Second),
+		DecisionURLs:           e.list("STRATUM_DECISION_URLS"),
+		DecisionToken:          e.str("STRATUM_DECISION_TOKEN", ""),
+		DecisionTimeout:        e.dur("STRATUM_DECISION_TIMEOUT", 200*time.Millisecond),
 
 		ValkeyURL:         e.str("STRATUM_VALKEY_URL", ""),
 		ValkeyPassword:    e.str("STRATUM_VALKEY_PASSWORD", ""),
@@ -166,6 +168,9 @@ func Load(getenv func(string) string) (*Config, error) {
 		LogLevel: strings.ToLower(e.str("STRATUM_LOG_LEVEL", "info")),
 	}
 
+	if c.UpstreamConnectTimeout < 100*time.Millisecond || c.UpstreamConnectTimeout > time.Minute {
+		e.fail("STRATUM_UPSTREAM_CONNECT_TIMEOUT must be between 100ms and 1m")
+	}
 	if c.UpstreamRetries < 0 || c.UpstreamRetries > 5 {
 		e.fail("STRATUM_UPSTREAM_RETRIES must be between 0 and 5")
 	}

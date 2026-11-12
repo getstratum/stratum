@@ -5,11 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -208,6 +211,70 @@ func TestFallsOver(t *testing.T) {
 	} {
 		if got := fallsOver(c.res, c.err); got != c.want {
 			t.Errorf("%v %v: %v", c.res, c.err, got)
+		}
+	}
+}
+
+// With a model to go to next, a provider that cannot be reached is not
+// retried: the next model answers at once, without a backoff and a second
+// wait to connect (found in the local test plan: 5 to 7 s per request).
+func TestAliasDoesNotRetryAProviderItCannotReach(t *testing.T) {
+	e := newEnv(t, allowAll, time.Minute, resilient)
+	up2 := withAliases(t, e, rapido)
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	closed := "http://" + ln.Addr().String()
+	ln.Close()
+	var resp snapshot.SyncResponse
+	if err := json.Unmarshal([]byte(`{"current_version": 5,
+	  "provider_configs": [{"id":"ms","provider":"mistral","api_key":"ms-up","base_url":"`+closed+`","enabled":true,"version":5,"revoked":false}],
+	  "model_aliases": [{"name":"caido","targets":[{"provider":"mistral","model":"small"},{"provider":"groq","model":"llama-3.3-70b"}]}]}`), &resp); err != nil {
+		t.Fatal(err)
+	}
+	st, err := e.h.Holder.State().Apply(&resp, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.h.Holder.Store(st, snapshot.Build(st, time.Now()))
+	var logs strings.Builder
+	e.h.Log = slog.New(slog.NewTextHandler(&logs, nil))
+
+	res := e.post("/v1/chat/completions", devKey, `{"model":"stratum/caido"}`)
+	if res.StatusCode != 200 || res.Header.Get("X-Stratum-Routed-To") != "groq/llama-3.3-70b" || up2.body == nil {
+		t.Fatalf("status %d, routed to %q", res.StatusCode, res.Header.Get("X-Stratum-Routed-To"))
+	}
+	if n := e.m.UpstreamRetries.Load(); n != 0 {
+		t.Errorf("retried the unreachable provider %d times", n)
+	}
+	if !strings.Contains(logs.String(), "why=connection_refused") || !strings.Contains(logs.String(), "error=") {
+		t.Errorf("log does not say why: %s", logs.String())
+	}
+
+	// The last model, with nowhere else to go, is still retried.
+	e.up.handler = func(w http.ResponseWriter, r *http.Request) {}
+	if res := e.post("/v1/chat/completions", devKey, `{"model":"mistral/small"}`); res.StatusCode != 502 || e.m.UpstreamRetries.Load() != 2 {
+		t.Errorf("direct to the unreachable provider: %d after %d retries, want 502 after 2", res.StatusCode, e.m.UpstreamRetries.Load())
+	}
+}
+
+func TestFallbackReason(t *testing.T) {
+	for _, c := range []struct {
+		res  *http.Response
+		err  error
+		want string
+	}{
+		{&http.Response{StatusCode: 503}, nil, "503"},
+		{nil, &breakerOpenError{}, "paused"},
+		{nil, &net.OpError{Op: "dial", Err: &net.DNSError{Err: "i/o timeout", IsTimeout: true}}, "dns_timeout"},
+		{nil, &net.OpError{Op: "dial", Err: &net.DNSError{Err: "no such host", IsNotFound: true}}, "dns_error"},
+		{nil, &net.OpError{Op: "dial", Err: os.NewSyscallError("connect", syscall.ECONNREFUSED)}, "connection_refused"},
+		{nil, &net.OpError{Op: "dial", Err: context.DeadlineExceeded}, "connect_timeout"},
+		{nil, &net.OpError{Op: "dial", Err: errors.New("network is unreachable")}, "connect_error"},
+	} {
+		if got := fallbackReason(c.res, c.err); got != c.want {
+			t.Errorf("%v %v: %q, want %q", c.res, c.err, got, c.want)
 		}
 	}
 }

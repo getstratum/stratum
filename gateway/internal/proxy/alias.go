@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"github.com/getstratum/stratum/gateway/internal/policy"
 	"github.com/getstratum/stratum/gateway/internal/provider"
@@ -164,4 +166,28 @@ func fallsOver(res *http.Response, err error) bool {
 		return true
 	}
 	return false
+}
+
+// fallbackReason says, for the log, why a route was left for the next: the
+// provider's status, "paused" (its breaker is open), or what failed while
+// connecting, so a slow or failing hop can be told apart without a trace.
+func fallbackReason(res *http.Response, err error) string {
+	if res != nil {
+		return strconv.Itoa(res.StatusCode)
+	}
+	if errors.As(err, new(*breakerOpenError)) {
+		return "paused"
+	}
+	var dns *net.DNSError
+	switch {
+	case errors.As(err, &dns) && dns.IsTimeout:
+		return "dns_timeout"
+	case errors.As(err, &dns):
+		return "dns_error"
+	case isTimeout(err):
+		return "connect_timeout"
+	case errors.Is(err, syscall.ECONNREFUSED):
+		return "connection_refused"
+	}
+	return "connect_error"
 }
