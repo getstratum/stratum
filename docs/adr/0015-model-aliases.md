@@ -41,8 +41,12 @@ of the organization's.
 3. **When the gateway goes to the next target.** Only before anything
    reached the client: the provider's breaker is open, the connection
    fails or times out, or the provider answers 429, 500, 502, 503, 504 or
-   529 after its own retries (ADR-0010). Never after the first byte, and
-   never on other answers (a 400 would fail everywhere).
+   529 after its own retries (ADR-0010). An error connecting is not
+   retried when there is a next target: it goes there at once. Never after
+   the first byte, and never on other answers (a 400 would fail
+   everywhere). The gateway's log says why it moved on (`why`: the status,
+   `paused`, `dns_error`, `dns_timeout`, `connect_timeout`,
+   `connection_refused`, `connect_error`).
 4. **What is recorded.** The usage record has the model that answered. The
    response says it in `X-Stratum-Routed-To`, and a request that went past
    its first target carries the label `routed_fallback`. Traces get
@@ -77,10 +81,14 @@ allowed) as `stratum/<name>`, before the models.
 - Changing the model behind an alias changes it for every application at
   the next sync, without touching them.
 - A provider outage costs a request the time to fail over, not an error:
-  a few milliseconds once the breaker is open; before that, the provider's
-  own retries (ADR-0010) run first, about a second for a refused connection.
-  Retrying the preferred model first is deliberate: a blip should not send
-  traffic to a more expensive one.
+  a few milliseconds once the breaker is open. Before that, a provider that
+  refuses connections costs a few milliseconds, and one that does not answer
+  at all, up to `STRATUM_UPSTREAM_CONNECT_TIMEOUT` (5 s), once per request,
+  until the breaker opens: connection errors are not retried when there is
+  a next target. Answers that say "not now" (429, 502, 503, 504) are
+  retried first (ADR-0010): a blip should not send traffic to a more
+  expensive model. Found in the local test plan (12 Nov 2026), where an
+  unreachable first target cost 5 to 7 s per request with a retry.
 - Consumo shows the model that answered, not the alias. Usage by alias
   needs a field in the usage record; not done here.
 - A fallback model may answer differently (tools, context window, quality).

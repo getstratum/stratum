@@ -96,6 +96,8 @@ traces:
 gateway:
   maxInflight: 1024
   maxRequestBytes: 10485760
+  # Max wait to connect to a provider, DNS included.
+  upstreamConnectTimeout: 5s
   upstreamHeaderTimeout: 120s
   streamIdleTimeout: 60s
   piiEnabled: true

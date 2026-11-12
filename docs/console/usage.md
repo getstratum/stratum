@@ -46,8 +46,12 @@ Errors are 4xx and 5xx answers, refusals included. Refused by policy:
 
 The cost is an estimate: tokens the provider reported × the price when the
 request was recorded: the organization's own price for that model if it set
-one in Modelos, the catalog's list price otherwise. Requests to models
-without either cost 0 here.
+one in Modelos, the catalog's list price otherwise. A request to a model
+without either has no cost ("Sin precio" in Requests, an empty cell in the
+CSV), not a cost of 0: Consumo leaves it out of the estimate and says how
+many requests it left out, and the usage report counts them (`unpriced`).
+Pricing the model in Modelos costs the requests recorded from then on.
+Refused requests, with no tokens, cost 0.
 
 ## Environmental impact (estimated)
 

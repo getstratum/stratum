@@ -23,7 +23,8 @@ answering. Two things went wrong then:
 
 1. **Retry while nothing has reached the client.** A request is sent again
    (up to `STRATUM_UPSTREAM_RETRIES`, 2) after an error connecting (refused,
-   DNS), or a 429, 502, 503 or 504 answer, with exponential backoff and
+   DNS; not when a route has a next model to go to, ADR-0015), or a 429,
+   502, 503 or 504 answer, with exponential backoff and
    jitter or the provider's `Retry-After`. Not after a timeout (the time is
    already spent), a connection that broke after the request was written
    (the provider may be running it, and a generation is billed), a 500 or

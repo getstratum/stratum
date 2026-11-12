@@ -59,3 +59,11 @@ export function formatAgo(t) {
   if (s < 86400) return `hace ${Math.round(s / 3600)} h`
   return new Date(t).toLocaleDateString(LOCALE, { day: 'numeric', month: 'short' })
 }
+
+/** A sync interval, as the pages say it: 10 s · 1 min · 1 min 30 s */
+export function formatInterval(seconds) {
+  const s = Math.max(1, Math.round(Number(seconds) || 30))
+  if (s < 60) return `${s} s`
+  const m = Math.floor(s / 60), r = s % 60
+  return r ? `${m} min ${r} s` : `${m} min`
+}

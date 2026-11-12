@@ -78,6 +78,7 @@ const TOTALS = `
   COALESCE(SUM(r.tokens_input), 0)                        AS tokens_in,
   COALESCE(SUM(r.tokens_output), 0)                       AS tokens_out,
   COALESCE(SUM(r.cost_usd), 0)                            AS cost,
+  COUNT(*) FILTER (WHERE r.cost_usd IS NULL)              AS unpriced,
   SUM(r.impact_gwp_g_min)                                 AS gwp_min,
   SUM(r.impact_gwp_g_max)                                 AS gwp_max,
   SUM(r.impact_energy_wh_min)                             AS energy_min,
@@ -89,6 +90,8 @@ const TOTALS = `
 const totals = (r) => ({
   requests: num(r.requests), errors: num(r.errors), blocked: num(r.blocked),
   tokens_in: num(r.tokens_in), tokens_out: num(r.tokens_out), cost: num(r.cost),
+  // Requests of models without a price: not in cost.
+  unpriced: num(r.unpriced),
   impact: {
     gwp_g: range(r.gwp_min, r.gwp_max),
     energy_wh: range(r.energy_min, r.energy_max),

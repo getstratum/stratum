@@ -137,6 +137,15 @@ test('usage: the cost is found by model ID or alias (migration 023)', { skip }, 
   assert.equal(await cost(gemini), 0.0045) // provider "gemini", as gateways call it
 })
 
+test('usage: a model without a price costs NULL ("sin precio"), not a 0 that reads as free', { skip }, async () => {
+  const unpriced = record(A, { provider: 'groq', model: 'openai/gpt-oss-20b' })
+  const refused = record(A, { provider: 'groq', model: 'openai/gpt-oss-20b', status: 403, reason: 'model_not_allowed', tokens_in: 0, tokens_out: 0 })
+  assert.equal((await post(A.token, { records: [unpriced, refused] })).body.accepted, 2)
+  const cost = async r => (await sql('SELECT cost_usd FROM request_logs WHERE id = $1', [r.id]))[0].cost_usd
+  assert.equal(await cost(unpriced), null)
+  assert.equal(Number(await cost(refused)), 0) // no tokens: nothing to price
+})
+
 test('usage: each request gets its estimated impact; an unknown model or no output gets none', { skip }, async () => {
   const known = record(A, { provider: 'openai', model: 'gpt-4o-mini', tokens_out: 400, duration_ms: 6000 })
   const unknown = record(A, { provider: 'ollama', model: 'mock-fast', tokens_out: 400 })

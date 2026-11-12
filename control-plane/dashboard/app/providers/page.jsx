@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import Modal, { Field, Input, Btn } from '../../components/Modal'
 import { allowedBy } from '../../lib/catalog'
+import { formatInterval } from '../../lib/format'
 
 const API = '/api/internal/providers'
 
@@ -269,12 +270,13 @@ export default function ProvidersPage() {
   const [tests, setTests]         = useState({})
   const [catalog, setCatalog]     = useState([])
   const [policies, setPolicies]   = useState([])
+  const [interval, setInterval_]  = useState(30)
 
   const load = useCallback(async () => {
     const res = await fetch(API)
     const data = await res.json().catch(() => ({}))
     if (!res.ok) { setError(data.message ?? 'No se pudieron cargar los proveedores.'); setLoading(false); return }
-    setProviders(data.providers); setPresets(data.presets); setLoading(false)
+    setProviders(data.providers); setPresets(data.presets); setInterval_(data.sync_interval_s ?? 30); setLoading(false)
     const [m, pol] = await Promise.all([
       fetch('/api/models').then(r => (r.ok ? r.json() : [])).catch(() => []),
       fetch('/api/policies').then(r => (r.ok ? r.json() : [])).catch(() => []),
@@ -282,10 +284,15 @@ export default function ProvidersPage() {
     setCatalog(Array.isArray(m) ? m : []); setPolicies(Array.isArray(pol) ? pol : [])
   }, [])
 
-  // Catalog models of a provider, and how many of them some policy allows.
+  // A provider's models: in the catalog (with a list price), listed by the
+  // provider when it was tested (no price), and how many some policy allows.
   function modelsOf(provider) {
     const list = catalog.filter(m => m.provider === provider)
-    return { total: list.length, allowed: list.filter(m => policies.some(pol => allowedBy(pol, m))).length }
+    return {
+      catalog: list.filter(m => m.source !== 'provider').length,
+      listed: list.filter(m => m.source === 'provider').length,
+      allowed: list.filter(m => policies.some(pol => allowedBy(pol, m))).length,
+    }
   }
 
   useEffect(() => {
@@ -300,7 +307,7 @@ export default function ProvidersPage() {
   }
 
   async function revoke(p) {
-    if (!window.confirm(`¿Revocar ${p.display_name}? Los gateways dejan de usarlo en 30 s como máximo y la credencial se descarta.`)) return
+    if (!window.confirm(`¿Revocar ${p.display_name}? Los gateways dejan de usarlo en ${formatInterval(interval)} como máximo y la credencial se descarta.`)) return
     const { ok, data } = await send(`${API}?id=${p.id}`, 'DELETE')
     if (!ok) window.alert(data.message ?? 'No se pudo revocar.')
     load()
@@ -310,6 +317,7 @@ export default function ProvidersPage() {
     setTests(t => ({ ...t, [p.id]: { ok: true, message: 'Probando…', ms: 0 } }))
     const { data } = await send(`${API}/test`, 'POST', { id: p.id })
     setTests(t => ({ ...t, [p.id]: data.message ? data : { ok: false, message: 'No se pudo probar.', ms: 0 } }))
+    if (data.ok) load() // the models it listed count in Modelos now
   }
 
   const done = () => { setModal(null); load() }
@@ -320,7 +328,7 @@ export default function ProvidersPage() {
         <div className="max-w-2xl">
           <h1 className="text-[26px] font-semibold text-strong tracking-tight">Proveedores</h1>
           <p className="text-sm text-muted mt-1">
-            Las credenciales se cifran en el control plane y llegan cifradas a los gateways, que las usan en 30 s como máximo.
+            Las credenciales se cifran en el control plane y llegan cifradas a los gateways, que las usan en {formatInterval(interval)} como máximo.
             Nadie puede volver a verlas: solo reemplazarlas.
           </p>
         </div>
@@ -365,12 +373,18 @@ export default function ProvidersPage() {
                   <td className="px-4 py-3.5 text-xs">
                     {(() => {
                       const n = modelsOf(p.provider)
-                      return n.total === 0 ? (
+                      return n.catalog + n.listed === 0 ? (
                         <span className="text-muted">Fuera del catálogo: sin precios</span>
                       ) : (
                         <div className="space-y-0.5">
-                          <div className="text-strong tabular">{n.total} en el catálogo</div>
-                          <div className="text-muted tabular">{n.allowed} permitidos por alguna política</div>
+                          {n.catalog > 0 && <div className="text-strong tabular">{n.catalog} en el catálogo</div>}
+                          {n.listed > 0 && (
+                            <div className={`tabular ${n.catalog ? 'text-muted' : 'text-strong'}`}
+                                 title="Los que listó la prueba de conexión y el catálogo no tiene: ponéles precio en Modelos para que cuenten en el costo.">
+                              {n.listed} del proveedor, sin precio
+                            </div>
+                          )}
+                          <div className="text-muted tabular">{n.allowed} {n.allowed === 1 ? 'permitido' : 'permitidos'} por alguna política</div>
                           <Link href={`/models?provider=${encodeURIComponent(p.provider)}`} className="text-accent hover:text-accent-hover">Ver modelos</Link>
                         </div>
                       )

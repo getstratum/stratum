@@ -14,6 +14,7 @@ import { createHash, randomBytes } from 'crypto'
 import { route, readJson, json, badRequest, notFound } from '@/lib/route'
 import { audit } from '@/lib/audit'
 import { RECENT_MINUTES } from '@/lib/gateway-version'
+import { syncIntervalS } from '@/lib/sync-interval'
 
 export const dynamic = 'force-dynamic'
 
@@ -64,7 +65,8 @@ export const GET = route('gateways.read', async (req, { session, db }) => {
     db.query('SELECT stratum_sync_version($1)::bigint AS v', [session.orgId]),
   ])
   // current_version: the configuration version gateways should be on.
-  return json({ instances: rows, current_version: Number(v.v) })
+  // sync_interval_s: how often they ask for it.
+  return json({ instances: rows, current_version: Number(v.v), sync_interval_s: syncIntervalS() })
 })
 
 export const PATCH = route('gateways.manage', async (req, { session, db }) => {

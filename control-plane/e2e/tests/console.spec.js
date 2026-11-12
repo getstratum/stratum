@@ -393,11 +393,17 @@ test('routes: an agent on a route answers through its next model while the first
   await section.getByRole('button', { name: 'Nueva ruta' }).click()
   const d = dialog('Nueva ruta')
   await d.getByLabel('Nombre').fill(route)
-  for (const target of [`${dead}/nada`, MODEL]) {
-    await d.getByLabel('Otro modelo').fill(target)
-    await d.getByRole('button', { name: 'Agregar este' }).click()
-  }
+  // One with the button, the other with Enter.
+  await d.getByLabel('Otro modelo').fill(`${dead}/nada`)
+  await d.getByRole('button', { name: 'Agregar este' }).click()
+  await d.getByLabel('Otro modelo').fill(MODEL)
+  await d.getByLabel('Otro modelo').press('Enter')
   await expect(d.getByRole('list', { name: 'Modelos de la ruta' }).getByRole('listitem')).toHaveCount(2)
+  // Something typed and not added is not dropped without a word.
+  await d.getByLabel('Otro modelo').fill('groq/olvidado')
+  await d.getByRole('button', { name: 'Guardar' }).click()
+  await expect(d.getByText('Agregá groq/olvidado con "Agregar este", o borralo, antes de guardar.')).toBeVisible()
+  await d.getByLabel('Otro modelo').fill('')
   await d.getByRole('button', { name: 'Guardar' }).click()
   const row = section.getByTestId('alias').filter({ hasText: `stratum/${route}` })
   await expect(row).toContainText(`${dead}/nada`)

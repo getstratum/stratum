@@ -125,7 +125,9 @@ export default function RequestsLog({ logs }) {
                 <td className="px-4 py-3.5 text-right text-xs text-muted tabular">{nf(log.tokens_input)}</td>
                 <td className="px-4 py-3.5 text-right text-xs text-muted tabular">{nf(log.tokens_output)}</td>
                 <td className="px-4 py-3.5 text-right text-xs text-strong tabular whitespace-nowrap">
-                  {formatCost(log.cost_usd)}
+                  {log.cost_usd == null
+                    ? <span className="text-muted" title="El modelo no tiene precio: poné uno en Modelos para que cuente.">Sin precio</span>
+                    : formatCost(log.cost_usd)}
                 </td>
                 <td className="px-4 py-3.5 text-right text-xs tabular whitespace-nowrap">
                   {log.latency_ms

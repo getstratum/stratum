@@ -110,6 +110,7 @@ const AGGREGATES = `
   COALESCE(SUM(r.tokens_input), 0)                             AS tokens_in,
   COALESCE(SUM(r.tokens_output), 0)                            AS tokens_out,
   COALESCE(SUM(r.cost_usd), 0)                                 AS cost,
+  COUNT(*) FILTER (WHERE r.cost_usd IS NULL)                   AS unpriced,
   -- Latency of requests that reached a provider: refusals take a few
   -- milliseconds and would make it look better than it is.
   percentile_cont(0.5)  WITHIN GROUP (ORDER BY r.latency_ms) FILTER (WHERE r.provider_ms > 0) AS p50_ms,
@@ -139,6 +140,8 @@ const range = (lo, hi) => (lo == null ? null : { min: num(lo), max: num(hi) })
 const shape = r => ({
   requests: num(r.requests), errors: num(r.errors), blocked: num(r.blocked),
   tokens_in: num(r.tokens_in), tokens_out: num(r.tokens_out), cost: num(r.cost),
+  // Requests of models without a price: not in cost.
+  unpriced: num(r.unpriced),
   p50_ms: r.p50_ms == null ? null : Math.round(num(r.p50_ms)),
   p95_ms: r.p95_ms == null ? null : Math.round(num(r.p95_ms)),
   last_at: r.last_at ?? null,

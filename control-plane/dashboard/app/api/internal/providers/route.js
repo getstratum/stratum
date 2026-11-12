@@ -15,6 +15,7 @@ import { audit } from '@/lib/audit'
 import { encryptSecret, secretHint } from '@/lib/secrets'
 import { describe, providerName, baseUrl, extraConfig, testable, PROVIDERS } from '@/lib/providers'
 import { randomBytes } from 'crypto'
+import { syncIntervalS } from '@/lib/sync-interval'
 
 export const dynamic = 'force-dynamic'
 
@@ -63,6 +64,8 @@ export const GET = route('providers.read', async (req, { session, db }) => {
     [session.orgId])
   return json({
     providers: rows.map(withLabels),
+    // How long a change takes to reach gateways, at most.
+    sync_interval_s: syncIntervalS(),
     presets: Object.entries(PROVIDERS).map(([id, p]) => ({
       id, label: p.label, protocol: p.protocol, base: p.base, keyRequired: p.key,
       category: p.category, free: p.free, docs: p.docs, testable: testable(id),
