@@ -23,7 +23,8 @@ does not list (most of the 75 catalog providers added in 0.2.0 have none).
    `catalog/models.json` in the Stratum repository, served from its main
    branch; it changes by pull request, reviewed like code. Schema 1: a date,
    and per model its provider, ID, name, aliases, list prices per million
-   tokens, a retirement date and a retired flag.
+   tokens, a retirement date, a retired flag and, from 0.6, its kind (left
+   out for chat models).
    `STRATUM_MODEL_CATALOG_URL` points elsewhere (https) or turns it off;
    `stratum-admin catalog-update --file` applies a copy offline.
 2. **A feed adds and updates, never deletes.** A model missing from the feed

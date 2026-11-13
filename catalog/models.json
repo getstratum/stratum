@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "updated": "2026-10-18",
-  "about": "Stratum model catalog feed (ADR-0012). List prices in US$ per million tokens. The control plane reads this file once a day; a model removed from it stays in installations, use \"retired\": true instead. Change it with a pull request.",
+  "about": "Stratum model catalog feed (ADR-0012). List prices in US$ per million tokens. The control plane reads this file once a day; a model removed from it stays in installations, use \"retired\": true instead. \"kind\" (chat, embedding, image, transcription, speech, moderation, other) is left out for chat models. Change it with a pull request.",
   "models": [
     {"provider": "anthropic", "id": "claude-fable-5-1", "name": "Claude Fable 5.1", "aliases": [], "input_per_mtok": 10, "output_per_mtok": 50, "deprecated_on": null},
     {"provider": "anthropic", "id": "claude-haiku-4-5-20251001", "name": "Claude Haiku 4.5", "aliases": ["claude-haiku-4-5"], "input_per_mtok": 1, "output_per_mtok": 5, "deprecated_on": null},

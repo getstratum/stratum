@@ -174,6 +174,36 @@ by pull request.
   Proveedores counts them apart ("N del proveedor, sin precio"), and the
   policy dialog says "Sin precio" for them.
 
+### Kinds of model
+
+Providers list chat models next to everything else (`whisper-1`, `tts-1`,
+`text-embedding-3-small`, `dall-e-3`, ...). Each model has a **kind**: chat,
+embeddings, images, speech to text, text to speech, moderation or other
+(`lib/model-kind.js`). It is, in this order:
+
+1. the organization's choice, in Modelos (the Tipo column; "Automático"
+   goes back to the next source);
+2. the catalog's (`"kind"` in `catalog/models.json`);
+3. what the provider said when the connection test listed the model:
+   Mistral's capabilities, Together's type, OpenRouter's output modalities;
+4. its ID, for providers that say nothing (OpenAI, Groq, Gemini, xAI):
+   `whisper` or `transcribe` is speech to text, `tts` text to speech,
+   `embed` embeddings, and so on; anything else is chat.
+
+Where it shows:
+
+- The policy dialog shows one kind at a time, chat first; each kind says
+  how many of its models the policy chooses.
+- A route's models are all of one kind (Rutas offers the kind of its first
+  model).
+- An agent's fixed model is offered grouped by kind.
+- Gateways get the kind with the model list and say it in `GET /v1/models`
+  (gateways before 0.6 leave it out): the Enterprise portal offers only
+  chat models in its chat.
+
+The kind does not limit requests: a policy that allows a model allows it at
+every endpoint, and the provider refuses one that does not fit.
+
 ### Modelos
 
 The **Modelos** page lists the catalog with prices and aliases, retirement

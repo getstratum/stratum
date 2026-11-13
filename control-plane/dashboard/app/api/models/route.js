@@ -7,16 +7,21 @@
  *       not have (source "provider", no price). Each with its estimated
  *       emissions per 1,000 output tokens (impact_per_1k, lib/impacts), or
  *       null when the model has no estimate.
- * PATCH /api/models  { provider, model_id, enabled?, input_per_mtok?, output_per_mtok? }
+ *       Each with its kind (lib/model-kind.js): "kind", what it is for the
+ *       organization; "org_kind", its own choice when it made one; and
+ *       "auto_kind", what it would be without that choice.
+ * PATCH /api/models  { provider, model_id, enabled?, input_per_mtok?, output_per_mtok?, kind? }
  *       — turn a model off or on for the organization (gateways refuse it
- *       even under "all models"), or set the prices it pays (null: list
- *       price). Prices in US$ per million tokens.
+ *       even under "all models"), set the prices it pays (null: list
+ *       price), or say what kind of model it is (null: as the catalog, the
+ *       provider or its ID say). Prices in US$ per million tokens.
  */
 
 export const dynamic = 'force-dynamic'
 import { route, json, readJson, badRequest } from '../../../lib/route.js'
 import { audit } from '../../../lib/audit.js'
 import { estimate } from '../../../lib/impacts/index.js'
+import { effectiveKind, isKind, KINDS } from '../../../lib/model-kind.js'
 
 // Per 1,000 output tokens, generation time from the model's own figures.
 function perThousand(provider, model) {
@@ -31,7 +36,8 @@ export const GET = route('models.read', async (req, { db, session }) => {
            m.deprecated_on, m.updated_at, 'catalog' AS source,
            COALESCE(s.enabled, true) AS enabled,
            s.cost_per_1k_input_tokens AS org_cost_per_1k_input_tokens,
-           s.cost_per_1k_output_tokens AS org_cost_per_1k_output_tokens
+           s.cost_per_1k_output_tokens AS org_cost_per_1k_output_tokens,
+           s.kind AS org_kind, m.kind AS catalog_kind, NULL AS listed_kind
       FROM ai_models m
       LEFT JOIN org_model_settings s
         ON s.org_id = $1 AND s.provider = m.provider AND s.model_id = m.model_id
@@ -40,7 +46,8 @@ export const GET = route('models.read', async (req, { db, session }) => {
     SELECT pm.provider, pm.model_id, pm.model_id, '{}'::text[],
            NULL, NULL, NULL, pm.seen_at, 'provider',
            COALESCE(s.enabled, true),
-           s.cost_per_1k_input_tokens, s.cost_per_1k_output_tokens
+           s.cost_per_1k_input_tokens, s.cost_per_1k_output_tokens,
+           s.kind, NULL, pm.kind
       FROM provider_models pm
       LEFT JOIN org_model_settings s
         ON s.org_id = pm.org_id AND s.provider = pm.provider AND s.model_id = pm.model_id
@@ -50,7 +57,12 @@ export const GET = route('models.read', async (req, { db, session }) => {
                           AND (m.model_id = pm.model_id OR pm.model_id = ANY(m.aliases)))
      ORDER BY 1, 3
   `, [session.orgId])
-  return json(rows.map(r => ({ ...r, impact_per_1k: perThousand(r.provider, r.model_id) })))
+  return json(rows.map(({ catalog_kind: catalog, listed_kind: listed, ...r }) => ({
+    ...r,
+    kind: effectiveKind({ own: r.org_kind, catalog, listed, id: r.model_id }),
+    auto_kind: effectiveKind({ catalog, listed, id: r.model_id }),
+    impact_per_1k: perThousand(r.provider, r.model_id),
+  })))
 })
 
 const MODEL_RE = /^[A-Za-z0-9][A-Za-z0-9._:@/+-]{0,199}$/
@@ -87,6 +99,10 @@ export const PATCH = route('models.manage', async (req, { db, session }) => {
       values.push(perMillion(body[field], field)); sets.push([col, `$${values.length}`]); changed[field] = body[field]
     }
   }
+  if (body.kind !== undefined) {
+    if (body.kind !== null && !isKind(body.kind)) throw badRequest(`kind: uno de ${KINDS.join(', ')}, o null para el que dicen el catálogo, el proveedor o su ID.`)
+    values.push(body.kind); sets.push(['kind', `$${values.length}`]); changed.kind = body.kind
+  }
   if (!sets.length) throw badRequest('Nada para actualizar.')
 
   const cols = sets.map(([c]) => c)
@@ -96,7 +112,7 @@ export const PATCH = route('models.manage', async (req, { db, session }) => {
     ON CONFLICT (org_id, provider, model_id) DO UPDATE
        SET updated_by = EXCLUDED.updated_by, updated_at = now(),
            ${cols.map(c => `${c} = EXCLUDED.${c}`).join(', ')}
-    RETURNING provider, model_id, enabled, cost_per_1k_input_tokens, cost_per_1k_output_tokens`, values)
+    RETURNING provider, model_id, enabled, cost_per_1k_input_tokens, cost_per_1k_output_tokens, kind`, values)
   await audit(db, {
     req, session, action: 'model.update', targetType: 'model', targetId: `${provider}/${modelId}`, details: changed,
   })

@@ -175,3 +175,49 @@ func TestModelsListSurvivesDeltasWithoutIt(t *testing.T) {
 		t.Errorf("a new list replaces the old one: %v", ids)
 	}
 }
+
+func TestModelsSayTheirKind(t *testing.T) {
+	h := modelsHandler(t, modelsOrg)
+	st, err := h.Holder.State().Apply(&snapshot.SyncResponse{CurrentVersion: 6, Models: []snapshot.WireModel{
+		{Provider: "openai", ID: "gpt-4o", Name: "GPT-4o", Kind: "chat"},
+		{Provider: "openai", ID: "text-embedding-3-small", Kind: "embedding"},
+		{Provider: "openai", ID: "whisper-1", Kind: "transcription"},
+		{Provider: "openai", ID: "gpt-4o-mini"}, // a control plane before 0.6: no kind
+	}, ModelAliases: []snapshot.WireAlias{
+		{Name: "vectores", Targets: []snapshot.WireAliasTarget{{Provider: "openai", Model: "text-embedding-3-small"}}},
+	}}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.Holder.Store(st, snapshot.Build(st, time.Now()))
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	req.Header.Set("Authorization", "Bearer "+listKey)
+	w := httptest.NewRecorder()
+	h.Models(w, req)
+	var body struct {
+		Data []map[string]any `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]any{}
+	for _, m := range body.Data {
+		got[m["id"].(string)] = m["kind"]
+	}
+	want := map[string]any{
+		"stratum/vectores":              "embedding", // an alias: its first model's
+		"openai/gpt-4o":                 "chat",
+		"openai/text-embedding-3-small": "embedding",
+		"openai/whisper-1":              "transcription",
+		"openai/gpt-4o-mini":            nil, // not said: left out
+	}
+	if len(got) != len(want) {
+		t.Fatalf("models %v", got)
+	}
+	for id, k := range want {
+		if v, ok := got[id]; !ok || v != k {
+			t.Errorf("%s: kind %v, want %v", id, v, k)
+		}
+	}
+}

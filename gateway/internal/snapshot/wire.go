@@ -103,6 +103,9 @@ type WireModel struct {
 	Provider string `json:"provider"`
 	ID       string `json:"id"`
 	Name     string `json:"name,omitempty"`
+	// Kind is what the model is for: chat, embedding, image, transcription,
+	// speech, moderation or other. Control planes before 0.6 do not send it.
+	Kind string `json:"kind,omitempty"`
 }
 
 // WirePerson is one entry of the people directory: an id the control plane

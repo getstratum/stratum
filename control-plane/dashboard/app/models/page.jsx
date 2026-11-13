@@ -9,6 +9,7 @@ import { allowedBy } from '../../lib/catalog'
 import { ignoresAliases, ignoresModelSwitch, ALIASES_SINCE, MODEL_SWITCH_SINCE } from '../../lib/gateway-version'
 import Aliases from './Aliases'
 import { co2, middle, METHOD_URL } from '../../lib/impacts/format'
+import { KINDS, KIND_LABELS } from '../../lib/model-kind'
 
 // Estimated emissions per 1,000 output tokens: the middle, the range on hover.
 function Intensity({ impact }) {
@@ -101,6 +102,7 @@ function Models() {
   const [configured, setConfigured] = useState(null) // null: this role cannot list providers
   const [loading, setLoading]       = useState(true)
   const [filter, setFilter]         = useState('all')
+  const [kindFilter, setKindFilter] = useState('all')
   const [query, setQuery]           = useState('')
   const [checks, setChecks]         = useState({}) // provider → result of the connection test
   const [feed, setFeed]             = useState(null)
@@ -137,6 +139,7 @@ function Models() {
   useEffect(() => { setFilter(params.get('provider') || 'all') }, [params])
 
   const providers = useMemo(() => [...new Set(catalog.map(m => m.provider))].sort(), [catalog])
+  const kinds = useMemo(() => KINDS.filter(k => catalog.some(m => m.kind === k)), [catalog])
   const connected = id => configured?.find(c => c.provider === id)
 
   async function verify(conn) {
@@ -158,6 +161,18 @@ function Models() {
     load()
   }
 
+  // What kind of model it is for the organization; null: as the catalog,
+  // the provider or its ID say (lib/model-kind.js).
+  async function setKind(m, kind) {
+    setBusy(`${m.provider}/${m.model_id}`)
+    await fetch('/api/models', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ provider: m.provider, model_id: m.model_id, kind }),
+    }).catch(() => {})
+    setBusy('')
+    load()
+  }
+
   async function toggle(m) {
     setBusy(`${m.provider}/${m.model_id}`)
     await fetch('/api/models', {
@@ -170,6 +185,7 @@ function Models() {
 
   const rows = catalog
     .filter(m => filter === 'all' || m.provider === filter)
+    .filter(m => kindFilter === 'all' || m.kind === kindFilter)
     .filter(m => {
       const q = query.trim().toLowerCase()
       return !q || [m.model_id, m.display_name, ...(m.aliases ?? [])].some(s => s.toLowerCase().includes(q))
@@ -292,6 +308,16 @@ function Models() {
           {chip('all', 'Todos')}
           {providers.map(p => chip(p, p))}
         </div>
+        {kinds.length > 1 && (
+          <>
+            <label htmlFor="model-kind" className="sr-only">Tipo de modelo</label>
+            <select id="model-kind" value={kindFilter} onChange={e => setKindFilter(e.target.value)}
+                    className="h-9 px-3 rounded-md border border-border-strong bg-card text-sm text-strong">
+              <option value="all">Todos los tipos</option>
+              {kinds.map(k => <option key={k} value={k}>{KIND_LABELS[k]}</option>)}
+            </select>
+          </>
+        )}
       </div>
 
       <section className="bg-card border border-border rounded-[10px] overflow-x-auto">
@@ -300,11 +326,12 @@ function Models() {
         ) : rows.length === 0 ? (
           <p className="p-6 text-sm text-muted">Ningún modelo coincide.</p>
         ) : (
-          <table className="w-full min-w-[1080px] text-sm tabular">
+          <table className="w-full min-w-[1180px] text-sm tabular">
             <thead>
               <tr className="text-left text-xs uppercase tracking-wide text-muted border-b border-border">
                 <th className="px-5 py-3 font-semibold">Modelo</th>
                 <th className="px-3 py-3 font-semibold">Proveedor</th>
+                <th className="px-3 py-3 font-semibold">Tipo</th>
                 <th className="px-3 py-3 font-semibold text-right">Entrada US$/M</th>
                 <th className="px-3 py-3 font-semibold text-right">Salida US$/M</th>
                 <th className="px-3 py-3 font-semibold text-right">
@@ -332,6 +359,23 @@ function Models() {
                       </div>
                     </td>
                     <td className="px-3 py-3">{m.provider}</td>
+                    <td className="px-3 py-3 whitespace-nowrap">
+                      {can('models.manage') ? (
+                        <>
+                          <label htmlFor={`kind-${m.provider}-${m.model_id}`} className="sr-only">Tipo de {m.display_name}</label>
+                          <select id={`kind-${m.provider}-${m.model_id}`} value={m.org_kind ?? ''}
+                                  disabled={busy === `${m.provider}/${m.model_id}`}
+                                  onChange={e => setKind(m, e.target.value || null)}
+                                  title={m.org_kind ? 'Elegido por tu organización' : 'Según el catálogo, lo que dijo el proveedor o su ID'}
+                                  className="h-8 px-2 rounded border border-border bg-card text-xs text-strong">
+                            <option value="">{`Automático: ${KIND_LABELS[m.auto_kind ?? m.kind]}`}</option>
+                            {KINDS.map(k => <option key={k} value={k}>{KIND_LABELS[k]}</option>)}
+                          </select>
+                        </>
+                      ) : (
+                        <span>{KIND_LABELS[m.kind] ?? m.kind}</span>
+                      )}
+                    </td>
                     <td className="px-3 py-3 text-right"><Price list={m.cost_per_1k_input_tokens} own={m.org_cost_per_1k_input_tokens} /></td>
                     <td className="px-3 py-3 text-right"><Price list={m.cost_per_1k_output_tokens} own={m.org_cost_per_1k_output_tokens} /></td>
                     <td className="px-3 py-3 text-right tabular whitespace-nowrap"><Intensity impact={m.impact_per_1k} /></td>

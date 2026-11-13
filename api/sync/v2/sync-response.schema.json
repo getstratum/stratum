@@ -128,7 +128,12 @@
       "properties": {
         "provider": { "type": "string", "minLength": 1 },
         "id": { "type": "string", "minLength": 1, "description": "The model's ID at the provider, as a request names it." },
-        "name": { "type": "string", "description": "Display name, when the catalog has one." }
+        "name": { "type": "string", "description": "Display name, when the catalog has one." },
+        "kind": {
+          "type": "string",
+          "enum": ["chat", "embedding", "image", "transcription", "speech", "moderation", "other"],
+          "description": "What the model is for, as the organization sees it (the console's Modelos page). Gateways pass it on in GET /v1/models. Control planes before 0.6 do not send it."
+        }
       }
     },
     "alias": {

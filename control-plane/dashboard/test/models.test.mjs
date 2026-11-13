@@ -234,3 +234,35 @@ test('models: the catalog feed state, and checking it now', { skip }, async () =
   assert.ok('feed_url' in s.body && 'applied_at' in s.body)
   assert.equal((await call('models/catalog', 'POST', { as: A.auditor })).status, 403)
 })
+
+test('models: kinds, from the catalog, the provider, the ID or the organization; gateways get them', { skip }, async () => {
+  assert.throws(() => parseFeed(feed([model('k-video', { kind: 'video' })])), /kind must be one of/)
+  await applyFeed(db, parseFeed(feed([model('k-vectors', { kind: 'embedding' }), model('whisper-k'), model('k-chat')])), { source: 'test' })
+  await sql(`INSERT INTO provider_models (org_id, provider, model_id, kind) VALUES ($1, $2, 'k-listed', 'image'), ($1, $2, 'k-tts', NULL)`, [A.id, P])
+  await sql(`INSERT INTO provider_configs (id, org_id, provider, display_name, api_key_encrypted, enabled)
+             VALUES ($1, $2, $3, 'K', 'iv:ct', true)`, [`pc_${randomUUID()}`, A.id, P])
+
+  const kinds = async () => Object.fromEntries((await call('models', 'GET', { as: A.owner })).body
+    .filter(m => m.provider === P && /k-|whisper-k/.test(m.model_id)).map(m => [m.model_id, [m.kind, m.org_kind, m.auto_kind]]))
+  assert.deepEqual(await kinds(), {
+    'k-vectors': ['embedding', null, 'embedding'], // the catalog's
+    'whisper-k': ['transcription', null, 'transcription'], // by ID
+    'k-chat': ['chat', null, 'chat'],
+    'k-listed': ['image', null, 'image'], // what the provider said
+    'k-tts': ['speech', null, 'speech'],
+  })
+
+  assert.equal((await call('models', 'PATCH', { as: A.owner, body: { provider: P, model_id: 'k-chat', kind: 'video' } })).status, 400)
+  assert.equal((await call('models', 'PATCH', { as: A.auditor, body: { provider: P, model_id: 'k-chat', kind: 'other' } })).status, 403)
+  const set = await call('models', 'PATCH', { as: A.owner, body: { provider: P, model_id: 'k-chat', kind: 'moderation' } })
+  assert.deepEqual([set.status, set.body.kind], [200, 'moderation'])
+  assert.deepEqual((await kinds())['k-chat'], ['moderation', 'moderation', 'chat'], 'the organization\'s choice wins')
+  const theirs = (await call('models', 'GET', { as: B.owner })).body.find(m => m.model_id === 'k-chat')
+  assert.equal(theirs.kind, 'chat', 'only for that organization')
+
+  const sent = Object.fromEntries((await sync(A.id)).models.filter(m => m.provider === P && /k-|whisper-k/.test(m.id)).map(m => [m.id, m.kind]))
+  assert.deepEqual(sent, { 'k-chat': 'moderation', 'k-listed': 'image', 'k-tts': 'speech', 'k-vectors': 'embedding', 'whisper-k': 'transcription' })
+
+  await call('models', 'PATCH', { as: A.owner, body: { provider: P, model_id: 'k-chat', kind: null } })
+  assert.deepEqual((await kinds())['k-chat'], ['chat', null, 'chat'], 'back to what the catalog says')
+})

@@ -11,6 +11,22 @@ every pod), by `make up` with Docker Compose, or by you with the
 ([chart README](../deploy/helm/stratum-control-plane/README.md#migrations)).
 Back up the database before you upgrade.
 
+## From 0.5 to 0.6 (in progress)
+
+- **Migration 038, additive:** a nullable `kind` column on `ai_models`,
+  `provider_models` and `org_model_settings`. Nothing is backfilled: a
+  model with no kind takes it from its ID.
+- **Models have a kind** (chat, embeddings, images, speech to text, text to
+  speech, moderation, other; [Kinds of model](console/providers-and-gateways.md#kinds-of-model)).
+  The policy dialog opens on chat models; the others are one click away.
+  Gateways of 0.6 say the kind in `GET /v1/models`; older ones leave it out,
+  and clients that read it (the Enterprise portal) treat a model without
+  one as chat.
+- **Test the connection again** to providers whose list says what each model
+  is (Mistral, Together, OpenRouter): until then their models outside the
+  catalog take the kind from their ID. Together's model list was read as
+  empty before; it now lists its models.
+
 ## From 0.4 to 0.5
 
 Tested from 0.4.0: its migrations and the demo organization, then the 0.5

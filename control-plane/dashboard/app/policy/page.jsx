@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import Modal, { Field, Input, Select, Btn } from '../../components/Modal'
 import { formatCost, formatCostCompact, formatTokens, nf } from '../../lib/format'
 import { namesOf } from '../../lib/catalog'
+import { KINDS, KIND_LABELS } from '../../lib/model-kind'
 import { usePermissions } from '../../components/usePermissions'
 
 // The same limit as lib/policies.js (not imported: that module is the server's).
@@ -26,6 +27,8 @@ function PolicyModal({ policy, allModels, configured, onSave, onClose }) {
   })
   const [saving, setSaving] = useState(false)
   const [error,  setError]  = useState('')
+  // The list shows one kind of model at a time, chat first (lib/model-kind.js).
+  const [kind,   setKind]   = useState('chat')
 
   function set(k, v) { setForm(f => ({ ...f, [k]: v })) }
 
@@ -77,8 +80,12 @@ function PolicyModal({ policy, allModels, configured, onSave, onClose }) {
     finally { setSaving(false) }
   }
 
+  // The kinds the catalog has, each with how many of its models are chosen.
+  const kinds = KINDS.filter(k => k === 'chat' || allModels.some(m => (m.kind ?? 'chat') === k))
+    .map(k => ({ id: k, chosen: allModels.filter(m => (m.kind ?? 'chat') === k && isChosen(m)).length }))
+
   // Group models by provider
-  const grouped = allModels.reduce((acc, m) => {
+  const grouped = allModels.filter(m => (m.kind ?? 'chat') === kind).reduce((acc, m) => {
     acc[m.provider] = acc[m.provider] ?? []
     acc[m.provider].push(m)
     return acc
@@ -140,6 +147,20 @@ function PolicyModal({ policy, allModels, configured, onSave, onClose }) {
           </div>
           {!form.allowAllModels && (
           <div className="space-y-3 mt-3">
+            {kinds.length > 1 && (
+              <div role="group" aria-label="Tipo de modelo" className="flex flex-wrap gap-1.5">
+                {kinds.map(k => (
+                  <button key={k.id} type="button" onClick={() => setKind(k.id)} aria-pressed={kind === k.id}
+                    className={`min-h-[32px] px-3 rounded-full text-xs border ${kind === k.id
+                      ? 'bg-ink border-ink text-white' : 'bg-card border-border-strong text-strong hover:bg-raised'}`}>
+                    {KIND_LABELS[k.id]}{k.chosen > 0 ? ` · ${k.chosen}` : ''}
+                  </button>
+                ))}
+              </div>
+            )}
+            {Object.keys(grouped).length === 0 && (
+              <p className="text-xs text-muted">No hay modelos de este tipo en el catálogo.</p>
+            )}
             {Object.entries(grouped).map(([provider, models]) => (
               <div key={provider}>
                 <div className="text-xs text-muted uppercase tracking-wide mb-1.5">{provider}</div>
