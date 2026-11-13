@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.5.0](https://github.com/getstratum/stratum/compare/v0.4.0...v0.5.0) (2026-11-13)
+
+
+### Features
+
+* **console:** applications may let an Auditor read a person's history ([#100](https://github.com/getstratum/stratum/issues/100)) ([35308ca](https://github.com/getstratum/stratum/commit/35308ca27eebe2bb5fe59eb6da4df126706ec7bb))
+* **console:** service tokens, the console's API for automation ([#103](https://github.com/getstratum/stratum/issues/103)) ([ba5d2c8](https://github.com/getstratum/stratum/commit/ba5d2c821156105446cc25ede1c8b2e2e871c81c))
+* **gateway:** external decision services, asked before each request ([#102](https://github.com/getstratum/stratum/issues/102)) ([37ccc78](https://github.com/getstratum/stratum/commit/37ccc78799a192ad16476b3611d7b6e4af02f48a))
+* **gateway:** OpenTelemetry traces over OTLP/HTTP, standard library only ([#104](https://github.com/getstratum/stratum/issues/104)) ([26c6835](https://github.com/getstratum/stratum/commit/26c68352d13e88d41855159d7ef68395011cb290))
+* routes, model aliases with fallback across providers (ADR-0015) ([#109](https://github.com/getstratum/stratum/issues/109)) ([68e0f8c](https://github.com/getstratum/stratum/commit/68e0f8c2f956cf09312a3833f19c6d83f9656365))
+
+
+### Bug Fixes
+
+* **console:** long dialogs scroll, and models without a price say so ([#111](https://github.com/getstratum/stratum/issues/111)) ([61d6da6](https://github.com/getstratum/stratum/commit/61d6da666712b3f2d6aa870d2f24d985663893a5))
+* **console:** Next.js 16.4.5 and nodemailer 10.2.1, for their security advisories ([#116](https://github.com/getstratum/stratum/issues/116)) ([570a03c](https://github.com/getstratum/stratum/commit/570a03c1519457e6acf190c319866c88c2ce7651))
+* **demo:** running make demo again keeps the policies changed in the console ([#115](https://github.com/getstratum/stratum/issues/115)) ([af91371](https://github.com/getstratum/stratum/commit/af9137180dd05f880aedde9783e8455d21423294))
+* findings of the local test plan, in the gateway and the console ([#113](https://github.com/getstratum/stratum/issues/113)) ([d232b63](https://github.com/getstratum/stratum/commit/d232b63d247088ab8301eb4e11fcd0faa6dcc33c))
+* **gateway:** Go 1.26.11, for GO-2026-6859 in net/http ([#110](https://github.com/getstratum/stratum/issues/110)) ([d6d056d](https://github.com/getstratum/stratum/commit/d6d056dbc24bd1bb1340f34c409272cc2544492b))
+* **gateway:** redaction no longer leaves part of overlapping PII in the text ([#112](https://github.com/getstratum/stratum/issues/112)) ([74f26f8](https://github.com/getstratum/stratum/commit/74f26f82302eab3662cc81926924f66710f1ed43))
+
 ## [0.4.0](https://github.com/getstratum/stratum/compare/v0.3.2...v0.4.0) (2026-10-30)
 
 
