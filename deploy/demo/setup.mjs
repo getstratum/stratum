@@ -1,9 +1,11 @@
 // The demo's data: DEMO ONLY, never for an installation people use.
 //
 // Runs once in the control plane's image (/app/demo/setup.mjs, see
-// docker-compose.yml), after the migrations; running it again changes
-// nothing. It loads the demo organization (control-plane/seed/demo.sql) and
-// adds, with fixed passwords and keys:
+// docker-compose.yml), after the migrations. Running it again (make demo
+// over an existing demo) adds what is missing and keeps what was changed
+// in the console: the policies are set only the first time. It loads the
+// demo organization (control-plane/seed/demo.sql) and adds, with fixed
+// passwords and keys:
 //
 //   owner@acme.com     Owner (sets up the second factor at the first sign-in)
 //   auditor@acme.com   Auditor: reads everything, changes nothing, no second factor
@@ -59,22 +61,24 @@ async function setup(db) {
   await db.query('BEGIN')
   try {
     // Policies: what each team may use. Engineering has instructions for
-    // people (shown by applications that act for them).
-    await db.query(`
+    // people (shown by applications that act for them). Only the first time
+    // (Soporte's policy is new): later runs keep what was changed in the
+    // console, such as models allowed in Políticas.
+    const { rowCount: first } = await db.query(`
       INSERT INTO policies (id, org_id, name, allowed_models, monthly_token_quota, monthly_budget_usd, pii_action, dlp_action)
       VALUES ('10000000-0000-0000-0000-000000000003', $1, 'Soporte Policy',
               ARRAY['gpt-4o-mini', 'mistral-small-latest'], 8000000, 80, 'redact', 'block')
       ON CONFLICT DO NOTHING`, [ORG])
-    await db.query(`
+    if (first) await db.query(`
       UPDATE policies SET allow_all_models = false, pii_action = 'redact', dlp_action = 'block', monthly_token_quota = 30000000,
              allowed_models = ARRAY['gpt-4o', 'gpt-4o-mini', 'gpt-5.4', 'mistral-small-latest',
                                     'claude-sonnet-4-6', 'claude-haiku-4-5-20251001', 'gemini-3.5-flash']
        WHERE id = '10000000-0000-0000-0000-000000000001'`)
-    await db.query(`UPDATE policies SET allowed_models = ARRAY['gpt-4o-mini', 'claude-haiku-4-5-20251001'], monthly_token_quota = 5000000
+    if (first) await db.query(`UPDATE policies SET allowed_models = ARRAY['gpt-4o-mini', 'claude-haiku-4-5-20251001'], monthly_token_quota = 5000000
                      WHERE id = '10000000-0000-0000-0000-000000000002'`)
     const { rows: col } = await db.query(`SELECT 1 FROM information_schema.columns
                                           WHERE table_name = 'policies' AND column_name = 'people_instructions'`)
-    if (col.length) {
+    if (first && col.length) {
       await db.query(`UPDATE policies SET people_instructions = $1 WHERE id = '10000000-0000-0000-0000-000000000001'`,
         ['Si falta contexto para responder bien, preguntá antes de responder. Citá la fuente cuando la haya.'])
     }
