@@ -34,3 +34,8 @@ export const MODEL_SWITCH_SINCE = '0.2.0'
 
 /** True for a release before the one that refuses models turned off in Modelos. */
 export const ignoresModelSwitch = v => olderThan(v, MODEL_SWITCH_SINCE)
+
+export const ALIASES_SINCE = '0.5.0'
+
+/** True for a release before model aliases (Rutas, ADR-0015): it refuses stratum/<name>. */
+export const ignoresAliases = v => olderThan(v, ALIASES_SINCE)

@@ -19,10 +19,11 @@ import { decryptSecret } from '@/lib/secrets'
 import { authenticateInstance, recordSync } from '@/lib/instance-auth'
 
 import { tokenRoute } from '@/lib/route'
+import { syncIntervalS } from '@/lib/sync-interval'
 
 export const dynamic = 'force-dynamic'
 
-const SYNC_INTERVAL_S = parseInt(process.env.STRATUM_SYNC_INTERVAL_S ?? '30', 10)
+const SYNC_INTERVAL_S = syncIntervalS()
 
 async function handleSync(request) {
   const instance = await authenticateInstance(getDb(), request.headers.get('authorization'))

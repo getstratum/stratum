@@ -48,7 +48,7 @@ function KeyReveal({ apiKey, onClose }) {
 }
 
 // ─── Create / Edit modal ──────────────────────────────────────────────────────
-function AgentModal({ agent, teams, models, canDelegate, onSave, onClose }) {
+function AgentModal({ agent, teams, models, aliases = [], canDelegate, onSave, onClose }) {
   const isEdit = !!agent
   const [form, setForm] = useState({
     name:            agent?.name             ?? '',
@@ -90,6 +90,11 @@ function AgentModal({ agent, teams, models, canDelegate, onSave, onClose }) {
   // Only the models the selected team's policy allows.
   const selectedTeam    = teams.find(t => t.id === form.teamId)
   const availableModels = selectedTeam ? models.filter(m => allowedBy(selectedTeam, m)) : []
+  // Routes (Modelos → Rutas) with at least one model the team's policy allows.
+  const availableAliases = selectedTeam ? aliases.filter(a => a.targets.some(t => {
+    const m = models.find(c => c.provider === t.provider && (c.model_id === t.model || (c.aliases ?? []).includes(t.model)))
+    return allowedBy(selectedTeam, m ?? { provider: t.provider, model_id: t.model })
+  })) : []
   const value = form.defaultModel ? `${form.defaultProvider}/${form.defaultModel}` : ''
 
   return (
@@ -145,12 +150,20 @@ function AgentModal({ agent, teams, models, canDelegate, onSave, onClose }) {
             <option value="">
               {!form.teamId ? 'Primero elegí un equipo' : 'Ninguno: el agente elige'}
             </option>
+            {availableAliases.length > 0 && (
+              <optgroup label="Rutas">
+                {availableAliases.map(a => (
+                  <option key={a.name} value={`stratum/${a.name}`}>stratum/{a.name}{a.description ? ` · ${a.description}` : ''}</option>
+                ))}
+              </optgroup>
+            )}
             {availableModels.map(m => (
               <option key={`${m.provider}/${m.model_id}`} value={`${m.provider}/${m.model_id}`}>
                 {m.display_name} · {m.provider}
               </option>
             ))}
-            {value && !availableModels.some(m => `${m.provider}/${m.model_id}` === value) && (
+            {value && !availableModels.some(m => `${m.provider}/${m.model_id}` === value) &&
+              !availableAliases.some(a => `stratum/${a.name}` === value) && (
               <option value={value}>{value} (fuera de la política)</option>
             )}
           </Select>
@@ -227,6 +240,7 @@ export default function AgentsPage() {
   const [agents,    setAgents]    = useState([])
   const [teams,     setTeams]     = useState([])
   const [models,    setModels]    = useState([])
+  const [aliases,   setAliases]   = useState([])
   const [loading,   setLoading]   = useState(true)
   const [modal,     setModal]     = useState(null)
   const [revealKey, setRevealKey] = useState(null)
@@ -234,12 +248,13 @@ export default function AgentsPage() {
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [a, t, m] = await Promise.all([
+    const [a, t, m, al] = await Promise.all([
       fetch('/api/agents').then(r => r.json()),
       fetch('/api/teams').then(r => r.json()),
       fetch('/api/models').then(r => r.json()),
+      fetch('/api/model-aliases').then(r => (r.ok ? r.json() : null)).catch(() => null),
     ])
-    setAgents(a); setTeams(t); setModels(m); setLoading(false)
+    setAgents(a); setTeams(t); setModels(m); setAliases(al?.aliases ?? []); setLoading(false)
   }, [])
 
   useEffect(() => { load() }, [load])
@@ -390,8 +405,8 @@ export default function AgentsPage() {
         </div>
       </section>
 
-      {modal === 'create' && <AgentModal teams={teams} models={models} canDelegate={canDelegate} onSave={handleSave} onClose={() => setModal(null)} />}
-      {modal?.agent && <AgentModal agent={modal.agent} teams={teams} models={models} canDelegate={canDelegate} onSave={handleSave} onClose={() => setModal(null)} />}
+      {modal === 'create' && <AgentModal teams={teams} models={models} aliases={aliases} canDelegate={canDelegate} onSave={handleSave} onClose={() => setModal(null)} />}
+      {modal?.agent && <AgentModal agent={modal.agent} teams={teams} models={models} aliases={aliases} canDelegate={canDelegate} onSave={handleSave} onClose={() => setModal(null)} />}
       {revealKey && <KeyReveal apiKey={revealKey} onClose={() => setRevealKey(null)} />}
     </div>
   )

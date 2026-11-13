@@ -89,6 +89,10 @@ console. It still has to be allowed by the team's policy, and a request in
 the other API format is refused (`agent_model_mismatch`). Empty: the agent
 chooses, within the policy. A change reaches the gateways in the next sync.
 
+The fixed model can also be a **route** (Modelos → Rutas, below): the agent
+then follows the route's models, in order, and falls back when a provider
+fails.
+
 Azure OpenAI runs the deployment named in the URL
 (`/proxy/azure/deployments/<name>/...`), not the model in the body. So for
 Azure the gateways treat that name as the model: the policy checks it, and
@@ -167,6 +171,8 @@ by pull request.
 - Models a provider lists in a connection test but the catalog does not
   have are kept for the organization: they appear in Modelos (outside the
   catalog, no price) and can be chosen in policies, turned off or priced.
+  Proveedores counts them apart ("N del proveedor, sin precio"), and the
+  policy dialog says "Sin precio" for them.
 
 ### Modelos
 
@@ -179,3 +185,32 @@ and marks which catalog models the account has; the models of the account
 that are not in the catalog are added to the list.
 **Proveedores** shows, for each connection, how many of its catalog models
 some policy allows.
+
+### Rutas
+
+A **route** (a model alias, ADR-0015) is a name applications and agents ask
+for, `stratum/<name>`, and up to four models it goes to, in order. An Owner
+or Admin makes them in Modelos → Rutas: the models of the catalog, or any
+`provider/model` of a provider the organization connected.
+
+- Each request goes to the first model of the route the team's policy
+  allows. The policy does not list routes: it keeps deciding which models a
+  team may use, and a route never widens that.
+- When the provider of that model is paused (its breaker), cannot be
+  reached, or answers 429 or 5xx after the gateway's retries, the gateway
+  tries the next one, before anything reached the application.
+- Anthropic takes another API format than the other providers and gateways
+  do not translate between them, so a route goes only to Anthropic models,
+  or only to the others.
+- Changing a route's models changes them for every application and agent
+  that uses it, at the next sync. A route an agent has as its fixed model
+  cannot be deleted until the agent's model changes.
+- Each change is in the audit log (`model_alias.create`, `.update`,
+  `.delete`). Consumo shows the model that answered; requests that went past
+  the first model carry the label `routed_fallback`.
+- Gateways before 0.5.0 refuse `stratum/<name>`; Modelos warns while some
+  run.
+
+The catalog's "aliases" are something else: other IDs of the same model
+(`claude-haiku-4-5` for `claude-haiku-4-5-20251001`). That is why the
+console calls these routes.

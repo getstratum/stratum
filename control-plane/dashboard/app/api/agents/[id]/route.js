@@ -1,6 +1,7 @@
 export const dynamic = 'force-dynamic'
 import { route, readJson, json, badRequest, notFound, idParam, assertTeamInScope } from '../../../../lib/route.js'
 import { newApiKey, AGENT_COLUMNS, fixedModel, fixedModelProvider, delegatesFlag } from '../../../../lib/users.js'
+import { assertAliasExists, PREFIX as ALIAS_PREFIX } from '../../../../lib/model-aliases.js'
 import { audit } from '../../../../lib/audit.js'
 
 async function loadAgent(db, session, params) {
@@ -36,6 +37,8 @@ export const PATCH = route('keys.manage', async (req, { session, db, params }) =
   }
   if (body.defaultModel !== undefined) set('default_model', fixedModel(body.defaultModel))
   if (body.defaultProvider !== undefined) set('default_provider', fixedModelProvider(body.defaultProvider))
+  // A fixed model can be a model alias (provider "stratum", ADR-0015).
+  if (fixedModelProvider(body.defaultProvider ?? null) === ALIAS_PREFIX) await assertAliasExists(db, session.orgId, fixedModel(body.defaultModel ?? null))
   if (body.delegates !== undefined) set('delegates', delegatesFlag(body.delegates, session))
   if (!fields.length) throw badRequest('Nada para actualizar.')
 

@@ -126,7 +126,7 @@ func newEnv(t *testing.T, policyJSON string, idle time.Duration, configure ...fu
 	h := &Handler{
 		Holder: holder, Quota: e.quota, Metrics: e.m,
 		Log:               slog.New(slog.NewTextHandler(io.Discard, nil)),
-		Client:            &http.Client{Transport: NewTransport(5 * time.Second)},
+		Client:            &http.Client{Transport: NewTransport(5*time.Second, 5*time.Second)},
 		MaxRequestBytes:   1 << 20,
 		StreamIdleTimeout: idle,
 		PIIEnabled:        true,

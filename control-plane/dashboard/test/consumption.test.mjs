@@ -117,6 +117,18 @@ test('consumption: a team manager sees only their team, and no other team\'s nam
   assert.equal(peek.filter.label, null, 'Ana is in Ingeniería: her name is not shown')
 })
 
+test('consumption: requests of models without a price are counted apart, not as free', { skip }, async () => {
+  const C = await org()
+  await log(C, { day: '07', team: C.eng, provider: 'groq', model: 'openai/gpt-oss-20b', cost: null })
+  await log(C, { day: '07', team: C.eng, provider: 'groq', model: 'openai/gpt-oss-20b', cost: null })
+  await log(C, { day: '07', team: C.eng, cost: 0.004 })
+  const r = await consumption(db, { orgId: C.id, scope: 'org' }, { from: FROM, to: TO, by: 'model', filter: null })
+  assert.deepEqual([r.totals.requests, r.totals.cost, r.totals.unpriced], [3, 0.004, 2])
+  const byModel = Object.fromEntries(r.rows.map(x => [x.key, [x.cost, x.unpriced]]))
+  assert.deepEqual(byModel['groq/openai/gpt-oss-20b'], [0, 2])
+  assert.deepEqual(byModel['anthropic/claude-haiku-4-5'], [0.004, 0])
+})
+
 test('parseQuery: one dimension, one filter, valid ids', () => {
   const q = s => parseQuery(new URLSearchParams(s))
   assert.deepEqual(q(''), { by: 'team', filter: null })

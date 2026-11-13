@@ -168,7 +168,9 @@ function PolicyModal({ policy, allModels, configured, onSave, onClose }) {
                           </span>
                         </div>
                         <div className="text-xs text-subtle tabular-nums">
-                          {formatCost(parseFloat(m.cost_per_1k_output_tokens) * 1000)}/1M salida
+                          {m.cost_per_1k_output_tokens == null
+                            ? 'Sin precio'
+                            : `${formatCost(parseFloat(m.cost_per_1k_output_tokens) * 1000)}/1M salida`}
                         </div>
                       </label>
                     )

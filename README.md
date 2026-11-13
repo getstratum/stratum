@@ -172,7 +172,7 @@ tests against it, see [deploy/gcp](deploy/gcp/README.md).
 |---|---|
 | `POST /v1/...` | OpenAI-compatible. The provider comes from `"model": "provider/model"`, or from the team policy when it allows a single provider. |
 | `POST /proxy/{provider}/...` | Explicit provider, e.g. `/proxy/anthropic/v1/messages` for the Anthropic SDK. |
-| `GET /v1/models` | The models the caller may use, in the OpenAI format: the organization's models (from the console's catalog, of the providers it configured, not turned off) that the policy allows. Each `id` is `provider/model`, which `/v1/...` accepts as is. An agent with a fixed model sees only that one. |
+| `GET /v1/models` | The models the caller may use, in the OpenAI format: first the organization's routes (`stratum/<name>`) with at least one model the policy allows, then the organization's models (from the console's catalog, of the providers it configured, not turned off) that the policy allows. Each `id` is `provider/model`, which `/v1/...` accepts as is. An agent with a fixed model sees only that one. |
 | `GET /v1/stratum/instructions` | The instructions for people the gateway adds to the caller's requests (`{"instructions": "...", "id": "..."}`, or nulls): only a key acting for a person, with `X-Stratum-User`, gets any. An application shows them to the person. |
 | `GET /livez`, `GET /readyz` | Probes. Readiness depends only on having a configuration and not draining. |
 | `GET /metrics` (admin port `:9090`) | Prometheus metrics. Keep the admin port private. |
@@ -191,6 +191,22 @@ need not send one), still within the team's policy. The response carries
 `X-Stratum-Routed-To: provider/model`. A request in the other API format
 (Anthropic Messages against an OpenAI-compatible model, or the other way
 around) is refused with `agent_model_mismatch`.
+
+**Routes** (model aliases, [ADR-0015](docs/adr/0015-model-aliases.md)): an
+organization defines in Modelos → Rutas a name and up to four models in
+order. A request for `"model": "stratum/rapido"`, or an agent whose fixed
+model is the route, goes to the first of them the team's policy allows. If
+its provider is paused, cannot be reached, or answers 429 or 5xx after the
+gateway's retries, the gateway tries the next one, always before anything
+reached the client; never after a timeout or a connection that broke once
+the request was sent, since the provider may have run it. The response says
+which model answered in `X-Stratum-Routed-To`, the usage record is that
+model's, and a request that went past the first carries the label
+`routed_fallback` (`stratum_alias_fallbacks_total` counts them). Changing
+the models of a route changes them for every application at the next sync.
+A route goes to models of one API format: Anthropic Messages, or
+OpenAI-compatible. A standalone config file can carry the same list
+(`model_aliases`).
 
 An application built on the gateway (a chat portal, an internal assistant)
 can act **on behalf of people**. Its agent is marked in the console as one
@@ -245,6 +261,7 @@ See [Traces](docs/architecture/traces.md) and [ADR-0013](docs/adr/0013-traces.md
 | `STRATUM_USAGE_PUSH` | `true` | Control plane mode: report each request's usage (metadata only) to the control plane, for the console's usage, spend and logs (ADR-0009). |
 | `STRATUM_USAGE_INTERVAL` / `STRATUM_USAGE_BUFFER` | `10s` / `100000` | How often usage is sent, and how many records are kept while the control plane is unreachable (past that, new ones are dropped and counted). |
 | `STRATUM_MAX_INFLIGHT` | `1024` | Concurrent requests before shedding load with 503 + `Retry-After`. |
+| `STRATUM_UPSTREAM_CONNECT_TIMEOUT` | `5s` | Max wait to connect to a provider, DNS included (100ms to 1m). With a route (`stratum/<name>`), it is what an unreachable first model costs each request until its breaker opens. |
 | `STRATUM_UPSTREAM_HEADER_TIMEOUT` | `120s` | Max wait for the provider's first response byte. |
 | `STRATUM_STREAM_IDLE_TIMEOUT` | `60s` | Max silence between streamed chunks. |
 | `STRATUM_UPSTREAM_RETRIES` / `STRATUM_UPSTREAM_RETRY_MAX_WAIT` | `2` / `5s` | Retries before the first byte reaches the client, after an error connecting to the provider or a 429/502/503/504 from it, and the most time spent waiting between them (ADR-0010). `0` turns retries off. |

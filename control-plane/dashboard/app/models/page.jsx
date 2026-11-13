@@ -6,7 +6,8 @@ import { useSearchParams } from 'next/navigation'
 import { usePermissions } from '../../components/usePermissions'
 import Modal, { Field, Input, Btn } from '../../components/Modal'
 import { allowedBy } from '../../lib/catalog'
-import { ignoresModelSwitch, MODEL_SWITCH_SINCE } from '../../lib/gateway-version'
+import { ignoresAliases, ignoresModelSwitch, ALIASES_SINCE, MODEL_SWITCH_SINCE } from '../../lib/gateway-version'
+import Aliases from './Aliases'
 import { co2, middle, METHOD_URL } from '../../lib/impacts/format'
 
 // Estimated emissions per 1,000 output tokens: the middle, the range on hover.
@@ -107,15 +108,20 @@ function Models() {
   const [pricing, setPricing]       = useState(null)
   const [busy, setBusy]             = useState('')
   const [outdated, setOutdated]     = useState([])
+  const [aliases, setAliases]       = useState([])
+  const [noAliases, setNoAliases]   = useState([]) // gateways that do not know routes
 
   const load = useCallback(async () => {
-    const [m, pol, prov, cat, gws] = await Promise.all([
+    const [m, pol, prov, cat, gws, al] = await Promise.all([
       fetch('/api/models').then(r => (r.ok ? r.json() : [])).catch(() => []),
       fetch('/api/policies').then(r => (r.ok ? r.json() : [])).catch(() => []),
       fetch('/api/internal/providers').then(r => (r.ok ? r.json() : null)).catch(() => null),
       fetch('/api/models/catalog').then(r => (r.ok ? r.json() : null)).catch(() => null),
       fetch('/api/internal/instances').then(r => (r.ok ? r.json() : null)).catch(() => null),
+      fetch('/api/model-aliases').then(r => (r.ok ? r.json() : null)).catch(() => null),
     ])
+    setAliases(al?.aliases ?? [])
+    setNoAliases((gws?.instances ?? []).filter(g => !g.disabled && g.versions?.some(ignoresAliases)))
     setCatalog(Array.isArray(m) ? m : [])
     setFeed(cat)
     // Gateways whose replicas include a release that ignores the off switch
@@ -200,7 +206,7 @@ function Models() {
         <h1 className="text-[26px] font-semibold text-strong tracking-tight">Modelos</h1>
         <p className="text-sm text-muted">
           El catálogo, con precios de lista para estimar costos. Un pedido puede usar el ID de un modelo o cualquiera de
-          sus alias. Qué modelos puede usar cada equipo lo decide su <Link href="/policy" className="text-accent hover:text-accent-hover">política</Link>;
+          sus alias, o una ruta de tu organización (<code className="font-mono">stratum/nombre</code>). Qué modelos puede usar cada equipo lo decide su <Link href="/policy" className="text-accent hover:text-accent-hover">política</Link>;
           un modelo apagado acá no lo puede usar nadie de la organización.
         </p>
         {feed && (
@@ -228,6 +234,20 @@ function Models() {
           </p>
         )}
       </header>
+
+      {!loading && (
+        <>
+          <Aliases aliases={aliases} catalog={catalog} configured={configured} policies={policies}
+                   canManage={can('models.manage')} onChanged={load} />
+          {aliases.length > 0 && noAliases.length > 0 && (
+            <p role="status" className="text-sm text-warn bg-warn-light rounded-lg px-3 py-2">
+              {noAliases.map(g => g.name).join(', ')} {noAliases.length === 1 ? 'corre' : 'corren'} una versión anterior
+              a {ALIASES_SINCE}: {noAliases.length === 1 ? 'rechaza' : 'rechazan'} los pedidos a una ruta.{' '}
+              <Link href="/gateways" className="underline">Ver gateways</Link>
+            </p>
+          )}
+        </>
+      )}
 
       {configured && configured.length > 0 && can('providers.manage') && (
         <section aria-labelledby="verify" className="bg-card border border-border rounded-[10px] px-5 py-4 space-y-3">

@@ -115,6 +115,10 @@ func (h *Handler) exportSpans(r *http.Request, rec *record) {
 				{Key: "stratum.attempts", Value: rec.attempts},
 			},
 		}
+		if rec.alias != "" {
+			c.Attrs = append(c.Attrs, trace.Attr{Key: "stratum.alias", Value: rec.alias},
+				trace.Attr{Key: "stratum.fallbacks", Value: rec.fallbacks})
+		}
 		if rec.upHost != "" {
 			c.Attrs = append(c.Attrs, trace.Attr{Key: "server.address", Value: rec.upHost})
 		}

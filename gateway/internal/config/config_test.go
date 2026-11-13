@@ -377,3 +377,21 @@ func TestTraces(t *testing.T) {
 		t.Errorf("error %v", err)
 	}
 }
+
+func TestUpstreamConnectTimeout(t *testing.T) {
+	file := map[string]string{"STRATUM_CONFIG_FILE": "/etc/stratum/stratum.json"}
+	c, err := Load(envOf(file))
+	if err != nil || c.UpstreamConnectTimeout != 5*time.Second {
+		t.Fatalf("default: %v, %v", c, err)
+	}
+	file["STRATUM_UPSTREAM_CONNECT_TIMEOUT"] = "2s"
+	if c, err = Load(envOf(file)); err != nil || c.UpstreamConnectTimeout != 2*time.Second {
+		t.Fatalf("2s: %v, %v", c, err)
+	}
+	for _, v := range []string{"50ms", "2m"} {
+		file["STRATUM_UPSTREAM_CONNECT_TIMEOUT"] = v
+		if _, err := Load(envOf(file)); err == nil || !strings.Contains(err.Error(), "STRATUM_UPSTREAM_CONNECT_TIMEOUT") {
+			t.Errorf("%s: expected an error about it, got %v", v, err)
+		}
+	}
+}
