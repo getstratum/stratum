@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0](https://github.com/getstratum/stratum/compare/v0.5.0...v0.6.0) (2026-11-13)
+
+
+### Features
+
+* models have a kind, and chat pickers offer chat models ([#118](https://github.com/getstratum/stratum/issues/118)) ([41d5637](https://github.com/getstratum/stratum/commit/41d5637e152e031ff2c59aac121e341c65c103d9))
+
 ## [0.5.0](https://github.com/getstratum/stratum/compare/v0.4.0...v0.5.0) (2026-11-13)
 
 
