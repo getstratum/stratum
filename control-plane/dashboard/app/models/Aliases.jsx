@@ -7,6 +7,7 @@
 import { useState } from 'react'
 import Modal, { Field, Input, Btn } from '../../components/Modal'
 import { allowedBy } from '../../lib/catalog'
+import { KINDS, KIND_LABELS, kindOf } from '../../lib/model-kind'
 
 const MAX = 4
 const formatOf = (provider) => (provider === 'anthropic' ? 'anthropic' : 'openai')
@@ -14,6 +15,9 @@ const keyOf = (t) => `${t.provider}/${t.model}`
 const TYPED_RE = /^[a-z0-9][a-z0-9-]*\/.+/
 
 function AliasModal({ alias, options, onClose, onSaved }) {
+  // A route's models are of one kind (lib/model-kind.js): what a model
+  // outside the list is, its ID says.
+  const kindOfTarget = (t) => options.find(o => keyOf(o) === keyOf(t))?.kind ?? kindOf(t.model)
   const editing = Boolean(alias)
   const [name, setName] = useState(alias?.name ?? '')
   const [description, setDescription] = useState(alias?.description ?? '')
@@ -22,8 +26,12 @@ function AliasModal({ alias, options, onClose, onSaved }) {
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
 
+  const [pickedKind, setPickedKind] = useState('chat')
+  const kind = targets.length ? kindOfTarget(targets[0]) : pickedKind
+  const kinds = KINDS.filter(k => k === 'chat' || options.some(o => o.kind === k))
   const format = targets.length ? formatOf(targets[0].provider) : null
-  const choices = options.filter(o => !targets.some(t => keyOf(t) === keyOf(o)) && (!format || formatOf(o.provider) === format))
+  const choices = options.filter(o => !targets.some(t => keyOf(t) === keyOf(o)) && o.kind === kind &&
+    (!format || formatOf(o.provider) === format))
 
   const move = (i, d) => setTargets(ts => {
     const out = [...ts]
@@ -40,6 +48,7 @@ function AliasModal({ alias, options, onClose, onSaved }) {
     if (provider === 'stratum') return setError('stratum/… es una ruta, no un modelo.')
     if (targets.some(x => keyOf(x) === keyOf(t))) return setError('Ese modelo ya está en la ruta.')
     if (format && formatOf(provider) !== format) return setError('Anthropic y los demás proveedores usan formatos de API distintos: la ruta va solo a uno de los dos.')
+    if (targets.length && kindOfTarget(t) !== kind) return setError(`La ruta es de ${KIND_LABELS[kind].toLowerCase()}: ${v} es de ${KIND_LABELS[kindOfTarget(t)].toLowerCase()}.`)
     setError(''); setTargets(ts => [...ts, t]); setTyped('')
   }
 
@@ -72,6 +81,17 @@ function AliasModal({ alias, options, onClose, onSaved }) {
         <div className="space-y-2">
           <span className="block text-xs font-semibold text-muted uppercase tracking-wide">Modelos, en orden</span>
           {targets.length === 0 && <p className="text-sm text-muted">Elegí el primer modelo abajo.</p>}
+          {targets.length === 0 && kinds.length > 1 && (
+            <div role="group" aria-label="Tipo de modelo" className="flex flex-wrap gap-1.5">
+              {kinds.map(k => (
+                <button key={k} type="button" onClick={() => setPickedKind(k)} aria-pressed={kind === k}
+                  className={`min-h-[32px] px-3 rounded-full text-xs border ${kind === k
+                    ? 'bg-ink border-ink text-white' : 'bg-card border-border-strong text-strong hover:bg-raised'}`}>
+                  {KIND_LABELS[k]}
+                </button>
+              ))}
+            </div>
+          )}
           <ol className="space-y-1.5" aria-label="Modelos de la ruta">
             {targets.map((t, i) => (
               <li key={keyOf(t)} className="flex items-center gap-2 text-sm">
@@ -108,8 +128,8 @@ function AliasModal({ alias, options, onClose, onSaved }) {
           )}
           <p className="text-xs text-subtle">
             Cada pedido va al primer modelo que la política del equipo permite. Si su proveedor falla o está pausado, el
-            gateway prueba el siguiente, antes de mandarle nada a la aplicación. Hasta {MAX} modelos, todos de Anthropic
-            o todos de los demás proveedores: usan formatos de API distintos.
+            gateway prueba el siguiente, antes de mandarle nada a la aplicación. Hasta {MAX} modelos, del mismo tipo, y
+            todos de Anthropic o todos de los demás proveedores: usan formatos de API distintos.
           </p>
         </div>
 
@@ -133,7 +153,7 @@ export default function Aliases({ aliases, catalog, configured, policies, canMan
   const [error, setError] = useState('')
   const options = catalog
     .filter(m => m.enabled !== false && (!configured || configured.some(c => c.provider === m.provider)))
-    .map(m => ({ provider: m.provider, model: m.model_id, name: m.display_name }))
+    .map(m => ({ provider: m.provider, model: m.model_id, name: m.display_name, kind: m.kind ?? 'chat' }))
 
   const teamsFor = (a) => policies.filter(p => a.targets.some(t => {
     const m = catalog.find(c => c.provider === t.provider && (c.model_id === t.model || (c.aliases ?? []).includes(t.model)))
@@ -171,7 +191,15 @@ export default function Aliases({ aliases, catalog, configured, policies, canMan
             return (
               <li key={a.name} className="py-3 flex flex-wrap items-start gap-3" data-testid="alias">
                 <div className="flex-1 min-w-0 space-y-1">
-                  <p className="font-mono text-strong">stratum/{a.name}</p>
+                  <p className="font-mono text-strong">
+                    stratum/{a.name}
+                    {(() => {
+                      // Shown for a route that is not of chat models.
+                      const t = a.targets[0]
+                      const k = t && (options.find(o => keyOf(o) === keyOf(t))?.kind ?? kindOf(t.model))
+                      return k && k !== 'chat' ? <span className="ml-2 font-sans text-xs text-muted">{KIND_LABELS[k]}</span> : null
+                    })()}
+                  </p>
                   {a.description && <p className="text-sm text-muted">{a.description}</p>}
                   <p className="text-sm text-default flex flex-wrap items-center gap-1.5">
                     {a.targets.map((t, i) => (

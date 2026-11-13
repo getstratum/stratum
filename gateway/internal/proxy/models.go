@@ -25,6 +25,10 @@ import (
 //
 // Model aliases come first, as "stratum/<name>" (ADR-0015): each one with
 // at least one model the caller may use.
+//
+// Each model says its kind when the control plane sent one (chat,
+// embedding, image, transcription, speech, moderation, other), so a client
+// can offer chat models in a chat; an alias, the kind of its first model.
 func (h *Handler) Models(w http.ResponseWriter, r *http.Request) {
 	rec := &record{start: time.Now()}
 	defer h.finishModels(rec)
@@ -51,29 +55,31 @@ func (h *Handler) Models(w http.ResponseWriter, r *http.Request) {
 		Created int64  `json:"created"`
 		OwnedBy string `json:"owned_by"`
 		Name    string `json:"name,omitempty"`
+		Kind    string `json:"kind,omitempty"`
 	}
+	list := snap.Models()
 	out := []model{}
-	add := func(provider, id, name string) {
+	add := func(provider, id, name, kind string) {
 		if _, configured := snap.Provider(provider); !configured {
 			return
 		}
 		if policy.Check(pol, found, provider, id) != nil {
 			return
 		}
-		out = append(out, model{ID: provider + "/" + id, Object: "model", OwnedBy: provider, Name: name})
+		out = append(out, model{ID: provider + "/" + id, Object: "model", OwnedBy: provider, Name: name, Kind: kind})
 	}
 
 	addAlias := func(name string) {
 		targets, _ := snap.Alias(name)
 		for _, t := range targets {
 			if _, configured := snap.Provider(t.Provider); configured && policy.Check(pol, found, t.Provider, t.Model) == nil {
-				out = append(out, model{ID: AliasPrefix + "/" + name, Object: "model", OwnedBy: AliasPrefix})
+				out = append(out, model{ID: AliasPrefix + "/" + name, Object: "model", OwnedBy: AliasPrefix, Kind: kindIn(list, targets[0].Provider, targets[0].Model)})
 				return
 			}
 		}
 	}
 
-	switch list := snap.Models(); {
+	switch {
 	case key.Model != "" && key.Provider == AliasPrefix:
 		// An agent whose fixed model is an alias.
 		addAlias(strings.ToLower(key.Model))
@@ -84,14 +90,14 @@ func (h *Handler) Models(w http.ResponseWriter, r *http.Request) {
 			prov = pickOnly(snap, pol)
 		}
 		if prov != "" {
-			add(prov, key.Model, nameIn(list, prov, key.Model))
+			add(prov, key.Model, nameIn(list, prov, key.Model), kindIn(list, prov, key.Model))
 		}
 	case list != nil:
 		for _, name := range snap.AliasNames() {
 			addAlias(name)
 		}
 		for _, m := range list {
-			add(m.Provider, m.ID, m.Name)
+			add(m.Provider, m.ID, m.Name, m.Kind)
 		}
 	default:
 		for _, name := range snap.AliasNames() {
@@ -100,7 +106,7 @@ func (h *Handler) Models(w http.ResponseWriter, r *http.Request) {
 		n := len(out)
 		for name := range pol.AllowedModels {
 			if prov, id, ok := strings.Cut(name, "/"); ok {
-				add(strings.ToLower(prov), id, "")
+				add(strings.ToLower(prov), id, "", "")
 			}
 		}
 		slices.SortFunc(out[n:], func(a, b model) int { return strings.Compare(a.ID, b.ID) })
@@ -133,6 +139,17 @@ func pickOnly(snap *snapshot.Snapshot, pol snapshot.Policy) string {
 	}
 	if slugs := snap.ProviderSlugs(); len(slugs) == 1 {
 		return slugs[0]
+	}
+	return ""
+}
+
+// kindIn is the kind the control plane sent for a model, "" when it sent
+// none or does not list the model.
+func kindIn(list []snapshot.WireModel, provider, id string) string {
+	for _, m := range list {
+		if m.Provider == provider && m.ID == id {
+			return m.Kind
+		}
 	}
 	return ""
 }

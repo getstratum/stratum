@@ -62,8 +62,8 @@ test('models: what the organization can use, with every sync', { skip }, async (
   assert.ok(!ids.includes('openai/list-test-off'), 'turned off for the organization')
   assert.ok(!ids.includes('openai/list-test-retired'), 'past its deprecation date')
   assert.ok(!ids.some(i => i.startsWith('mistral/')), 'a provider the organization did not configure')
-  assert.deepEqual(full.models.find(m => m.id === 'list-test-current'), { provider: 'openai', id: 'list-test-current', name: 'List test' })
-  assert.deepEqual(full.models.find(m => m.id === 'ft:list-test-custom'), { provider: 'openai', id: 'ft:list-test-custom' })
+  assert.deepEqual(full.models.find(m => m.id === 'list-test-current'), { provider: 'openai', id: 'list-test-current', name: 'List test', kind: 'chat' })
+  assert.deepEqual(full.models.find(m => m.id === 'ft:list-test-custom'), { provider: 'openai', id: 'ft:list-test-custom', kind: 'chat' })
   assert.deepEqual(ids, [...ids].sort(), 'sorted by provider and id')
 
   // Deltas carry it too: turning a model on reaches gateways at once.

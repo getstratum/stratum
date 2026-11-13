@@ -330,6 +330,32 @@ test('models: the owner turns a model off for the organization, and on again', a
   await expect(sw).toHaveAttribute('aria-checked', 'true')
 })
 
+test('models: the owner says what kind a model is; the policy dialog shows one kind at a time', async () => {
+  await page.goto('/models?provider=openai')
+  const row = page.locator('tr').filter({ hasText: 'gpt-4o-mini' })
+  const kind = row.getByRole('combobox', { name: 'Tipo de GPT-4o Mini' })
+  await expect(kind).toHaveValue('') // automatic: chat, by its ID
+  const kindOf = async () => ((await api('GET', '/api/models')).body ?? []).find((m) => m.provider === 'openai' && m.model_id === 'gpt-4o-mini')?.kind
+  await kind.selectOption('embedding')
+  await expect.poll(kindOf).toBe('embedding')
+
+  await page.goto('/policy')
+  await page.getByRole('button', { name: '+ Nueva política' }).click()
+  const d = page.getByRole('dialog')
+  await d.getByText('Solo los elegidos').click()
+  const kinds = d.getByRole('group', { name: 'Tipo de modelo' })
+  await expect(kinds.getByRole('button', { name: 'Chat' })).toHaveAttribute('aria-pressed', 'true')
+  await expect(d.getByText('GPT-4o Mini', { exact: true })).toHaveCount(0) // not a chat model now
+  await kinds.getByRole('button', { name: 'Embeddings' }).click()
+  await d.getByText('GPT-4o Mini', { exact: true }).click()
+  await expect(kinds.getByRole('button', { name: 'Embeddings · 1' })).toBeVisible() // how many of that kind are chosen
+  await d.getByRole('button', { name: 'Cancelar' }).click()
+
+  await page.goto('/models?provider=openai')
+  await row.getByRole('combobox', { name: 'Tipo de GPT-4o Mini' }).selectOption('')
+  await expect.poll(kindOf).toBe('chat')
+})
+
 // --- agents and the gateway ---------------------------------------------------------
 
 test('agents: a new key works through the gateway, and stops working when revoked', async () => {

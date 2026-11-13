@@ -6,6 +6,7 @@ import Modal, { Field, Input, Select, Btn } from '../../components/Modal'
 import { usePermissions } from '../../components/usePermissions'
 import { formatCost, formatTokens } from '../../lib/format'
 import { allowedBy } from '../../lib/catalog'
+import { KINDS, KIND_LABELS } from '../../lib/model-kind'
 
 // ─── One-time key reveal ──────────────────────────────────────────────────────
 function KeyReveal({ apiKey, onClose }) {
@@ -157,11 +158,19 @@ function AgentModal({ agent, teams, models, aliases = [], canDelegate, onSave, o
                 ))}
               </optgroup>
             )}
-            {availableModels.map(m => (
-              <option key={`${m.provider}/${m.model_id}`} value={`${m.provider}/${m.model_id}`}>
-                {m.display_name} · {m.provider}
-              </option>
-            ))}
+            {/* By kind, chat first (lib/model-kind.js): an agent may embed or transcribe too. */}
+            {KINDS.map(k => {
+              const ofKind = availableModels.filter(m => (m.kind ?? 'chat') === k)
+              return ofKind.length > 0 && (
+                <optgroup key={k} label={KIND_LABELS[k]}>
+                  {ofKind.map(m => (
+                    <option key={`${m.provider}/${m.model_id}`} value={`${m.provider}/${m.model_id}`}>
+                      {m.display_name} · {m.provider}
+                    </option>
+                  ))}
+                </optgroup>
+              )
+            })}
             {value && !availableModels.some(m => `${m.provider}/${m.model_id}` === value) &&
               !availableAliases.some(a => `stratum/${a.name}` === value) && (
               <option value={value}>{value} (fuera de la política)</option>

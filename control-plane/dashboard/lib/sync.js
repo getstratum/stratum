@@ -28,6 +28,8 @@
  * (ADR-0003).
  */
 
+import { effectiveKind } from './model-kind.js'
+
 // How long a full sync (since_version = 0) keeps sending removed keys and
 // deleted objects as revocations. Gateways that have them drop them; the
 // gateway's guard counts them as explicit revocations instead of keys that
@@ -180,9 +182,10 @@ export async function buildSyncResponse(client, { orgId, sinceVersion, syncInter
     // catalog models it did not turn off, and models a provider listed for
     // it that the catalog lacks, of providers it configured. Sent with
     // every sync (not versioned); each gateway lists the ones a policy
-    // allows.
+    // allows, with their kind (lib/model-kind.js).
     models = await q(`
-      SELECT m.provider, m.model_id AS id, m.display_name AS name
+      SELECT m.provider, m.model_id AS id, m.display_name AS name,
+             s.kind AS own_kind, m.kind AS catalog_kind, NULL AS listed_kind
         FROM ai_models m
         LEFT JOIN org_model_settings s
           ON s.org_id = $1 AND s.provider = m.provider AND s.model_id = m.model_id
@@ -192,7 +195,7 @@ export async function buildSyncResponse(client, { orgId, sinceVersion, syncInter
                       WHERE pc.org_id = $1 AND pc.provider = m.provider
                         AND COALESCE(pc.enabled, false) AND NOT COALESCE(pc.revoked, false))
       UNION ALL
-      SELECT pm.provider, pm.model_id, NULL
+      SELECT pm.provider, pm.model_id, NULL, s.kind, NULL, pm.kind
         FROM provider_models pm
         LEFT JOIN org_model_settings s
           ON s.org_id = pm.org_id AND s.provider = pm.provider AND s.model_id = pm.model_id
@@ -255,7 +258,10 @@ export async function buildSyncResponse(client, { orgId, sinceVersion, syncInter
         revoked:      pc.revoked,
       }
     }).filter(Boolean),
-    models: models.map(m => (m.name ? m : { provider: m.provider, id: m.id })),
+    models: models.map(m => ({
+      provider: m.provider, id: m.id, ...(m.name ? { name: m.name } : {}),
+      kind: effectiveKind({ own: m.own_kind, catalog: m.catalog_kind, listed: m.listed_kind, id: m.id }),
+    })),
     model_aliases: aliases.map(a => ({
       name: a.name,
       targets: (Array.isArray(a.targets) ? a.targets : []).map(t => ({ provider: t.provider, model: t.model })),
