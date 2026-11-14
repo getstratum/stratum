@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.0](https://github.com/getstratum/stratum/compare/v0.5.0...v0.6.0) (2026-11-14)
+
+
+### Features
+
+* a policy's default model, with a fallback through routes and notices ([#120](https://github.com/getstratum/stratum/issues/120)) ([e8de5fd](https://github.com/getstratum/stratum/commit/e8de5fd160919fd96a97eabcd21a8340585d75a4))
+* models have a kind, and chat pickers offer chat models ([#118](https://github.com/getstratum/stratum/issues/118)) ([41d5637](https://github.com/getstratum/stratum/commit/41d5637e152e031ff2c59aac121e341c65c103d9))
+
 ## [0.5.0](https://github.com/getstratum/stratum/compare/v0.4.0...v0.5.0) (2026-11-13)
 
 
