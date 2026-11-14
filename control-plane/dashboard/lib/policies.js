@@ -4,6 +4,7 @@
 
 import { badRequest } from './route.js'
 import { describe } from './providers.js'
+import { defaultModelField } from './default-model.js'
 
 function optionalNumber(v, label, { integer = false } = {}) {
   if (v === undefined || v === null) return undefined
@@ -69,6 +70,10 @@ export function policyFields(body) {
       out.peopleInstructions = text || null
     }
   }
+  // "provider/model" or "stratum/<route>"; null: none (migration 039).
+  // Whether the policy can use it is checked against the organization
+  // (lib/default-model.js) where the policy is saved.
+  if (body.defaultModel !== undefined) out.defaultModel = defaultModelField(body.defaultModel)
   out.monthlyTokenQuota   = optionalNumber(body.monthlyTokenQuota, 'Cuota mensual de tokens', { integer: true })
   out.monthlyBudgetUsd    = optionalNumber(body.monthlyBudgetUsd, 'Presupuesto mensual')
   for (const k of Object.keys(out)) if (out[k] === undefined) delete out[k]  // null stays: it means "all"

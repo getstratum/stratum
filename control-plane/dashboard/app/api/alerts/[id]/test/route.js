@@ -29,8 +29,11 @@ export const POST = route('alerts.manage', async (req, { session, db, params }) 
   const cfg = alertConfig()
   const usage = (await teamUsage(db, [alert.team_id])).get(alert.team_id)
   const { used, limit } = measure(alert, usage)
-  const message = buildMessage(alert, { used, limit: limit ?? 0, pct: limit ? (used / limit) * 100 : 0 },
-    { consoleUrl: cfg.consoleUrl, test: true })
+  const message = alert.alert_type === 'default_model'
+    ? { subject: `[Stratum] Prueba de la alerta de ${alert.team_name}`,
+        text: `Esta es una prueba de la alerta de ${alert.team_name}: avisa cuando el modelo predeterminado de su política no se puede usar o está usando su segundo modelo, y cuando vuelve a funcionar.` }
+    : buildMessage(alert, { used, limit: limit ?? 0, pct: limit ? (used / limit) * 100 : 0 },
+      { consoleUrl: cfg.consoleUrl, test: true })
   try {
     await deliver(alert, message, cfg)
   } catch (err) {

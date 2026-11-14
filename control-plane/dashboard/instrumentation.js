@@ -3,7 +3,8 @@
  * (Next.js). Keeps request_logs' monthly partitions created two years ahead
  * (migration 019): now and every 24 hours. Failures are logged, never fatal:
  * the default partition still takes the rows. Also keeps the model catalog
- * current from its feed, and sends alerts.
+ * current from its feed, and sends alerts, also when a policy's default
+ * model stops working as set.
  */
 export async function register() {
   if (process.env.NEXT_RUNTIME !== 'nodejs' || !process.env.DATABASE_URL) return
@@ -37,6 +38,7 @@ export async function register() {
   // the first round up to two minutes after the start. Replicas coordinate
   // per alert.
   const { evaluateAlerts, alertConfig } = await import('./lib/alert-delivery.js')
+  const { evaluateDefaults } = await import('./lib/default-model-notices.js')
   const { intervalS } = alertConfig()
   if (intervalS > 0) {
     let running = false
@@ -47,6 +49,9 @@ export async function register() {
         const results = await evaluateAlerts(getDb())
         const sent = results.filter(r => r.sent).length
         if (sent) console.log(`[alerts] ${sent} sent`)
+        // Policies whose default model stopped working as set (H-09).
+        const notices = await evaluateDefaults(getDb())
+        if (notices.length) console.log(`[default-model] ${notices.length} notices`)
       } catch (err) {
         console.error(`[alerts] round failed: ${err.message}`)
       } finally {

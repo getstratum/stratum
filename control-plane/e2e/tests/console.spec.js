@@ -474,6 +474,49 @@ test('routes: an agent on a route answers through its next model while the first
   expect((await api('DELETE', `/api/model-aliases/${route}`)).status).toBe(200)
 })
 
+test('policies: a default model, which gateways mark and send model-less requests to (H-09)', async () => {
+  test.skip(!GATEWAY, 'no STRATUM_E2E_GATEWAY_URL')
+  const route = `${RUN}-chat`
+  const [provider, ...rest] = MODEL.split('/')
+  expect((await api('POST', '/api/model-aliases', { name: route, targets: [{ provider, model: rest.join('/') }] })).status).toBe(201)
+  const team = ((await api('GET', '/api/teams')).body ?? []).find((t) => t.name === TEAM)
+
+  // In the policy dialog: the route, offered with its fallback.
+  await page.goto('/policy')
+  const card = page.locator('div.bg-card').filter({ has: page.getByText(team.policy_name, { exact: true }) }).first()
+  await card.getByRole('button', { name: 'Editar' }).click()
+  const d = dialog('Editar política')
+  await d.getByLabel('Modelo predeterminado').selectOption(`stratum/${route}`)
+  await d.getByRole('button', { name: 'Guardar cambios' }).click()
+  await expect(card.getByTestId('default-model')).toContainText(`stratum/${route}`)
+
+  // A route that is a policy's default cannot be deleted.
+  const del = await api('DELETE', `/api/model-aliases/${route}`)
+  expect(del.status).toBe(409)
+
+  // Through the gateway: GET /v1/models marks it, a request without a model goes there.
+  const name = `${RUN}-default`
+  created.agentNames.push(name)
+  const { body } = await api('POST', '/api/agents', { name, teamId: team.id })
+  const key = body.apiKey
+  await eventually(async () => {
+    const res = await fetch(`${GATEWAY}/v1/models`, { headers: { authorization: `Bearer ${key}` } })
+    const list = (await res.json().catch(() => ({}))).data ?? []
+    return list.find((m) => m.default)?.id ?? ''
+  }, `stratum/${route}`, SYNC_MS, 'the default marked in GET /v1/models')
+  const res = await fetch(`${GATEWAY}/v1/chat/completions`, {
+    method: 'POST', headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ max_tokens: 8, messages: [{ role: 'user', content: 'ping' }] }),
+    signal: AbortSignal.timeout(30_000),
+  })
+  await res.arrayBuffer()
+  expect([res.status, res.headers.get('x-stratum-routed-to')]).toEqual([200, MODEL])
+
+  // Back as it was.
+  expect((await api('PATCH', `/api/policies/${team.policy_id}`, { defaultModel: null })).status).toBe(200)
+  expect((await api('DELETE', `/api/model-aliases/${route}`)).status).toBe(200)
+})
+
 test('agents: an agent that acts for people follows each person, and stops for one whose access is taken away', async () => {
   test.skip(!GATEWAY, 'no STRATUM_E2E_GATEWAY_URL')
   const name = `${RUN}-portal`

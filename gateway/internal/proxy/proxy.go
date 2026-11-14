@@ -217,8 +217,14 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		rec.content = contentHash(body)
 	}
 	model, _ := body["model"].(string)
-	rec.model = model // as asked, until the route is resolved: errors before that still say what was asked
 	pol, polFound := snap.PolicyForTeam(teamID)
+	// A request that names no model goes to the policy's default, a model
+	// or a route; an agent's fixed model wins, and /proxy/{provider}/...
+	// names its provider.
+	if model == "" && key.Model == "" && !explicit && polFound && pol.DefaultModel != "" {
+		model = pol.DefaultModel
+	}
+	rec.model = model // as asked, until the route is resolved: errors before that still say what was asked
 
 	// The request's API format: Anthropic Messages or OpenAI-compatible.
 	anthropicFormat := strings.HasPrefix(upstreamPath, "v1/messages")
@@ -663,6 +669,7 @@ func (h *Handler) finish(r *http.Request, rec *record) {
 			Status: rec.status, Reason: rec.reason, Stream: rec.stream,
 			DurationMs: duration, UpstreamMs: rec.upstreamMs,
 			TokensIn: rec.usage.Input, TokensOut: rec.usage.Output, ContentFlags: rec.piiTypes, Labels: rec.labels,
+			Alias: rec.alias,
 		})
 	}
 	attrs := []any{

@@ -8,8 +8,10 @@ import { formatDateTime } from '../../lib/format'
 const ALERT_TYPES = [
   { value: 'quota',  label: 'Cuota de tokens del mes' },
   { value: 'budget', label: 'Presupuesto del mes (US$)' },
+  { value: 'default_model', label: 'El modelo predeterminado no funciona como está configurado' },
 ]
-const TYPE_LABEL = { quota: 'Cuota de tokens', budget: 'Presupuesto', policy_violation: 'Pedido rechazado por la política' }
+const TYPE_LABEL = { quota: 'Cuota de tokens', budget: 'Presupuesto', policy_violation: 'Pedido rechazado por la política',
+  default_model: 'Modelo predeterminado' }
 
 const CHANNELS = [
   { value: 'email', label: 'Email' },
@@ -68,11 +70,13 @@ function AlertModal({ teams, delivery, onSave, onClose }) {
               {ALERT_TYPES.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
             </Select>
           </Field>
-          <Field label="Umbral">
-            <Select value={form.thresholdPct} onChange={e => set('thresholdPct', parseInt(e.target.value))}>
-              {THRESHOLDS.map(t => <option key={t} value={t}>{t} %</option>)}
-            </Select>
-          </Field>
+          {form.alertType !== 'default_model' && (
+            <Field label="Umbral">
+              <Select value={form.thresholdPct} onChange={e => set('thresholdPct', parseInt(e.target.value))}>
+                {THRESHOLDS.map(t => <option key={t} value={t}>{t} %</option>)}
+              </Select>
+            </Field>
+          )}
         </div>
 
         <Field label="Canal">
@@ -100,7 +104,16 @@ function AlertModal({ teams, delivery, onSave, onClose }) {
         </Field>
 
         {/* Preview */}
-        {form.teamId && form.destination && (
+        {form.teamId && form.destination && form.alertType === 'default_model' && (
+          <div className="bg-raised border border-border rounded-md p-3 text-sm text-muted">
+            Cuando el modelo predeterminado de la política de{' '}
+            <span className="text-strong">{teams.find(t => t.id === form.teamId)?.name ?? '—'}</span> no se pueda usar o
+            esté usando su segundo modelo, y cuando vuelva a funcionar, avisar por {CHANNEL_LABEL[form.channel]} a{' '}
+            <span className="text-strong font-mono break-all">{form.destination.length > 40 ? form.destination.slice(0, 40) + '…' : form.destination}</span>.
+            Owners, Admins y el responsable del equipo ya reciben estos avisos por email.
+          </div>
+        )}
+        {form.teamId && form.destination && form.alertType !== 'default_model' && (
           <div className="bg-raised border border-border rounded-md p-3 text-sm text-muted">
             Cuando <span className="text-strong">{teams.find(t => t.id === form.teamId)?.name ?? '—'}</span> llegue
             al <span className="text-strong tabular">{form.thresholdPct} %</span> de su{' '}
@@ -134,7 +147,7 @@ function AlertRow({ alert, canManage, onToggle, onDelete, onReset, onTest, testi
     <tr className={!alert.is_active ? 'opacity-60' : ''}>
       <td className="px-4 py-3 text-sm text-strong font-medium">{alert.team_name ?? 'Toda la organización'}</td>
       <td className="px-4 py-3 text-sm text-default">{TYPE_LABEL[alert.alert_type] ?? alert.alert_type}</td>
-      <td className="px-4 py-3 text-sm text-strong tabular text-right">{alert.threshold_pct} %</td>
+      <td className="px-4 py-3 text-sm text-strong tabular text-right">{alert.alert_type === 'default_model' ? '—' : `${alert.threshold_pct} %`}</td>
       <td className="px-4 py-3 text-sm text-default">{CHANNEL_LABEL[alert.channel] ?? alert.channel}</td>
       <td className="px-4 py-3 text-xs text-muted font-mono max-w-[240px] truncate" title={alert.destination}>
         {alert.destination}
@@ -164,7 +177,7 @@ function AlertRow({ alert, canManage, onToggle, onDelete, onReset, onTest, testi
                     title="Envía un mensaje de prueba ahora">
               {testing ? 'Enviando…' : 'Probar'}
             </button>
-            {firedThisMonth && (
+            {firedThisMonth && alert.alert_type !== 'default_model' && (
               <button type="button" onClick={() => onReset(alert)} className={action}
                       title="Permite que vuelva a avisar este mes">
                 Reiniciar
@@ -319,7 +332,8 @@ export default function AlertsPage() {
           <div className="space-y-1">
             <div className="text-strong font-medium">3. El aviso</div>
             El control plane revisa el consumo cada {delivery ? Math.round(delivery.interval_s / 60) || 5 : 5} minutos y
-            avisa una vez por mes por alerta, al llegar al umbral. Probar envía un mensaje ahora.
+            avisa una vez por mes por alerta, al llegar al umbral. Probar envía un mensaje ahora. Las de modelo
+            predeterminado avisan cuando empieza el problema, como mucho una vez por día, y cuando se resuelve.
           </div>
         </div>
       </section>

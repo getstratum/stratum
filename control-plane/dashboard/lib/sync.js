@@ -77,6 +77,8 @@ export async function buildSyncResponse(client, { orgId, sinceVersion, syncInter
         p.max_tokens_per_request,
         -- Instructions for people (migration 031); gateways before 0.3 ignore them.
         COALESCE(p.people_instructions, '')              AS people_instructions,
+        -- The default model (migration 039); gateways before 0.6 ignore it.
+        COALESCE(p.default_model, '')                    AS default_model,
         COALESCE(p.pii_action, 'off')                    AS pii_action,
         COALESCE(p.dlp_action, 'off')                    AS dlp_action,
         p.allowed_providers,

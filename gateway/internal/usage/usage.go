@@ -51,6 +51,9 @@ type Record struct {
 	ContentFlags []string  `json:"content_flags,omitempty"`
 	// Labels the application put on the request (X-Stratum-Labels).
 	Labels []string `json:"labels,omitempty"`
+	// Alias is the route the request asked for (ADR-0015), so the control
+	// plane can tell when a policy's default route is falling back.
+	Alias string `json:"alias,omitempty"`
 }
 
 // Batch is the body of POST /api/internal/usage (api/usage/v1).

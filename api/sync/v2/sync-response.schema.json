@@ -97,6 +97,11 @@
           "type": "string",
           "maxLength": 2000
         },
+        "default_model": {
+          "description": "The policy's default model, \"provider/model\" or a route, \"stratum/<name>\". Gateways from 0.6 mark it in GET /v1/models and send to it the requests that name no model; an agent's fixed model wins. Empty or absent: none.",
+          "type": "string",
+          "maxLength": 260
+        },
         "pii_action": { "$ref": "#/$defs/action" },
         "dlp_action": { "$ref": "#/$defs/action" },
         "revoked": { "type": "boolean", "description": "True disables the whole team." }

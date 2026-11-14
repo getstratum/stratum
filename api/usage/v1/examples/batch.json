@@ -17,7 +17,8 @@
       "tokens_in": 60,
       "tokens_out": 40,
       "content_flags": ["email"],
-      "labels": ["feature_code_review", "topic_code"]
+      "labels": ["feature_code_review", "routed_fallback", "topic_code"],
+      "alias": "chat"
     },
     {
       "id": "0b9a8c7d-6e5f-4a3b-8c2d-1e0f9a8b7c6d",

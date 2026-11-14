@@ -154,14 +154,15 @@ func (h *Handler) prepare(w http.ResponseWriter, rec *record, body map[string]an
 // have run the request without answering (a timeout, a connection that
 // broke after the request was written): a generation costs money, as in
 // ADR-0010. Nor when the client left, nor on answers the request itself may
-// cause.
+// cause. A 404 does: the model is not at the provider any more (retired, or
+// never there), and nothing was generated.
 func fallsOver(res *http.Response, err error) bool {
 	if err != nil {
 		var paused *breakerOpenError
 		return errors.As(err, &paused) || (!errors.Is(err, context.Canceled) && notSent(err))
 	}
 	switch res.StatusCode {
-	case http.StatusTooManyRequests, http.StatusInternalServerError, http.StatusBadGateway,
+	case http.StatusNotFound, http.StatusTooManyRequests, http.StatusInternalServerError, http.StatusBadGateway,
 		http.StatusServiceUnavailable, http.StatusGatewayTimeout, 529: // 529: Anthropic overloaded
 		return true
 	}

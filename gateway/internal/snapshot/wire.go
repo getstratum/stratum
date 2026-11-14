@@ -152,9 +152,13 @@ type WirePolicy struct {
 	// PeopleInstructions is a system instruction added to the requests an
 	// application makes for a person (X-Stratum-User); absent before 0.3.
 	PeopleInstructions string `json:"people_instructions,omitempty"`
-	PIIAction          string `json:"pii_action,omitempty"`
-	DLPAction          string `json:"dlp_action,omitempty"`
-	Revoked            bool   `json:"revoked"`
+	// DefaultModel is "provider/model" or a route, "stratum/<name>": marked
+	// in GET /v1/models, and where requests that name no model go. Absent
+	// from control planes before 0.6.
+	DefaultModel string `json:"default_model,omitempty"`
+	PIIAction    string `json:"pii_action,omitempty"`
+	DLPAction    string `json:"dlp_action,omitempty"`
+	Revoked      bool   `json:"revoked"`
 }
 
 // WireAPIKey is a developer API key. Only the SHA-256 hex digest travels;

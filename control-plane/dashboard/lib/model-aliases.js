@@ -76,6 +76,12 @@ export async function assertUnused(db, orgId, name) {
   if (rows.length) {
     throw conflict(`La usan como modelo fijo: ${rows.map(r => r.name).join(', ')}. Cambiales el modelo primero.`)
   }
+  // A policy's default (migration 039).
+  const { rows: policies } = await db.query(
+    'SELECT name FROM policies WHERE org_id = $1 AND default_model = $2 ORDER BY name', [orgId, `${PREFIX}/${name}`])
+  if (policies.length) {
+    throw conflict(`Es el modelo predeterminado de: ${policies.map(r => r.name).join(', ')}. Cambiá el predeterminado primero.`)
+  }
 }
 
 export const ALIAS_COLUMNS = 'name, description, targets, updated_by, updated_at'

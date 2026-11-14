@@ -29,6 +29,7 @@ import (
 // Each model says its kind when the control plane sent one (chat,
 // embedding, image, transcription, speech, moderation, other), so a client
 // can offer chat models in a chat; an alias, the kind of its first model.
+// The policy's default model or route says "default": true.
 func (h *Handler) Models(w http.ResponseWriter, r *http.Request) {
 	rec := &record{start: time.Now()}
 	defer h.finishModels(rec)
@@ -56,6 +57,7 @@ func (h *Handler) Models(w http.ResponseWriter, r *http.Request) {
 		OwnedBy string `json:"owned_by"`
 		Name    string `json:"name,omitempty"`
 		Kind    string `json:"kind,omitempty"`
+		Default bool   `json:"default,omitempty"`
 	}
 	list := snap.Models()
 	out := []model{}
@@ -110,6 +112,16 @@ func (h *Handler) Models(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		slices.SortFunc(out[n:], func(a, b model) int { return strings.Compare(a.ID, b.ID) })
+	}
+
+	// The policy's default, a model or a route, when the caller has it.
+	if pol.DefaultModel != "" && key.Model == "" {
+		for i := range out {
+			if strings.EqualFold(out[i].ID, pol.DefaultModel) {
+				out[i].Default = true
+				break
+			}
+		}
 	}
 
 	rec.status, rec.reason = http.StatusOK, "ok"
