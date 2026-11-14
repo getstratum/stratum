@@ -5,7 +5,9 @@
 import { badRequest } from './route.js'
 import { webhookProblem } from './alert-delivery.js'
 
-const TYPES = new Set(['budget', 'quota', 'policy_violation'])
+// default_model: when the team's default model stops working as set
+// (lib/default-model-notices.js); its threshold is not used.
+const TYPES = new Set(['budget', 'quota', 'policy_violation', 'default_model'])
 const CHANNELS = new Set(['email', 'slack'])
 const EMAIL_RE = /^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/
 

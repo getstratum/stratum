@@ -41,7 +41,9 @@ of the organization's.
 3. **When the gateway goes to the next target.** Only before anything
    reached the client: the provider's breaker is open, the connection
    fails or times out, or the provider answers 429, 500, 502, 503, 504 or
-   529 after its own retries (ADR-0010). An error connecting is not
+   529 after its own retries (ADR-0010); from 0.6 also 404, a model that is
+   not at the provider any more (retired, or never there): nothing was
+   generated. An error connecting is not
    retried when there is a next target: it goes there at once. Never after
    the first byte, and never on other answers (a 400 would fail
    everywhere). The gateway's log says why it moved on (`why`: the status,

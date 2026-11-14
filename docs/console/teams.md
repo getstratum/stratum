@@ -80,6 +80,11 @@ incoming webhook.
 - **Probar** sends a test message now, with the team's usage so far (one per
   alert and minute).
 - Team managers manage their own team's alerts.
+- **Modelo predeterminado** (from 0.6) is another kind of alert: it has no
+  threshold, and sends what Owners, Admins and team managers already get by
+  email when the policy's default model stops working as set ([Default
+  model](providers-and-gateways.md#default-model)), for example to a Slack
+  channel.
 
 Sending, configured on the control plane:
 

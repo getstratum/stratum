@@ -55,6 +55,11 @@
           "type": "array",
           "maxItems": 8,
           "items": { "type": "string", "pattern": "^[a-z0-9_]{1,40}$" }
+        },
+        "alias": {
+          "description": "Optional, from 0.6. The route the request asked for (stratum/<name>, without the prefix), so the control plane can tell when a policy's default route is falling back (label routed_fallback).",
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,49}$"
         }
       }
     }

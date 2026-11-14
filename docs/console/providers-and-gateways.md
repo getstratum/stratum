@@ -174,6 +174,42 @@ by pull request.
   Proveedores counts them apart ("N del proveedor, sin precio"), and the
   policy dialog says "Sin precio" for them.
 
+### Default model
+
+A policy can have a **default model** (from 0.6): `provider/model`, or a
+route, `stratum/<name>`. It must be a chat model the policy allows.
+
+- Gateways mark it in `GET /v1/models` (`"default": true`), so a chat client
+  starts with it: the Enterprise portal does, unless the person picked
+  another model in that browser. A request that names no model goes to it;
+  an agent's fixed model wins.
+- **A route is the way to have a second model.** If the route's first
+  model cannot be used (the policy stops allowing it, the organization
+  turns it off, the catalog retires it, its provider is revoked) requests
+  go to the next one; if its provider fails or no longer has the model
+  (404), the gateway falls back (ADR-0015). A single model has no fallback,
+  and the policy dialog says so.
+- **Saving is refused** when the default is one the policy cannot use, or
+  when a change to the policy would leave it unusable. A route that is a
+  policy's default cannot be deleted.
+- Políticas shows, per policy, whether the default works as set, whether
+  requests go to another model and why.
+
+**Who is told.** Every alerts round (`STRATUM_ALERTS_INTERVAL_S`) the
+console checks each policy's default:
+
+| State | When |
+|---|---|
+| Sin su primer modelo | The route's first model cannot be used; requests go to a later one |
+| Usando su segundo modelo | In the last 15 minutes, at least 2 requests and 10 % of the route's requests went to another model because a provider failed |
+| No se puede usar | Nothing of it can be used |
+
+Owners, Admins and the team managers of the teams with that policy get an
+email (`STRATUM_SMTP_URL`) when a problem starts, at most once a day while
+it lasts or changes (a default that becomes unusable is told at once), and
+once when it works again. Alerts of type *Modelo predeterminado* of those
+teams get the same messages by their own channel (email or Slack).
+
 ### Kinds of model
 
 Providers list chat models next to everything else (`whisper-1`, `tts-1`,

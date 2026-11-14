@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import Modal, { Field, Input, Select, Btn } from '../../components/Modal'
 import { formatCost, formatCostCompact, formatTokens, nf } from '../../lib/format'
-import { namesOf } from '../../lib/catalog'
+import { namesOf, allowedBy } from '../../lib/catalog'
 import { KINDS, KIND_LABELS } from '../../lib/model-kind'
 import { usePermissions } from '../../components/usePermissions'
 
@@ -12,7 +12,7 @@ const PEOPLE_INSTRUCTIONS_MAX = 2000
 
 
 // ─── Policy form modal ────────────────────────────────────────────────────────
-function PolicyModal({ policy, allModels, configured, onSave, onClose }) {
+function PolicyModal({ policy, allModels, aliases, configured, onSave, onClose }) {
   const isEdit = !!policy
   const [form, setForm] = useState({
     name:                policy?.name                    ?? '',
@@ -24,6 +24,7 @@ function PolicyModal({ policy, allModels, configured, onSave, onClose }) {
     monthlyBudgetUsd:    policy?.monthly_budget_usd      ?? 100,
     budgetEnforced:      policy?.budget_enforced         ?? false,
     peopleInstructions:  policy?.people_instructions     ?? '',
+    defaultModel:        policy?.default_model           ?? '',
   })
   const [saving, setSaving] = useState(false)
   const [error,  setError]  = useState('')
@@ -79,6 +80,18 @@ function PolicyModal({ policy, allModels, configured, onSave, onClose }) {
     } catch { setError('Error de conexión') }
     finally { setSaving(false) }
   }
+
+  // What the default can be (lib/default-model.js): a chat model this form
+  // allows, or a route with at least one; the server checks it again.
+  const asPolicy = { allow_all_models: form.allowAllModels, allowed_models: form.allowedModels, allowed_providers: form.allowedProviders }
+  const usable = m => m.enabled !== false && (m.kind ?? 'chat') === 'chat' && allowedBy(asPolicy, m) &&
+    (!configured.length || configured.some(c => c.id === m.provider))
+  const modelOf = t => allModels.find(m => m.provider === t.provider && (m.model_id === t.model || (m.aliases ?? []).includes(t.model)))
+  const defaultModels = allModels.filter(usable)
+  const defaultRoutes = aliases.filter(a => a.targets.some(t => usable(modelOf(t) ?? { provider: t.provider, model_id: t.model })))
+  const isRoute = form.defaultModel.startsWith('stratum/')
+  const knownDefault = !form.defaultModel || defaultRoutes.some(a => `stratum/${a.name}` === form.defaultModel) ||
+    defaultModels.some(m => `${m.provider}/${m.model_id}` === form.defaultModel)
 
   // The kinds the catalog has, each with how many of its models are chosen.
   const kinds = KINDS.filter(k => k === 'chat' || allModels.some(m => (m.kind ?? 'chat') === k))
@@ -208,6 +221,29 @@ function PolicyModal({ policy, allModels, configured, onSave, onClose }) {
           )}
         </Field>
 
+        {/* Default model (H-09) */}
+        <Field label="Modelo predeterminado"
+               hint={!form.defaultModel
+                 ? 'Con el que empieza el chat de quienes tienen esta política, y adonde van los pedidos que no indican modelo. Sin uno, el portal empieza con el primero de la lista.'
+                 : isRoute
+                   ? 'Si el primer modelo de la ruta no se puede usar o su proveedor falla, va al siguiente. Owners, Admins y responsables de sus equipos reciben un aviso.'
+                   : 'Sin respaldo: si deja de estar disponible, las personas empiezan con otro modelo. Con una ruta (Modelos → Rutas) hay un segundo modelo.'}>
+          <Select value={form.defaultModel} onChange={e => set('defaultModel', e.target.value)} aria-label="Modelo predeterminado">
+            <option value="">Ninguno</option>
+            {defaultRoutes.length > 0 && (
+              <optgroup label="Rutas: con respaldo">
+                {defaultRoutes.map(a => <option key={a.name} value={`stratum/${a.name}`}>stratum/{a.name}{a.description ? ` · ${a.description}` : ''}</option>)}
+              </optgroup>
+            )}
+            {defaultModels.length > 0 && (
+              <optgroup label="Modelos de chat">
+                {defaultModels.map(m => <option key={`${m.provider}/${m.model_id}`} value={`${m.provider}/${m.model_id}`}>{m.display_name} · {m.provider}</option>)}
+              </optgroup>
+            )}
+            {!knownDefault && <option value={form.defaultModel}>{form.defaultModel} (esta política no lo permite)</option>}
+          </Select>
+        </Field>
+
         {/* Limits */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <Field label="Máx. tokens por pedido" hint="De respuesta. El gateway baja a este número los pedidos que piden más. Vacío: sin límite.">
@@ -273,6 +309,32 @@ function PolicyModal({ policy, allModels, configured, onSave, onClose }) {
   )
 }
 
+// ─── Default model, as the console sees it (lib/default-model.js) ─────────────
+function DefaultModel({ policy }) {
+  const st = policy.default_state ?? { state: 'none' }
+  const tone = { degraded: 'text-warn', falling_back: 'text-warn', unusable: 'text-err' }[st.state]
+  const said = {
+    degraded: `Va a ${st.to}: ${st.detail}`,
+    falling_back: `Usando su segundo modelo: ${st.detail}`,
+    unusable: `No se puede usar: ${st.detail}`,
+  }[st.state]
+  return (
+    <div data-testid="default-model">
+      <div className="text-xs text-muted mb-2">Modelo predeterminado</div>
+      {!policy.default_model ? (
+        <span className="text-xs text-muted">Ninguno: el portal empieza con el primero de la lista</span>
+      ) : (
+        <div className="space-y-1">
+          <span className="text-xs border border-border rounded px-2 py-0.5 font-mono text-default">{policy.default_model}</span>
+          {said
+            ? <p role="status" className={`text-xs ${tone}`}>{said}</p>
+            : <span className="ml-2 text-xs text-muted">{st.route ? (st.fallback ? 'con respaldo' : 'su ruta tiene un solo modelo usable') : 'sin respaldo'}</span>}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Delete confirm ───────────────────────────────────────────────────────────
 function DeleteConfirm({ policy, onConfirm, onClose }) {
   const [deleting, setDeleting] = useState(false)
@@ -311,20 +373,23 @@ export default function PolicyPage() {
   const canManage = can('policies.manage')
   const [policies,  setPolicies]  = useState([])
   const [allModels, setAllModels] = useState([])
+  const [aliases,   setAliases]   = useState([])
   const [configured, setConfigured] = useState([])
   const [loading,   setLoading]   = useState(true)
   const [modal,     setModal]     = useState(null) // null | 'create' | { edit: p } | { delete: p }
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [p, m, prov] = await Promise.all([
+    const [p, m, prov, al] = await Promise.all([
       fetch('/api/policies').then(r => r.json()),
       fetch('/api/models').then(r => r.json()),
       // Roles without providers.read (team managers) get 403: the form then lists none.
       fetch('/api/internal/providers').then(r => (r.ok ? r.json() : null)).catch(() => null),
+      fetch('/api/model-aliases').then(r => (r.ok ? r.json() : null)).catch(() => null),
     ])
     setPolicies(p)
     setAllModels(m)
+    setAliases(al?.aliases ?? [])
     const names = new Map((prov?.providers ?? []).map(c => [c.provider, c.provider_label ?? c.provider]))
     setConfigured([...names].map(([id, label]) => ({ id, label })))
     setLoading(false)
@@ -416,6 +481,7 @@ export default function PolicyPage() {
                     </div>
                   )}
                 </div>
+                <DefaultModel policy={policy} />
                 {policy.people_instructions && (
                   <div>
                     <div className="text-xs text-muted mb-2">Instrucciones para personas</div>
@@ -446,10 +512,10 @@ export default function PolicyPage() {
 
       {/* Modals */}
       {modal === 'create' && (
-        <PolicyModal allModels={allModels} configured={configured} onSave={handleSave} onClose={() => setModal(null)} />
+        <PolicyModal allModels={allModels} aliases={aliases} configured={configured} onSave={handleSave} onClose={() => setModal(null)} />
       )}
       {modal?.edit && (
-        <PolicyModal policy={modal.edit} allModels={allModels} configured={configured} onSave={handleSave} onClose={() => setModal(null)} />
+        <PolicyModal policy={modal.edit} allModels={allModels} aliases={aliases} configured={configured} onSave={handleSave} onClose={() => setModal(null)} />
       )}
       {modal?.delete && (
         <DeleteConfirm policy={modal.delete} onConfirm={handleSave} onClose={() => setModal(null)} />

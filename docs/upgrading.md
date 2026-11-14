@@ -22,6 +22,16 @@ Back up the database before you upgrade.
   Gateways of 0.6 say the kind in `GET /v1/models`; older ones leave it out,
   and clients that read it (the Enterprise portal) treat a model without
   one as chat.
+- **Migration 039, additive:** `policies.default_model`,
+  `request_logs.alias` (the route a request asked for, reported by 0.6
+  gateways) and the table `default_model_notices`.
+- **A policy can have a default model** ([Default model](console/providers-and-gateways.md#default-model)).
+  Gateways before 0.6 ignore it: they neither mark it nor send model-less
+  requests to it. Upgrade the gateways, then set defaults. Owners, Admins
+  and team managers get an email when one stops working as set; set
+  `STRATUM_SMTP_URL` if it is not.
+- **Routes fall back on a 404** from the provider (the model is not there
+  any more), not only on 429 and 5xx.
 - **Test the connection again** to providers whose list says what each model
   is (Mistral, Together, OpenRouter): until then their models outside the
   catalog take the kind from their ID. Together's model list was read as

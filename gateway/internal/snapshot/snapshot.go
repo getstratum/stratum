@@ -39,9 +39,13 @@ type Policy struct {
 	// application makes for a person, never an agent's or a key's own; see
 	// proxy.addInstructions. Empty: none.
 	PeopleInstructions string
-	PIIAction          string // off | log | redact | block
-	DLPAction          string // off | log | redact | block
-	Revoked            bool
+	// DefaultModel is the policy's default, "provider/model" or
+	// "stratum/<route>" (empty: none): what GET /v1/models marks and where a
+	// request without a model goes.
+	DefaultModel string
+	PIIAction    string // off | log | redact | block
+	DLPAction    string // off | log | redact | block
+	Revoked      bool
 }
 
 // AliasTarget is one model a model alias may go to (ADR-0015).
@@ -154,6 +158,7 @@ func Build(st *State, syncedAt time.Time) *Snapshot {
 			AllowedProviders:   toSet(p.AllowedProviders),
 			DeniedModels:       toSet(p.DeniedModels),
 			PeopleInstructions: strings.TrimSpace(p.PeopleInstructions),
+			DefaultModel:       strings.TrimSpace(p.DefaultModel),
 			PIIAction:          normalizeAction(p.PIIAction),
 			DLPAction:          normalizeAction(p.DLPAction),
 			Revoked:            p.Revoked,

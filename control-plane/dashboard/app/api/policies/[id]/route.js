@@ -1,11 +1,31 @@
 export const dynamic = 'force-dynamic'
-import { route, readJson, json, notFound, conflict, idParam } from '../../../../lib/route.js'
+import { route, readJson, json, notFound, conflict, idParam, badRequest } from '../../../../lib/route.js'
 import { audit } from '../../../../lib/audit.js'
 import { policyFields } from '../../../../lib/policies.js'
+import { loadContext, defaultState } from '../../../../lib/default-model.js'
 
 export const PATCH = route('policies.manage', async (req, { session, db, params }) => {
   const id = idParam(params)
   const f = policyFields(await readJson(req))
+  // The default must stay usable: refused when this change sets one the
+  // policy cannot use, or makes the one it has unusable (lib/default-model.js).
+  const { rows: [now] } = await db.query('SELECT * FROM policies WHERE id = $1 AND org_id = $2', [id, session.orgId])
+  if (!now) throw notFound('Política no encontrada.')
+  const after = {
+    default_model: 'defaultModel' in f ? f.defaultModel : now.default_model,
+    allowed_models: f.allowedModels ?? now.allowed_models,
+    allow_all_models: f.allowAllModels ?? now.allow_all_models,
+    allowed_providers: 'allowedProviders' in f ? f.allowedProviders : now.allowed_providers,
+  }
+  if (after.default_model) {
+    const ctx = await loadContext(db, session.orgId)
+    const st = defaultState(after, ctx)
+    if (st.state === 'unusable' && ('defaultModel' in f || defaultState(now, ctx).state !== 'unusable')) {
+      throw badRequest('defaultModel' in f
+        ? `No se puede usar ${after.default_model} como predeterminado: ${st.detail}`
+        : `Con este cambio el predeterminado, ${after.default_model}, deja de servir: ${st.detail} Cambiá el predeterminado primero.`)
+    }
+  }
   const { rows } = await db.query(`
     UPDATE policies SET
       name                   = COALESCE($1, name),
@@ -16,14 +36,16 @@ export const PATCH = route('policies.manage', async (req, { session, db, params 
       allow_all_models       = COALESCE($8, allow_all_models),
       allowed_providers      = CASE WHEN $9 THEN $10::text[] ELSE allowed_providers END,
       budget_enforced        = COALESCE($11, budget_enforced),
-      people_instructions    = CASE WHEN $13 THEN $14::text ELSE people_instructions END
+      people_instructions    = CASE WHEN $13 THEN $14::text ELSE people_instructions END,
+      default_model          = CASE WHEN $15 THEN $16::text ELSE default_model END
     WHERE id = $6 AND org_id = $7
     RETURNING *
   `, [f.name ?? null, f.allowedModels ?? null, f.maxTokensPerRequest ?? null,
       f.monthlyTokenQuota ?? null, f.monthlyBudgetUsd ?? null, id, session.orgId,
       f.allowAllModels ?? null, 'allowedProviders' in f, f.allowedProviders ?? null,
       f.budgetEnforced ?? null, 'maxTokensPerRequest' in f,
-      'peopleInstructions' in f, f.peopleInstructions ?? null])
+      'peopleInstructions' in f, f.peopleInstructions ?? null,
+      'defaultModel' in f, f.defaultModel ?? null])
   if (!rows[0]) throw notFound('Política no encontrada.')
   await audit(db, { req, session, action: 'policy.update', targetType: 'policy', targetId: id, details: f })
   return json(rows[0])

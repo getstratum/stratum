@@ -133,4 +133,11 @@ func TestPeopleInstructionsFromContract(t *testing.T) {
 	if p, _ := snap.PolicyForTeam("team_marketing"); p.PeopleInstructions != "" {
 		t.Errorf("marketing has instructions it was never given: %q", p.PeopleInstructions)
 	}
+	// The default model travels the same way.
+	if p, _ := snap.PolicyForTeam("team_engineering"); p.DefaultModel != "openai/gpt-4o-mini" {
+		t.Errorf("engineering's default model: %q", p.DefaultModel)
+	}
+	if p, _ := snap.PolicyForTeam("team_marketing"); p.DefaultModel != "" {
+		t.Errorf("marketing has a default it was never given: %q", p.DefaultModel)
+	}
 }
