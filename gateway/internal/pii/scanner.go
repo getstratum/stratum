@@ -178,18 +178,54 @@ func RedactJSON(rawBody []byte, types []string) ([]byte, Result, error) {
 	return out, Result{Flagged: len(order) > 0, Types: order}, err
 }
 
-// walkStrings visits every string leaf in a decoded JSON value tree.
+// Images and other files a request carries inline are base64: digits and
+// letters that the patterns can mistake for a phone, a card or a key, and
+// that redaction would corrupt. They are not text, so they are skipped:
+//
+//   - a data: URI ("data:image/png;base64,..."), the OpenAI format;
+//   - "data" next to "type": "base64" (Anthropic's image and document
+//     sources) or next to a MIME type (Gemini's inline_data).
+func opaque(s string) bool {
+	if !strings.HasPrefix(s, "data:") {
+		return false
+	}
+	head := s
+	if len(head) > 200 {
+		head = head[:200]
+	}
+	return strings.Contains(head, ";base64,")
+}
+
+func blobKey(m map[string]any, k string) bool {
+	if k != "data" {
+		return false
+	}
+	if t, _ := m["type"].(string); t == "base64" {
+		return true
+	}
+	_, mime := m["mime_type"]
+	_, mime2 := m["mimeType"]
+	_, mime3 := m["media_type"]
+	return mime || mime2 || mime3
+}
+
+// walkStrings visits every string leaf in a decoded JSON value tree, but
+// for inline files (opaque, blobKey).
 func walkStrings(v any, fn func(string)) {
 	switch val := v.(type) {
 	case string:
-		fn(val)
+		if !opaque(val) {
+			fn(val)
+		}
 	case []any:
 		for _, item := range val {
 			walkStrings(item, fn)
 		}
 	case map[string]any:
-		for _, item := range val {
-			walkStrings(item, fn)
+		for k, item := range val {
+			if !blobKey(val, k) {
+				walkStrings(item, fn)
+			}
 		}
 	}
 }
@@ -199,6 +235,9 @@ func walkStrings(v any, fn func(string)) {
 func transformStrings(v any, fn func(string) string) any {
 	switch val := v.(type) {
 	case string:
+		if opaque(val) {
+			return val
+		}
 		return fn(val)
 	case []any:
 		out := make([]any, len(val))
@@ -209,6 +248,10 @@ func transformStrings(v any, fn func(string) string) any {
 	case map[string]any:
 		out := make(map[string]any, len(val))
 		for k, item := range val {
+			if blobKey(val, k) {
+				out[k] = item
+				continue
+			}
 			out[k] = transformStrings(item, fn)
 		}
 		return out
