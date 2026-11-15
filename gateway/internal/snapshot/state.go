@@ -19,6 +19,7 @@ type State struct {
 	People    map[string]WirePerson         `json:"people"`    // by id (from 0.4)
 	Models    []WireModel                   `json:"models"`    // the last list received (from 0.4)
 	Aliases   []WireAlias                   `json:"aliases"`   // the last list received (from 0.5)
+	MCP       []WireMCPServer               `json:"mcp"`       // the last list received (from 0.7)
 }
 
 // NewState returns an empty state.
@@ -40,6 +41,7 @@ func (s *State) clone() *State {
 		People:    maps.Clone(s.People),
 		Models:    s.Models,
 		Aliases:   s.Aliases,
+		MCP:       s.MCP,
 	}
 	if c.People == nil { // a state saved by a gateway before 0.4
 		c.People = map[string]WirePerson{}
@@ -104,6 +106,9 @@ func (s *State) Apply(resp *SyncResponse, full bool) (*State, error) {
 	}
 	if resp.ModelAliases != nil {
 		next.Aliases = slices.Clone(resp.ModelAliases)
+	}
+	if resp.MCPServers != nil {
+		next.MCP = slices.Clone(resp.MCPServers)
 	}
 
 	next.Version = int64(resp.CurrentVersion)

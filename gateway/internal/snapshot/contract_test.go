@@ -140,4 +140,15 @@ func TestPeopleInstructionsFromContract(t *testing.T) {
 	if p, _ := snap.PolicyForTeam("team_marketing"); p.DefaultModel != "" {
 		t.Errorf("marketing has a default it was never given: %q", p.DefaultModel)
 	}
+	// MCP: the servers with their headers, and what each policy allows.
+	if m, ok := snap.MCP("tickets"); !ok || m.Headers["Authorization"] != "Bearer tk_live_example" {
+		t.Errorf("MCP server tickets: %+v %v", m, ok)
+	}
+	if p, _ := snap.PolicyForTeam("team_engineering"); !p.MCPAllowed("tickets", "crear") || !p.MCPAllowed("wiki", "buscar") ||
+		p.MCPAllowed("wiki", "editar") || !p.MCPAllowed("wiki", "") {
+		t.Errorf("engineering's MCP tools: %v", p.MCPTools)
+	}
+	if p, _ := snap.PolicyForTeam("team_marketing"); p.MCPAllowed("tickets", "") {
+		t.Error("marketing has MCP tools it was never given")
+	}
 }

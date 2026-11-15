@@ -14,6 +14,7 @@ const NAV = [
   { group: 'Conexiones', items: [
     { href: '/providers', label: 'Proveedores', permission: 'providers.read' },
     { href: '/models',    label: 'Modelos',     permission: 'models.read' },
+    { href: '/mcp',       label: 'Herramientas MCP', permission: 'providers.read' },
     { href: '/gateways',  label: 'Gateways',    permission: 'gateways.read' },
     { href: '/apps',      label: 'Aplicaciones', permission: 'apps.read' },
   ] },

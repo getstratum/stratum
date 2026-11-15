@@ -1,6 +1,7 @@
 package snapshot
 
 import (
+	"maps"
 	"regexp"
 	"slices"
 	"strings"
@@ -43,9 +44,12 @@ type Policy struct {
 	// "stratum/<route>" (empty: none): what GET /v1/models marks and where a
 	// request without a model goes.
 	DefaultModel string
-	PIIAction    string // off | log | redact | block
-	DLPAction    string // off | log | redact | block
-	Revoked      bool
+	// MCPTools are the MCP tools its teams may call: "server/*" or
+	// "server/tool" (ADR-0016); see MCPAllowed.
+	MCPTools  map[string]struct{}
+	PIIAction string // off | log | redact | block
+	DLPAction string // off | log | redact | block
+	Revoked   bool
 }
 
 // AliasTarget is one model a model alias may go to (ADR-0015).
@@ -81,7 +85,15 @@ type Snapshot struct {
 	models          []WireModel       // the organization's, sorted by provider and id
 	aliases         map[string][]AliasTarget
 	aliasNames      []string // sorted
+	mcp             map[string]MCPServer
 	activeKeys      int
+}
+
+// MCPServer is an MCP server agents reach at /mcp/<name> (ADR-0016).
+type MCPServer struct {
+	Name    string
+	URL     string
+	Headers map[string]string
 }
 
 // Build indexes a State into a Snapshot. Revoked keys and disabled or
@@ -116,6 +128,15 @@ func Build(st *State, syncedAt time.Time) *Snapshot {
 		return strings.Compare(a.Provider+"/"+a.ID, b.Provider+"/"+b.ID)
 	})
 	s.models = slices.CompactFunc(s.models, func(a, b WireModel) bool { return a.Provider == b.Provider && a.ID == b.ID })
+
+	s.mcp = make(map[string]MCPServer, len(st.MCP))
+	for _, m := range st.MCP {
+		name := strings.ToLower(strings.TrimSpace(m.Name))
+		if name == "" || !strings.HasPrefix(m.URL, "http") {
+			continue
+		}
+		s.mcp[name] = MCPServer{Name: name, URL: strings.TrimSpace(m.URL), Headers: maps.Clone(m.Headers)}
+	}
 
 	for _, a := range st.Aliases {
 		name := strings.ToLower(strings.TrimSpace(a.Name))
@@ -159,6 +180,7 @@ func Build(st *State, syncedAt time.Time) *Snapshot {
 			DeniedModels:       toSet(p.DeniedModels),
 			PeopleInstructions: strings.TrimSpace(p.PeopleInstructions),
 			DefaultModel:       strings.TrimSpace(p.DefaultModel),
+			MCPTools:           toSet(p.MCPTools),
 			PIIAction:          normalizeAction(p.PIIAction),
 			DLPAction:          normalizeAction(p.DLPAction),
 			Revoked:            p.Revoked,
@@ -224,6 +246,30 @@ func (s *Snapshot) Models() []WireModel { return s.models }
 
 // Alias returns a model alias's targets, in order (ADR-0015). Callers must
 // not modify them.
+// MCP returns the MCP server agents reach at /mcp/<name>.
+func (s *Snapshot) MCP(name string) (MCPServer, bool) {
+	m, ok := s.mcp[strings.ToLower(name)]
+	return m, ok
+}
+
+// MCPAllowed says whether the policy lets its teams use server at all
+// (tool ""), or call one of its tools.
+func (p Policy) MCPAllowed(server, tool string) bool {
+	if _, ok := p.MCPTools[server+"/*"]; ok {
+		return true
+	}
+	if tool != "" {
+		_, ok := p.MCPTools[server+"/"+tool]
+		return ok
+	}
+	for t := range p.MCPTools {
+		if strings.HasPrefix(t, server+"/") {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *Snapshot) Alias(name string) ([]AliasTarget, bool) {
 	t, ok := s.aliases[strings.ToLower(name)]
 	return t, ok

@@ -113,6 +113,28 @@ console's own changes mean for an organization:
 - Provider configurations saved before migration 018 show their credential
   as "configured" (no last-four preview) until it is replaced.
 
+## MCP tools (ADR-0016)
+
+*Herramientas MCP* lists the MCP servers agents use through the gateway, at
+`<gateway>/mcp/<name>` (Streamable HTTP), with their own Stratum key.
+
+- A server is a name (lowercase, it does not change: agents and policies use
+  it), its address as gateways reach it in your network, and optionally one
+  header with its credential (`Authorization: Bearer ...`, `X-API-Key:
+  ...`), kept encrypted and shown only by its last characters. Gateways add
+  it; agents never see it.
+- The console never calls a server. Test one from an agent through a gateway.
+- Turned off, gateways stop serving it with the next sync. A server that a
+  policy allows cannot be deleted.
+- Who may call what is in each policy (*Herramientas MCP* in the policy
+  dialog): per server, none, every tool, or only the ones named. With none,
+  the gateway refuses the server (403). A tool not allowed is left out of
+  the tool list, and calling it gets a tool result with an error, which the
+  agent's model reads; nothing reaches the server.
+- Every tool call is in Requests (provider `mcp`, model `server/tool`,
+  label `mcp`), refused ones too.
+- Owners and Admins manage servers; Auditors see them. Gateways 0.7 or later.
+
 ## Policies: providers and models
 
 A team's policy decides what its keys may use, and gateways enforce it:

@@ -50,7 +50,7 @@ export async function buildSyncResponse(client, { orgId, sinceVersion, syncInter
   const q = async (sql, params) => (await client.query(sql, params)).rows
 
   await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY')
-  let version, policies, apiKeys, people, providerConfigs, tombstones, usage, usageMonth, models, aliases
+  let version, policies, apiKeys, people, providerConfigs, tombstones, usage, usageMonth, models, aliases, mcpServers
   try {
     ;[{ v: version }] = await q('SELECT stratum_sync_version($1)::bigint AS v', [orgId])
 
@@ -79,6 +79,8 @@ export async function buildSyncResponse(client, { orgId, sinceVersion, syncInter
         COALESCE(p.people_instructions, '')              AS people_instructions,
         -- The default model (migration 039); gateways before 0.6 ignore it.
         COALESCE(p.default_model, '')                    AS default_model,
+        -- MCP tools its teams may call (migration 040; ADR-0016).
+        COALESCE(p.mcp_tools, '{}')                      AS mcp_tools,
         COALESCE(p.pii_action, 'off')                    AS pii_action,
         COALESCE(p.dlp_action, 'off')                    AS dlp_action,
         p.allowed_providers,
@@ -216,6 +218,13 @@ export async function buildSyncResponse(client, { orgId, sinceVersion, syncInter
       SELECT name, targets FROM model_aliases WHERE org_id = $1 ORDER BY name
     `, [orgId])
 
+    // MCP servers (migration 040, ADR-0016): every sync, the whole list of
+    // the ones turned on, with their credential.
+    mcpServers = await q(`
+      SELECT name, url, auth_header, secret_encrypted FROM mcp_servers
+       WHERE org_id = $1 AND enabled ORDER BY name
+    `, [orgId])
+
     await client.query('COMMIT')
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {})
@@ -268,6 +277,20 @@ export async function buildSyncResponse(client, { orgId, sinceVersion, syncInter
       name: a.name,
       targets: (Array.isArray(a.targets) ? a.targets : []).map(t => ({ provider: t.provider, model: t.model })),
     })),
+    mcp_servers: mcpServers.flatMap(s => {
+      let headers = {}
+      if (s.auth_header && s.secret_encrypted) {
+        try {
+          headers = { [s.auth_header]: decrypt(s.secret_encrypted) }
+        } catch (e) {
+          // Without its credential the server would answer 401 to every
+          // agent: left out, and said in the log.
+          warn(`[sync] cannot decrypt the credential of MCP server ${s.name}: ${e.message}`)
+          return []
+        }
+      }
+      return [{ name: s.name, url: s.url, headers }]
+    }),
     month_usage: {
       month: usageMonth,
       teams: usage.map(u => ({ team_id: u.team_id, tokens: num(u.tokens), cost_usd: num(u.cost_usd) })),

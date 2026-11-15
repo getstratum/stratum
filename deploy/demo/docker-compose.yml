@@ -72,6 +72,9 @@ services:
       MOCK_MAX_COMPLETION_TOKENS: "600"
       MOCK_LATENCY_MS: "250"
       MOCK_CHUNK_INTERVAL_MS: "40"
+      # Its MCP server asks for this token; the console keeps it (setup.mjs)
+      # and the gateway adds it: agents never see it.
+      MOCK_MCP_TOKEN: demo-mcp-token
 
   # The demo organization, accounts, keys, the gateway's registration and
   # four weeks of history; prints how to sign in.

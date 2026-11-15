@@ -5,6 +5,7 @@
 import { badRequest } from './route.js'
 import { describe } from './providers.js'
 import { defaultModelField } from './default-model.js'
+import { mcpToolsField } from './mcp.js'
 
 function optionalNumber(v, label, { integer = false } = {}) {
   if (v === undefined || v === null) return undefined
@@ -74,6 +75,8 @@ export function policyFields(body) {
   // Whether the policy can use it is checked against the organization
   // (lib/default-model.js) where the policy is saved.
   if (body.defaultModel !== undefined) out.defaultModel = defaultModelField(body.defaultModel)
+  // MCP tools its teams may call, "server/*" or "server/tool" (ADR-0016).
+  if (body.mcpTools !== undefined) out.mcpTools = mcpToolsField(body.mcpTools)
   out.monthlyTokenQuota   = optionalNumber(body.monthlyTokenQuota, 'Cuota mensual de tokens', { integer: true })
   out.monthlyBudgetUsd    = optionalNumber(body.monthlyBudgetUsd, 'Presupuesto mensual')
   for (const k of Object.keys(out)) if (out[k] === undefined) delete out[k]  // null stays: it means "all"
