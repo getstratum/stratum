@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.7.0](https://github.com/getstratum/stratum/compare/v0.6.0...v0.7.0) (2026-11-15)
+
+
+### Features
+
+* MCP tools for agents through the gateway, as each policy allows (ADR-0016) ([#122](https://github.com/getstratum/stratum/issues/122)) ([93b459e](https://github.com/getstratum/stratum/commit/93b459efbbda2261e2531b4831f1cca39cbd5e6e))
+
+
+### Bug Fixes
+
+* **gateway:** PII and DLP leave inline images alone ([#121](https://github.com/getstratum/stratum/issues/121)) ([1509a3d](https://github.com/getstratum/stratum/commit/1509a3dd772ddc8025442af020d4f097c173e32a))
+
 ## [0.6.0](https://github.com/getstratum/stratum/compare/v0.5.0...v0.6.0) (2026-11-14)
 
 
