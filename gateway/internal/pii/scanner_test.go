@@ -185,3 +185,41 @@ func TestDisjoint_ExtendsPartialOverlap(t *testing.T) {
 		t.Fatalf("redacted = %q", out)
 	}
 }
+
+// An inline image is base64: digits that look like a phone or a card, and
+// letters that look like a key. It is not scanned, so it is not flagged and
+// redaction does not corrupt it; the text around it still is.
+func TestInlineFilesAreNotScanned(t *testing.T) {
+	blob := "iVBORw0KGgo4111111111111111AKIAIOSFODNN7EXAMPLE+59899123456/0987654321=="
+	bodies := []string{
+		// OpenAI: a data: URI in image_url.
+		`{"messages":[{"role":"user","content":[{"type":"text","text":"mail juana@ejemplo.com"},` +
+			`{"type":"image_url","image_url":{"url":"data:image/png;base64,` + blob + `"}}]}]}`,
+		// Anthropic: an image source.
+		`{"messages":[{"role":"user","content":[{"type":"text","text":"mail juana@ejemplo.com"},` +
+			`{"type":"image","source":{"type":"base64","media_type":"image/png","data":"` + blob + `"}}]}]}`,
+		// Gemini: inline_data.
+		`{"contents":[{"parts":[{"text":"mail juana@ejemplo.com"},{"inline_data":{"mime_type":"image/png","data":"` + blob + `"}}]}]}`,
+	}
+	all := append(append([]string{}, PersonalTypes...), SecretTypes...)
+	for i, body := range bodies {
+		res, err := ScanJSON([]byte(body), all)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(res.Types) != 1 || res.Types[0] != "email" {
+			t.Errorf("body %d: flagged %v, want only the email", i, res.Types)
+		}
+		out, _, err := RedactJSON([]byte(body), all)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(out), blob) || strings.Contains(string(out), "juana@ejemplo.com") {
+			t.Errorf("body %d: redacted %s", i, out)
+		}
+	}
+	// A data: URI that is not base64 is text like any other.
+	if res, _ := ScanJSON([]byte(`{"x":"data:text/plain,juana@ejemplo.com"}`), all); len(res.Types) != 1 {
+		t.Errorf("plain data URI: %v", res.Types)
+	}
+}
