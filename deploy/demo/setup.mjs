@@ -10,7 +10,8 @@
 //   owner@acme.com     Owner (sets up the second factor at the first sign-in)
 //   auditor@acme.com   Auditor: reads everything, changes nothing, no second factor
 //   three teams with their policies, four people with keys, two agents,
-//   OpenAI and Mistral pointed at the mock LLM, the demo gateway,
+//   OpenAI and Mistral pointed at the mock LLM, an MCP server (the mock
+//   LLM's /mcp), the demo gateway,
 //   and four weeks of usage history, reported the way a gateway does.
 //
 // Env: DATABASE_URL, STRATUM_ENCRYPTION_KEY, STRATUM_CP_URL (for the
@@ -55,6 +56,8 @@ const ACCOUNTS = [
   { email: 'auditor@acme.com', name: 'Auditor (demo)', role: 'auditor', password: 'stratum-demo-auditor' },
 ]
 const MOCK = process.env.STRATUM_DEMO_MOCK_URL ?? 'http://mock-llm:8080'
+// The same as MOCK_MCP_TOKEN in docker-compose.yml.
+const MCP_TOKEN = 'demo-mcp-token'
 
 async function setup(db) {
   await db.query(readFileSync(process.env.STRATUM_DEMO_SEED ?? `${APP}/demo/seed.sql`, 'utf8'))
@@ -114,6 +117,19 @@ async function setup(db) {
         INSERT INTO provider_configs (id, org_id, provider, display_name, api_key_encrypted, base_url, api_key_hint, key_updated_by, key_updated_at)
         VALUES ($1, $2, $3, $4, $5, $6, 'demo', 'demo', now()) ON CONFLICT DO NOTHING`,
       [id, ORG, provider, name, encryptSecret('demo-not-a-real-key'), MOCK])
+    }
+
+    // An MCP server (ADR-0016), answered by the mock LLM, with its token
+    // kept in the console. When it is new (also over an older demo),
+    // Engineering may use two of its three tools: borrar_todo shows the refusal.
+    const { rows: mcpTable } = await db.query(`SELECT 1 FROM information_schema.tables WHERE table_name = 'mcp_servers'`)
+    if (mcpTable.length) {
+      const { rowCount: newMcp } = await db.query(`
+        INSERT INTO mcp_servers (id, org_id, name, description, url, auth_header, secret_encrypted, secret_hint, updated_by)
+        VALUES ('mcp_00000000000000d1', $1, 'demo', 'Hora, clima y una peligrosa (simuladas)', $2, 'Authorization', $3, '…oken', 'demo')
+        ON CONFLICT DO NOTHING`, [ORG, `${MOCK}/mcp`, encryptSecret(`Bearer ${MCP_TOKEN}`)])
+      if (newMcp) await db.query(`UPDATE policies SET mcp_tools = ARRAY['demo/hora', 'demo/clima']
+                                   WHERE id = '10000000-0000-0000-0000-000000000001'`)
     }
 
     // The demo gateway, with a fixed sync token.
@@ -233,6 +249,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       -H "Authorization: Bearer ${PEOPLE[0].key}" \\
       -H "content-type: application/json" \\
       -d '{"model":"openai/gpt-4o-mini","messages":[{"role":"user","content":"Hola"}]}'
+
+  MCP tools for agents: http://localhost:20128/mcp/demo, with the same key.
 
   Every answer comes from a mock LLM: no provider is called, nothing is paid.
   DEMO ONLY: fixed passwords and keys. Do not expose these ports.

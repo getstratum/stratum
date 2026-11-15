@@ -4,6 +4,7 @@
 // a real provider.
 //
 //	POST /v1/chat/completions   non-streamed or streamed (SSE)
+//	POST /mcp                   a small MCP server (mcp.go)
 //	GET  /healthz
 //
 // By default every response reports 60 prompt + 40 completion tokens (100
@@ -23,6 +24,7 @@
 //	MOCK_USAGE              fixed (default) or request
 //	MOCK_MAX_COMPLETION_TOKENS  with MOCK_USAGE=request, the most completion
 //	                        tokens a response reports (default 0: no limit)
+//	MOCK_MCP_TOKEN          bearer token /mcp requires (default: none)
 package main
 
 import (
@@ -63,6 +65,7 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.Write([]byte("ok")) })
 	mux.HandleFunc("POST /v1/chat/completions", cfg.chat)
+	mux.HandleFunc("POST /mcp", mcp)
 
 	srv := &http.Server{Addr: ":8080", Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	go func() {

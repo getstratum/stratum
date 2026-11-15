@@ -2,6 +2,9 @@ package main
 
 import (
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -36,5 +39,34 @@ func TestTokens(t *testing.T) {
 	req.MaxTokens = 200
 	if _, c := (config{usageFromReq: true, maxCompletion: 600}).tokens(req); c != 200 {
 		t.Fatalf("under the limit: got %d, want 200", c)
+	}
+}
+
+func TestMCP(t *testing.T) {
+	t.Setenv("MOCK_MCP_TOKEN", "tok")
+	call := func(auth, body string) (int, map[string]any) {
+		req := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(body))
+		if auth != "" {
+			req.Header.Set("Authorization", auth)
+		}
+		w := httptest.NewRecorder()
+		mcp(w, req)
+		var out map[string]any
+		json.Unmarshal(w.Body.Bytes(), &out)
+		return w.Code, out
+	}
+	if code, _ := call("", `{"jsonrpc":"2.0","id":1,"method":"initialize"}`); code != 401 {
+		t.Errorf("without the token: %d", code)
+	}
+	if _, out := call("Bearer tok", `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`); len(out["result"].(map[string]any)["tools"].([]any)) != 3 {
+		t.Errorf("tools/list: %v", out)
+	}
+	_, out := call("Bearer tok", `{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"clima","arguments":{"ciudad":"Salto"}}}`)
+	text := out["result"].(map[string]any)["content"].([]any)[0].(map[string]any)["text"].(string)
+	if !strings.Contains(text, "Salto") {
+		t.Errorf("clima: %q", text)
+	}
+	if code, _ := call("Bearer tok", `{"jsonrpc":"2.0","method":"notifications/initialized"}`); code != 202 {
+		t.Errorf("notification: %d", code)
 	}
 }

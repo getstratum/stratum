@@ -11,7 +11,19 @@ every pod), by `make up` with Docker Compose, or by you with the
 ([chart README](../deploy/helm/stratum-control-plane/README.md#migrations)).
 Back up the database before you upgrade.
 
-## From 0.5 to 0.6 (in progress)
+## From 0.6 to 0.7 (in progress)
+
+- **Migration 040, additive:** the table `mcp_servers` and
+  `policies.mcp_tools` (empty: no MCP server).
+- **MCP tools for agents** ([ADR-0016](adr/0016-mcp-proxy.md)): gateways
+  serve `/mcp/<server>`. Nothing changes until a server is added in
+  *Herramientas MCP* and a policy allows its tools. Upgrade the gateways
+  first: older ones answer 404 to `/mcp/`.
+- **Inline images and PII:** gateways no longer scan base64 images and files
+  that a request carries inline. Before, their digits could be flagged as a
+  phone or a card, and redaction corrupted the image.
+
+## From 0.5 to 0.6
 
 - **Migration 038, additive:** a nullable `kind` column on `ai_models`,
   `provider_models` and `org_model_settings`. Nothing is backfilled: a

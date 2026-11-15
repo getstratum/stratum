@@ -37,7 +37,8 @@ export const PATCH = route('policies.manage', async (req, { session, db, params 
       allowed_providers      = CASE WHEN $9 THEN $10::text[] ELSE allowed_providers END,
       budget_enforced        = COALESCE($11, budget_enforced),
       people_instructions    = CASE WHEN $13 THEN $14::text ELSE people_instructions END,
-      default_model          = CASE WHEN $15 THEN $16::text ELSE default_model END
+      default_model          = CASE WHEN $15 THEN $16::text ELSE default_model END,
+      mcp_tools              = COALESCE($17::text[], mcp_tools)
     WHERE id = $6 AND org_id = $7
     RETURNING *
   `, [f.name ?? null, f.allowedModels ?? null, f.maxTokensPerRequest ?? null,
@@ -45,7 +46,7 @@ export const PATCH = route('policies.manage', async (req, { session, db, params 
       f.allowAllModels ?? null, 'allowedProviders' in f, f.allowedProviders ?? null,
       f.budgetEnforced ?? null, 'maxTokensPerRequest' in f,
       'peopleInstructions' in f, f.peopleInstructions ?? null,
-      'defaultModel' in f, f.defaultModel ?? null])
+      'defaultModel' in f, f.defaultModel ?? null, f.mcpTools ?? null])
   if (!rows[0]) throw notFound('Política no encontrada.')
   await audit(db, { req, session, action: 'policy.update', targetType: 'policy', targetId: id, details: f })
   return json(rows[0])

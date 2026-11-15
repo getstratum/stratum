@@ -37,6 +37,11 @@
       "type": "array",
       "items": { "$ref": "#/$defs/alias" }
     },
+    "mcp_servers": {
+      "description": "The organization's MCP servers that are turned on (ADR-0016), with the headers gateways from 0.7 add to every request to them. Not versioned: sent with every sync; a response that carries it replaces the list. Control planes before 0.7 do not send it.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/mcpServer" }
+    },
     "people": {
       "description": "The people directory: who a key with delegates = true may act for (X-Stratum-User), and under which team. Ids only. A full sync sends every person of the organization; a delta, the ones that changed. Control planes before 0.4 do not send it, and then no person can be acted for.",
       "type": "array",
@@ -97,6 +102,11 @@
           "type": "string",
           "maxLength": 2000
         },
+        "mcp_tools": {
+          "description": "MCP tools the policy's teams may call through gateways from 0.7 (ADR-0016): \"server/*\" or \"server/tool\". Empty or absent: none.",
+          "type": "array",
+          "items": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,49}/(\\*|[A-Za-z0-9_][A-Za-z0-9_.\\-/]{0,127})$" }
+        },
         "default_model": {
           "description": "The policy's default model, \"provider/model\" or a route, \"stratum/<name>\". Gateways from 0.6 mark it in GET /v1/models and send to it the requests that name no model; an agent's fixed model wins. Empty or absent: none.",
           "type": "string",
@@ -139,6 +149,15 @@
           "enum": ["chat", "embedding", "image", "transcription", "speech", "moderation", "other"],
           "description": "What the model is for, as the organization sees it (the console's Modelos page). Gateways pass it on in GET /v1/models. Control planes before 0.6 do not send it."
         }
+      }
+    },
+    "mcpServer": {
+      "type": "object",
+      "required": ["name", "url"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,49}$", "description": "Agents reach it at /mcp/<name>." },
+        "url": { "type": "string", "minLength": 1, "description": "The server's Streamable HTTP endpoint." },
+        "headers": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Added to every request to the server, its credential among them. Agents never see them." }
       }
     },
     "alias": {

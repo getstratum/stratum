@@ -12,7 +12,38 @@ const PEOPLE_INSTRUCTIONS_MAX = 2000
 
 
 // ─── Policy form modal ────────────────────────────────────────────────────────
-function PolicyModal({ policy, allModels, aliases, configured, onSave, onClose }) {
+// MCP tools of one server in a policy (ADR-0016): none, every one, or these.
+function McpTools({ server, tools, onChange }) {
+  const prefix = `${server.name}/`
+  const mine = tools.filter(t => t.startsWith(prefix))
+  // Its own state: "Solo estas" with nothing typed yet is still "Solo estas".
+  const [mode, setMode] = useState(mine.includes(`${prefix}*`) ? 'all' : mine.length ? 'some' : 'none')
+  const [text, setText] = useState(mine.filter(t => t !== `${prefix}*`).map(t => t.slice(prefix.length)).join(', '))
+  const others = tools.filter(t => !t.startsWith(prefix))
+  const names = v => v.split(/[\s,]+/).map(x => x.trim()).filter(Boolean).map(x => prefix + x)
+  return (
+    <div className="flex flex-wrap items-center gap-2" data-testid="mcp-tools">
+      <span className="font-mono text-sm text-strong min-w-[140px]">/mcp/{server.name}</span>
+      <select aria-label={`Herramientas de ${server.name}`} value={mode}
+              onChange={e => {
+                setMode(e.target.value)
+                onChange(e.target.value === 'all' ? [...others, `${prefix}*`] : e.target.value === 'some' ? [...others, ...names(text)] : others)
+              }}
+              className="bg-card border border-border-strong rounded-md px-2 h-9 text-sm text-strong">
+        <option value="none">Ninguna</option>
+        <option value="all">Todas</option>
+        <option value="some">Solo estas</option>
+      </select>
+      {mode === 'some' && (
+        <input aria-label={`Herramientas permitidas de ${server.name}`} value={text} placeholder="buscar, crear_ticket"
+               onChange={e => { setText(e.target.value); onChange([...others, ...names(e.target.value)]) }}
+               className="flex-1 min-w-[180px] bg-card border border-border-strong rounded-md px-3 h-9 text-sm text-strong placeholder-subtle" />
+      )}
+    </div>
+  )
+}
+
+function PolicyModal({ policy, allModels, aliases, mcpServers, configured, onSave, onClose }) {
   const isEdit = !!policy
   const [form, setForm] = useState({
     name:                policy?.name                    ?? '',
@@ -25,6 +56,7 @@ function PolicyModal({ policy, allModels, aliases, configured, onSave, onClose }
     budgetEnforced:      policy?.budget_enforced         ?? false,
     peopleInstructions:  policy?.people_instructions     ?? '',
     defaultModel:        policy?.default_model           ?? '',
+    mcpTools:            policy?.mcp_tools               ?? [],
   })
   const [saving, setSaving] = useState(false)
   const [error,  setError]  = useState('')
@@ -244,6 +276,18 @@ function PolicyModal({ policy, allModels, aliases, configured, onSave, onClose }
           </Select>
         </Field>
 
+        {/* MCP tools (ADR-0016) */}
+        {mcpServers.length > 0 && (
+          <Field label="Herramientas MCP"
+                 hint="Las que los agentes y aplicaciones de estos equipos pueden llamar a través del gateway. Las demás no se listan, y llamarlas se rechaza. Solo estas: los nombres, separados por coma.">
+            <div className="space-y-2 mt-1">
+              {mcpServers.map(s => (
+                <McpTools key={s.id} server={s} tools={form.mcpTools} onChange={t => set('mcpTools', t)} />
+              ))}
+            </div>
+          </Field>
+        )}
+
         {/* Limits */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <Field label="Máx. tokens por pedido" hint="De respuesta. El gateway baja a este número los pedidos que piden más. Vacío: sin límite.">
@@ -374,22 +418,25 @@ export default function PolicyPage() {
   const [policies,  setPolicies]  = useState([])
   const [allModels, setAllModels] = useState([])
   const [aliases,   setAliases]   = useState([])
+  const [mcpServers, setMcpServers] = useState([])
   const [configured, setConfigured] = useState([])
   const [loading,   setLoading]   = useState(true)
   const [modal,     setModal]     = useState(null) // null | 'create' | { edit: p } | { delete: p }
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [p, m, prov, al] = await Promise.all([
+    const [p, m, prov, al, mcp] = await Promise.all([
       fetch('/api/policies').then(r => r.json()),
       fetch('/api/models').then(r => r.json()),
       // Roles without providers.read (team managers) get 403: the form then lists none.
       fetch('/api/internal/providers').then(r => (r.ok ? r.json() : null)).catch(() => null),
       fetch('/api/model-aliases').then(r => (r.ok ? r.json() : null)).catch(() => null),
+      fetch('/api/mcp-servers').then(r => (r.ok ? r.json() : null)).catch(() => null),
     ])
     setPolicies(p)
     setAllModels(m)
     setAliases(al?.aliases ?? [])
+    setMcpServers(mcp?.servers ?? [])
     const names = new Map((prov?.providers ?? []).map(c => [c.provider, c.provider_label ?? c.provider]))
     setConfigured([...names].map(([id, label]) => ({ id, label })))
     setLoading(false)
@@ -482,6 +529,16 @@ export default function PolicyPage() {
                   )}
                 </div>
                 <DefaultModel policy={policy} />
+                {(policy.mcp_tools ?? []).length > 0 && (
+                  <div>
+                    <div className="text-xs text-muted mb-2">Herramientas MCP</div>
+                    <div className="flex flex-wrap gap-2">
+                      {policy.mcp_tools.map(t => (
+                        <span key={t} className="text-xs border border-border rounded px-2 py-0.5 font-mono text-default">{t.endsWith('/*') ? `${t.slice(0, -2)}: todas` : t}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 {policy.people_instructions && (
                   <div>
                     <div className="text-xs text-muted mb-2">Instrucciones para personas</div>
@@ -512,10 +569,10 @@ export default function PolicyPage() {
 
       {/* Modals */}
       {modal === 'create' && (
-        <PolicyModal allModels={allModels} aliases={aliases} configured={configured} onSave={handleSave} onClose={() => setModal(null)} />
+        <PolicyModal allModels={allModels} aliases={aliases} mcpServers={mcpServers} configured={configured} onSave={handleSave} onClose={() => setModal(null)} />
       )}
       {modal?.edit && (
-        <PolicyModal policy={modal.edit} allModels={allModels} aliases={aliases} configured={configured} onSave={handleSave} onClose={() => setModal(null)} />
+        <PolicyModal policy={modal.edit} allModels={allModels} aliases={aliases} mcpServers={mcpServers} configured={configured} onSave={handleSave} onClose={() => setModal(null)} />
       )}
       {modal?.delete && (
         <DeleteConfirm policy={modal.delete} onConfirm={handleSave} onClose={() => setModal(null)} />

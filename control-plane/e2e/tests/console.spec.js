@@ -517,6 +517,61 @@ test('policies: a default model, which gateways mark and send model-less request
   expect((await api('DELETE', `/api/model-aliases/${route}`)).status).toBe(200)
 })
 
+test('mcp: a server kept in the console, its tools as the policy allows, through the gateway (ADR-0016)', async () => {
+  test.skip(!GATEWAY, 'no STRATUM_E2E_GATEWAY_URL')
+  const MOCK = env('STRATUM_E2E_MOCK_URL', 'http://127.0.0.1:8080')
+  const name = `${RUN}-mcp`
+  await page.goto('/mcp')
+  await page.getByRole('button', { name: '+ Nuevo servidor' }).click()
+  const d = dialog('Nuevo servidor MCP')
+  await d.getByLabel('Nombre').fill(name)
+  await d.getByLabel('URL').fill(`${MOCK}/mcp`)
+  await d.getByLabel('Valor').fill('Bearer not-shown-anywhere')
+  await d.getByRole('button', { name: 'Guardar' }).click()
+  const row = page.getByTestId('mcp-server').filter({ hasText: `/mcp/${name}` })
+  await expect(row).toContainText('Authorization: …here')
+  await expect(row).toContainText('Ninguna política')
+
+  // Engineering may call two of its three tools.
+  const team = ((await api('GET', '/api/teams')).body ?? []).find((t) => t.name === TEAM)
+  await page.goto('/policy')
+  const card = page.locator('div.bg-card').filter({ has: page.getByText(team.policy_name, { exact: true }) }).first()
+  await card.getByRole('button', { name: 'Editar' }).click()
+  const p = dialog('Editar política')
+  await p.getByLabel(`Herramientas de ${name}`).selectOption('some')
+  await p.getByLabel(`Herramientas permitidas de ${name}`).fill('hora, clima')
+  await p.getByRole('button', { name: 'Guardar cambios' }).click()
+  await expect(card).toContainText(`${name}/hora`)
+
+  // An agent of that team, through the gateway.
+  const agent = `${RUN}-tools`
+  created.agentNames.push(agent)
+  const key = (await api('POST', '/api/agents', { name: agent, teamId: team.id })).body.apiKey
+  const rpc = async (body) => {
+    const res = await fetch(`${GATEWAY}/mcp/${name}`, {
+      method: 'POST', body: JSON.stringify({ jsonrpc: '2.0', ...body }),
+      headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
+    })
+    return { status: res.status, body: await res.json().catch(() => null) }
+  }
+  await eventually(async () => {
+    const r = await rpc({ id: 1, method: 'tools/list' })
+    return (r.body?.result?.tools ?? []).map((t) => t.name).join(',')
+  }, 'hora,clima', SYNC_MS, 'the policy\'s tools listed through the gateway')
+  const ok = await rpc({ id: 2, method: 'tools/call', params: { name: 'clima', arguments: { ciudad: 'Rivera' } } })
+  expect(ok.body.result.content[0].text).toContain('Rivera')
+  const refused = await rpc({ id: 3, method: 'tools/call', params: { name: 'borrar_todo', arguments: {} } })
+  expect([refused.status, refused.body.result.isError]).toEqual([200, true])
+
+  // In use by a policy: not deleted. Then back as it was.
+  await page.goto('/mcp')
+  await page.getByRole('button', { name: `Borrar ${name}` }).click()
+  await expect(page.getByText('Lo permiten las políticas')).toContainText(team.policy_name)
+  expect((await api('PATCH', `/api/policies/${team.policy_id}`, { mcpTools: [] })).status).toBe(200)
+  const server = ((await api('GET', '/api/mcp-servers')).body.servers ?? []).find((s) => s.name === name)
+  expect((await api('DELETE', `/api/mcp-servers/${server.id}`)).status).toBe(200)
+})
+
 test('agents: an agent that acts for people follows each person, and stops for one whose access is taken away', async () => {
   test.skip(!GATEWAY, 'no STRATUM_E2E_GATEWAY_URL')
   const name = `${RUN}-portal`

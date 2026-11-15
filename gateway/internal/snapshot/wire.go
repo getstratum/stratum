@@ -83,12 +83,25 @@ type SyncResponse struct {
 	// sent with every sync, and replaces what the gateway had. Absent from
 	// control planes before 0.5.
 	ModelAliases []WireAlias `json:"model_aliases,omitempty"`
+	// MCPServers are the organization's MCP servers that are turned on
+	// (ADR-0016), served at /mcp/<name>. Not versioned: a response that
+	// carries the list replaces it. Absent from control planes before 0.7.
+	MCPServers []WireMCPServer `json:"mcp_servers,omitempty"`
 }
 
 // WireAlias is a model alias: a name and its targets, in order.
 type WireAlias struct {
 	Name    string            `json:"name"`
 	Targets []WireAliasTarget `json:"targets"`
+}
+
+// WireMCPServer is an MCP server agents reach through the gateway at
+// /mcp/<name>. Headers (its credential among them) are added to every
+// request to it; agents never see them.
+type WireMCPServer struct {
+	Name    string            `json:"name"`
+	URL     string            `json:"url"`
+	Headers map[string]string `json:"headers,omitempty"`
 }
 
 // WireAliasTarget is one model an alias may go to.
@@ -156,9 +169,12 @@ type WirePolicy struct {
 	// in GET /v1/models, and where requests that name no model go. Absent
 	// from control planes before 0.6.
 	DefaultModel string `json:"default_model,omitempty"`
-	PIIAction    string `json:"pii_action,omitempty"`
-	DLPAction    string `json:"dlp_action,omitempty"`
-	Revoked      bool   `json:"revoked"`
+	// MCPTools are the MCP tools the policy's teams may call: "server/*" or
+	// "server/tool" (ADR-0016). Empty: none.
+	MCPTools  []string `json:"mcp_tools,omitempty"`
+	PIIAction string   `json:"pii_action,omitempty"`
+	DLPAction string   `json:"dlp_action,omitempty"`
+	Revoked   bool     `json:"revoked"`
 }
 
 // WireAPIKey is a developer API key. Only the SHA-256 hex digest travels;
