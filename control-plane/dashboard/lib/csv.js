@@ -42,6 +42,8 @@ export const LOG_COLUMNS = [
   { key: 'model_id',     label: 'Model' },
   { key: 'team_name',    label: 'Team' },
   { key: 'agent_name',   label: 'Agent' },
+  // The person: their own key, or the one an agent acted for.
+  { key: 'user_email',   label: 'User' },
   { key: 'tokens_input', label: 'Tokens In' },
   { key: 'tokens_output',label: 'Tokens Out' },
   // Empty: the model has no price (not a cost of 0).
@@ -49,6 +51,8 @@ export const LOG_COLUMNS = [
   { key: 'latency_ms',   label: 'Latency ms' },
   { key: 'status_code',  label: 'Status' },
   { key: 'is_stream',    label: 'Streaming' },
+  { key: 'error_message', label: 'Reason' },
+  { key: 'labels',       label: 'Labels',        format: v => (Array.isArray(v) ? v.join(';') : '') },
 ]
 
 export const PROVIDER_COLUMNS = [

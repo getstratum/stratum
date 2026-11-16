@@ -36,6 +36,38 @@ function TraceBar({ label, ms, total, color }) {
   )
 }
 
+// Labels that say something went differently from usual, for whoever reads
+// the row (the gateway sets them; the application's own go as they came).
+const NOTED_LABELS = {
+  decision_skipped: 'Los servicios de decisión no contestaron a tiempo: el pedido siguió sin su decisión.',
+  tool_approved: 'Una persona aprobó esta llamada en el portal.',
+}
+
+function RequestFacts({ log }) {
+  const labels = Array.isArray(log.labels) ? log.labels : []
+  if (!log.error_message && !labels.length) return null
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs mb-3" data-testid="request-facts">
+      {log.error_message && (
+        <span className="text-muted">
+          Motivo <code className="font-mono text-strong">{log.error_message}</code>
+        </span>
+      )}
+      {labels.length > 0 && (
+        <span className="flex flex-wrap items-center gap-1.5 text-muted">
+          Etiquetas
+          {labels.map(l => (
+            <span key={l} title={NOTED_LABELS[l]}
+                  className={`font-mono rounded px-1.5 py-0.5 ${l === 'decision_skipped' ? 'bg-warn-light text-warn' : 'bg-app text-default'}`}>
+              {l}
+            </span>
+          ))}
+        </span>
+      )}
+    </div>
+  )
+}
+
 function TraceDetail({ log }) {
   const auth     = log.auth_ms     ?? 0
   const policy   = log.policy_ms   ?? 0
@@ -47,6 +79,7 @@ function TraceDetail({ log }) {
   return (
     <tr className="bg-raised">
       <td colSpan={11} className="px-6 py-4 border-t border-border">
+        <RequestFacts log={log} />
         {hasTrace ? (
           <div className="max-w-lg space-y-2.5">
             <div className="text-xs text-muted mb-3">
@@ -117,9 +150,14 @@ export default function RequestsLog({ logs }) {
                 </td>
                 <td className="px-4 py-3.5 font-mono text-xs text-default whitespace-nowrap">{log.model_id}</td>
                 <td className="px-4 py-3.5 text-xs text-muted">{log.team_name ?? '—'}</td>
-                <td className="px-4 py-3.5 text-xs max-w-[180px] truncate">
+                <td className="px-4 py-3.5 text-xs max-w-[220px] truncate">
                   {log.agent_name
-                    ? <span className="text-default" title="Agente">{log.agent_name}</span>
+                    ? (log.user_email
+                        ? <span title={`El agente ${log.agent_name}, en nombre de ${log.user_email}`}>
+                            <span className="text-default">{log.agent_name}</span>
+                            <span className="text-muted"> · por {log.user_email}</span>
+                          </span>
+                        : <span className="text-default" title="Agente">{log.agent_name}</span>)
                     : <span className="text-muted" title="Persona">{log.user_email ?? 'persona'}</span>}
                 </td>
                 <td className="px-4 py-3.5 text-right text-xs text-muted tabular">{nf(log.tokens_input)}</td>
