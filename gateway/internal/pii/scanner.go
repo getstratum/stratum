@@ -43,12 +43,26 @@ func scanText(text string, enabledTypes map[string]bool) []Detection {
 				if !secretShaped(match) {
 					continue
 				}
+			case TypePhone:
+				// Digits inside an identifier (ap_d90f85987696, a hash, a
+				// version) are not a phone: it stands on its own.
+				if insideWord(text, loc[0], loc[1]) {
+					continue
+				}
 			}
 
 			out = append(out, Detection{Type: typ, Start: loc[0], End: loc[1], Value: match})
 		}
 	}
 	return disjoint(text, out)
+}
+
+// insideWord: the match touches a letter, a digit or _ on either side.
+func insideWord(text string, start, end int) bool {
+	word := func(c byte) bool {
+		return c == '_' || (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+	}
+	return (start > 0 && word(text[start-1])) || (end < len(text) && word(text[end]))
 }
 
 // rank orders detectors for the same text: the more specific (validated)
