@@ -75,6 +75,14 @@ func (h *Handler) MCP(w http.ResponseWriter, r *http.Request) {
 			Message: "there is no MCP server " + name + " in this organization"})
 		return
 	}
+	// The application's labels, as on a model request: on every record of
+	// this request and for the decision services.
+	appLabels, valid := parseLabels(r.Header.Values("X-Stratum-Labels"))
+	if !valid {
+		fail(&policy.Violation{Status: http.StatusBadRequest, Code: "invalid_labels",
+			Message: "X-Stratum-Labels takes up to 8 comma-separated labels of lowercase letters, digits and _ (1 to 40 each)"})
+		return
+	}
 	// model is "server/tool" for a call, the server alone when the server
 	// itself is refused.
 	report := func(model string, st int, why string, labels ...string) {
@@ -84,7 +92,7 @@ func (h *Handler) MCP(w http.ResponseWriter, r *http.Request) {
 		h.Usage.Add(usage.Record{
 			ID: usage.NewID(), Time: start.UTC(), KeyID: key.ID, UserID: userID, TeamID: teamID,
 			Provider: "mcp", Model: usage.Clip(model, 100), Status: st, Reason: why,
-			DurationMs: time.Since(start).Milliseconds(), Labels: mergeLabels([]string{"mcp"}, labels),
+			DurationMs: time.Since(start).Milliseconds(), Labels: mergeLabels(mergeLabels([]string{"mcp"}, appLabels), labels),
 		})
 	}
 	if !pol.MCPAllowed(name, "") {
@@ -209,7 +217,7 @@ func (h *Handler) MCP(w http.ResponseWriter, r *http.Request) {
 				RequestID: requestID, Time: start.UTC().Format(time.RFC3339Nano),
 				KeyID: key.ID, KeyLabel: key.Label, TeamID: teamID, UserID: userID, Task: task,
 				Provider: "mcp", Model: name + "/" + m.Params.Name, Operation: decision.OperationToolCall,
-				Labels: []string{"mcp"}, ContentSHA256: sum, ContentBytes: len(canon), Tool: tool,
+				Labels: mergeLabels([]string{"mcp"}, appLabels), ContentSHA256: sum, ContentBytes: len(canon), Tool: tool,
 			})
 			checks[i] = checked{sum: sum, labels: d.Labels}
 			if d.Skipped {
