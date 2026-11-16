@@ -266,6 +266,28 @@ Where it shows:
 The kind does not limit requests: a policy that allows a model allows it at
 every endpoint, and the provider refuses one that does not fit.
 
+### What a chat model can do
+
+A chat model may also **read images** and **call tools**
+(`lib/model-capabilities.js`). Each one, in the same order as the kind:
+
+1. the organization's choice, in Modelos (under the Tipo of a chat model:
+   *Lee imágenes* and *Usa herramientas*, "Automático" goes back to the
+   next source);
+2. the catalog's (`"vision"` and `"tools"` in `catalog/models.json`);
+3. what the provider said when the connection test listed the model:
+   OpenRouter's input modalities and supported parameters, Mistral's
+   capabilities;
+4. its ID, by family: GPT-4o and later, Claude 3 and later, Gemini, Llama
+   4, Pixtral and the `-vl` and `vision` models read images; most current
+   families call tools (`gpt-oss`, Llama 3.1 and later, Qwen, Mistral...).
+
+Gateways say them in `GET /v1/models` (`"capabilities": ["tools",
+"vision"]`, control planes 0.8 and later). A route says only what every
+model it may go to can do. The Enterprise portal does not send an image to
+a model that cannot read it, and offers MCP tools only with a model that
+can call them. Like the kind, they do not limit requests.
+
 ### Modelos
 
 The **Modelos** page lists the catalog with prices and aliases, retirement

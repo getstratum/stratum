@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -218,6 +219,47 @@ func TestModelsSayTheirKind(t *testing.T) {
 	for id, k := range want {
 		if v, ok := got[id]; !ok || v != k {
 			t.Errorf("%s: kind %v, want %v", id, v, k)
+		}
+	}
+}
+
+func TestModelsSayWhatTheyCanDo(t *testing.T) {
+	h := modelsHandler(t, modelsOrg)
+	st, err := h.Holder.State().Apply(&snapshot.SyncResponse{CurrentVersion: 6, Models: []snapshot.WireModel{
+		{Provider: "openai", ID: "gpt-4o", Kind: "chat", Capabilities: []string{"tools", "vision"}},
+		{Provider: "openai", ID: "gpt-4o-mini", Kind: "chat", Capabilities: []string{"tools"}},
+		{Provider: "openai", ID: "whisper-1", Kind: "transcription"},
+	}, ModelAliases: []snapshot.WireAlias{
+		// A route says only what every model it may go to can do.
+		{Name: "chat", Targets: []snapshot.WireAliasTarget{{Provider: "openai", Model: "gpt-4o"}, {Provider: "openai", Model: "gpt-4o-mini"}}},
+		{Name: "vista", Targets: []snapshot.WireAliasTarget{{Provider: "openai", Model: "gpt-4o"}}},
+	}}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.Holder.Store(st, snapshot.Build(st, time.Now()))
+	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	req.Header.Set("Authorization", "Bearer "+listKey)
+	w := httptest.NewRecorder()
+	h.Models(w, req)
+	var body struct {
+		Data []struct {
+			ID           string   `json:"id"`
+			Capabilities []string `json:"capabilities"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, m := range body.Data {
+		got[m.ID] = strings.Join(m.Capabilities, ",")
+	}
+	want := map[string]string{"openai/gpt-4o": "tools,vision", "openai/gpt-4o-mini": "tools", "openai/whisper-1": "",
+		"stratum/chat": "tools", "stratum/vista": "tools,vision"}
+	for id, c := range want {
+		if v, ok := got[id]; !ok || v != c {
+			t.Errorf("%s: %q, want %q (all: %v)", id, v, c, got)
 		}
 	}
 }

@@ -148,6 +148,12 @@
           "type": "string",
           "enum": ["chat", "embedding", "image", "transcription", "speech", "moderation", "other"],
           "description": "What the model is for, as the organization sees it (the console's Modelos page). Gateways pass it on in GET /v1/models. Control planes before 0.6 do not send it."
+        },
+        "capabilities": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["tools", "vision"] },
+          "uniqueItems": true,
+          "description": "What a chat model can do besides text: call tools, read images. Left out when neither. Gateways pass it on in GET /v1/models. Control planes before 0.8 do not send it."
         }
       }
     },
