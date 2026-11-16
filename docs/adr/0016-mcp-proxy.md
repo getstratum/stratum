@@ -45,7 +45,10 @@ console (*Herramientas MCP*):
    is: the call is what is enforced.
 6. **Recorded.** Each `tools/call` is a usage record: provider `mcp`, model
    `server/tool`, label `mcp`, status, refused ones included (403,
-   `tool_not_allowed`). The console shows them in Requests.
+   `tool_not_allowed`). So is a request refused because the policy does not
+   allow the server at all (model `server`, 403, `mcp_server_not_allowed`,
+   from 0.7.1): a team trying a server it may not use is what an audit looks
+   for. The console shows them in Requests.
 
 ### Open source and Enterprise
 

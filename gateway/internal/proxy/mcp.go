@@ -34,7 +34,9 @@ import (
 //     allow. That is a courtesy: what is enforced is the call.
 //
 // Each tools/call is a usage record (provider "mcp", model
-// "server/tool"), refused ones too, so the console shows them in Requests.
+// "server/tool"), refused ones too, so the console shows them in Requests;
+// so is a request refused because the policy does not allow the server
+// (model "server").
 func (h *Handler) MCP(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	status, reason := http.StatusOK, "ok"
@@ -67,7 +69,22 @@ func (h *Handler) MCP(w http.ResponseWriter, r *http.Request) {
 			Message: "there is no MCP server " + name + " in this organization"})
 		return
 	}
+	// model is "server/tool" for a call, the server alone when the server
+	// itself is refused.
+	report := func(model string, st int, why string) {
+		if h.Usage == nil {
+			return
+		}
+		h.Usage.Add(usage.Record{
+			ID: usage.NewID(), Time: start.UTC(), KeyID: key.ID, UserID: userID, TeamID: teamID,
+			Provider: "mcp", Model: usage.Clip(model, 100), Status: st, Reason: why,
+			DurationMs: time.Since(start).Milliseconds(), Labels: []string{"mcp"},
+		})
+	}
 	if !pol.MCPAllowed(name, "") {
+		// Recorded too: an agent trying a server its team may not use is
+		// what an audit looks for.
+		report(name, http.StatusForbidden, "mcp_server_not_allowed")
 		fail(&policy.Violation{Status: http.StatusForbidden, Code: "mcp_server_not_allowed",
 			Message: "this team's policy does not allow the MCP server " + name})
 		return
@@ -76,17 +93,6 @@ func (h *Handler) MCP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Allow", "GET, POST, DELETE")
 		fail(&policy.Violation{Status: http.StatusMethodNotAllowed, Code: "method_not_allowed", Message: "MCP takes GET, POST and DELETE"})
 		return
-	}
-
-	report := func(tool string, st int, why string) {
-		if h.Usage == nil {
-			return
-		}
-		h.Usage.Add(usage.Record{
-			ID: usage.NewID(), Time: start.UTC(), KeyID: key.ID, UserID: userID, TeamID: teamID,
-			Provider: "mcp", Model: usage.Clip(name+"/"+tool, 100), Status: st, Reason: why,
-			DurationMs: time.Since(start).Milliseconds(), Labels: []string{"mcp"},
-		})
 	}
 
 	// What the agent sends: the tools it calls, and the lists it asks for.
@@ -122,7 +128,7 @@ func (h *Handler) MCP(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(refused) > 0 {
 		for _, m := range refused {
-			report(m.Params.Name, http.StatusForbidden, "tool_not_allowed")
+			report(name+"/"+m.Params.Name, http.StatusForbidden, "tool_not_allowed")
 		}
 		status, reason = http.StatusForbidden, "tool_not_allowed"
 		w.Header().Set("Content-Type", "application/json")
@@ -172,7 +178,7 @@ func (h *Handler) MCP(w http.ResponseWriter, r *http.Request) {
 	res, err := h.Client.Do(req)
 	if err != nil {
 		for _, t := range calls {
-			report(t, http.StatusBadGateway, "upstream_error")
+			report(name+"/"+t, http.StatusBadGateway, "upstream_error")
 		}
 		code := "upstream_error"
 		if errors.Is(r.Context().Err(), context.Canceled) {
@@ -187,7 +193,7 @@ func (h *Handler) MCP(w http.ResponseWriter, r *http.Request) {
 		reason = "upstream_status"
 	}
 	for _, t := range calls {
-		report(t, status, reason)
+		report(name+"/"+t, status, reason)
 	}
 
 	for _, k := range []string{"Content-Type", "Mcp-Session-Id", "Mcp-Protocol-Version", "Cache-Control", "Www-Authenticate"} {

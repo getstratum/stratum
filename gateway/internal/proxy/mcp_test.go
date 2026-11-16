@@ -174,9 +174,14 @@ func TestMCPListsAndCallsOnlyWhatThePolicyAllows(t *testing.T) {
 }
 
 func TestMCPRefusals(t *testing.T) {
-	_, up, gw := mcpEnv(t, allowAll) // a policy without MCP tools
+	e, up, gw := mcpEnv(t, allowAll) // a policy without MCP tools
 	if res, _ := mcpCall(t, gw, "/mcp/demo", devKey, `{"jsonrpc":"2.0","id":1,"method":"initialize"}`); res.StatusCode != 403 {
 		t.Errorf("no MCP in the policy: %d", res.StatusCode)
+	}
+	// Recorded, the server as the model: the attempt shows in Requests.
+	if got := e.usage.wait(t, 1); len(got) != 1 || got[0].Provider != "mcp" || got[0].Model != "demo" ||
+		got[0].Status != 403 || got[0].Reason != "mcp_server_not_allowed" {
+		t.Errorf("server refused: usage %+v", got)
 	}
 	if res, _ := mcpCall(t, gw, "/mcp/otro", devKey, `{"jsonrpc":"2.0","id":1,"method":"initialize"}`); res.StatusCode != 404 {
 		t.Errorf("unknown server: %d", res.StatusCode)

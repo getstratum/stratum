@@ -36,7 +36,7 @@ export const isKind = v => typeof v === 'string' && KINDS.includes(v)
 // ("gpt-4o-mini-transcribe" is not chat, "gemini-2.5-flash-preview-tts" is
 // not chat, "omni-moderation-latest" is not chat).
 const RULES = [
-  ['moderation', /moderation|llama-guard|prompt-guard|shieldgemma|(^|[/-])guard($|[-:])/],
+  ['moderation', /moderation|llama-guard|prompt-guard|safeguard|shieldgemma|(^|[/-])guard($|[-:])/],
   ['transcription', /whisper|transcribe|speech-to-text|(^|[/-])stt($|[-:])/],
   ['speech', /(^|[/-])tts($|[-:])|text-to-speech|orpheus|playai|sonic-|(^|[/-])speech($|[-:])/],
   ['embedding', /embed|(^|[/-])bge-|(^|[/-])e5-|(^|[/-])gte-/],
