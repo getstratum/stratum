@@ -123,7 +123,7 @@ export function defaultState(policy, ctx) {
       to: null, route: d.route, fallback: false }
   }
   if (checked[0].why) {
-    return { state: 'degraded', detail: `${checked[0].why}: los pedidos van a ${usable[0].name}.`,
+    return { state: 'degraded', detail: `${checked[0].why}, así que los pedidos van a ${usable[0].name}.`,
       to: usable[0].name, route: d.route, fallback: usable.length > 1 }
   }
   return { state: 'ok', detail: '', to: usable[0].name, route: d.route, fallback: usable.length > 1 }

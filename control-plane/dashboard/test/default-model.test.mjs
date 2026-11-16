@@ -125,7 +125,7 @@ test('defaultState: ok, a route without its first model, unusable', () => {
   assert.deepEqual([route.state, route.to, route.fallback], ['ok', 'openai/gpt-4o-mini', true])
   const degraded = defaultState({ ...all, allowed_providers: ['groq'], default_model: 'stratum/chat' }, ctx)
   assert.deepEqual([degraded.state, degraded.to, degraded.fallback], ['degraded', 'groq/llama-3.3-70b-versatile', false])
-  assert.match(degraded.detail, /la política no permite openai: los pedidos van a groq\/llama-3.3-70b-versatile/)
+  assert.match(degraded.detail, /la política no permite openai, así que los pedidos van a groq\/llama-3.3-70b-versatile/)
   assert.equal(defaultState({ ...all, default_model: 'stratum/nope' }, ctx).state, 'unusable')
   assert.equal(defaultState({ ...all, default_model: 'openai/gpt-4o' }, ctx).state, 'unusable')
 })

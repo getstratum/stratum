@@ -358,7 +358,7 @@ function DefaultModel({ policy }) {
   const st = policy.default_state ?? { state: 'none' }
   const tone = { degraded: 'text-warn', falling_back: 'text-warn', unusable: 'text-err' }[st.state]
   const said = {
-    degraded: `Va a ${st.to}: ${st.detail}`,
+    degraded: `Sin su primer modelo: ${st.detail}`,
     falling_back: `Usando su segundo modelo: ${st.detail}`,
     unusable: `No se puede usar: ${st.detail}`,
   }[st.state]

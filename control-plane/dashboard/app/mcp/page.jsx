@@ -128,7 +128,7 @@ export default function McpPage() {
             Los servidores MCP que los agentes usan a través del gateway, en <code className="font-mono text-default">/mcp/nombre</code>,
             con su propia key de Stratum. La credencial de cada servidor queda acá: los agentes no la ven. Qué herramientas puede
             llamar cada equipo lo dice su <Link href="/policy" className="text-accent hover:text-accent-hover">política</Link>; sin
-            herramientas en la política, ninguna. Cada llamada queda en Requests, también las rechazadas.
+            herramientas en la política, ninguna. Cada llamada queda en Requests, también las rechazadas y los intentos de un equipo que no puede usar el servidor.
           </p>
         </div>
         {canManage && <Btn onClick={() => setEditing({})}>+ Nuevo servidor</Btn>}

@@ -19,7 +19,7 @@ test('kindOf: the IDs providers list next to their chat models', () => {
     speech: ['tts-1', 'tts-1-hd', 'gpt-4o-mini-tts', 'playai-tts', 'playai-tts-arabic', 'gemini-2.5-flash-preview-tts',
       'canopylabs/orpheus-v1-english'],
     moderation: ['omni-moderation-latest', 'text-moderation-stable', 'meta-llama/llama-guard-4-12b',
-      'meta-llama/llama-prompt-guard-2-86m', 'mistral-moderation-latest'],
+      'meta-llama/llama-prompt-guard-2-86m', 'openai/gpt-oss-safeguard-20b', 'mistral-moderation-latest'],
     other: ['gpt-4o-realtime-preview', 'gpt-realtime', 'veo-3.0-generate-001', 'sora-2', 'computer-use-preview',
       'davinci-002', 'babbage-002', 'aqa', 'gemini-2.5-flash-native-audio-preview-09-2025', 'rerank-v3.5'],
   }
