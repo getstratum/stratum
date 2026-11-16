@@ -71,3 +71,23 @@ test('models: what the organization can use, with every sync', { skip }, async (
   const delta = await sync(org, full.current_version)
   assert.ok(delta.models.some(m => m.id === 'list-test-off'))
 })
+
+test('models: what each one can do, from the organization, the catalog, the provider or its ID', { skip }, async () => {
+  const org = randomUUID()
+  orgs.push(org)
+  await sql(`INSERT INTO organizations (id, name) VALUES ($1, 'caps')`, [org])
+  await sql(`INSERT INTO provider_configs (id, org_id, provider, display_name, api_key_encrypted, enabled)
+             VALUES ($2, $1, 'openai', 'OpenAI', 'iv:ct', true)`, [org, `pc_${randomUUID()}`])
+  await sql(`UPDATE ai_models SET vision = true, tools = true WHERE model_id = 'list-test-current'`)
+  await sql(`INSERT INTO provider_models (org_id, provider, model_id, vision, tools)
+             VALUES ($1, 'openai', 'list-test-gpt-4o-ft', false, NULL), ($1, 'openai', 'list-test-whisper', NULL, NULL)`, [org])
+  const caps = async () => Object.fromEntries((await sync(org)).models.map(m => [m.id, m.capabilities ?? []]))
+  let c = await caps()
+  assert.deepEqual(c['list-test-current'], ['tools', 'vision'], 'the catalog')
+  assert.deepEqual(c['list-test-gpt-4o-ft'], ['tools'], 'the provider said no images; its ID, tools')
+  assert.deepEqual(c['list-test-whisper'], [], 'not a chat model')
+  // The organization's choice wins.
+  await sql(`INSERT INTO org_model_settings (org_id, provider, model_id, vision, tools) VALUES ($1, 'openai', 'list-test-current', false, NULL)`, [org])
+  c = await caps()
+  assert.deepEqual(c['list-test-current'], ['tools'])
+})

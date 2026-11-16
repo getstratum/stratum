@@ -19,6 +19,7 @@
 import { badRequest } from './route.js'
 import { CATALOG } from './provider-catalog.js'
 import { kindHint } from './model-kind.js'
+import { capabilityHints } from './model-capabilities.js'
 
 // base:     the gateway's default address (null: the configuration must give one)
 // models:   path that lists models, for the connection test (null: no test)
@@ -123,7 +124,8 @@ export function testable(provider, storedBaseUrl) {
  *
  * @returns {{ ok: boolean, status?: number, models?: number, ids?: string[], kinds?: object, ms: number, message: string }}
  *   ids: the model IDs the account can use (at most MAX_IDS); kinds: ID →
- *   kind, for the ones the provider's list says something about.
+ *   kind, and capabilities: ID → { vision?, tools? }, for the ones the
+ *   provider's list says something about.
  */
 export const MAX_IDS = 1000
 
@@ -156,11 +158,14 @@ export async function testConnection(provider, apiKey, { fetchImpl = fetch, time
     // model's kind, when it says something, comes along (lib/model-kind.js).
     const seen = new Set()
     const entries = (list ?? [])
-      .map(m => ({ id: (typeof m?.id === 'string' ? m.id : typeof m?.name === 'string' ? m.name : '').replace(/^models\//, ''), kind: kindHint(m) }))
+      .map(m => ({ id: (typeof m?.id === 'string' ? m.id : typeof m?.name === 'string' ? m.name : '').replace(/^models\//, ''),
+        kind: kindHint(m), caps: capabilityHints(m) }))
       .filter(m => m.id && m.id.length <= 200 && !seen.has(m.id) && seen.add(m.id))
       .slice(0, MAX_IDS)
     return { ok: true, status: res.status, ms, models: list?.length, ids: entries.map(m => m.id),
-      kinds: Object.fromEntries(entries.filter(m => m.kind).map(m => [m.id, m.kind])), message: 'Conexión correcta.' }
+      kinds: Object.fromEntries(entries.filter(m => m.kind).map(m => [m.id, m.kind])),
+      capabilities: Object.fromEntries(entries.filter(m => Object.keys(m.caps).length).map(m => [m.id, m.caps])),
+      message: 'Conexión correcta.' }
   } catch (err) {
     return { ok: false, ms: Date.now() - started, message: err?.name === 'TimeoutError' ? 'El proveedor no respondió a tiempo.' : 'No se pudo conectar con el proveedor.' }
   }

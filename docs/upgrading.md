@@ -22,6 +22,12 @@ Back up the database before you upgrade.
   `decision.toolArguments`).
 - **Requests:** a team refused an MCP server its policy does not allow is
   now recorded (model `server`, 403 `mcp_server_not_allowed`).
+- **Migration 041, additive:** nullable `vision` and `tools` columns on
+  `ai_models`, `provider_models` and `org_model_settings`: what a chat model
+  can do besides text. Gateways say it in `GET /v1/models`
+  (`capabilities`). Test each provider's connection again for what the
+  providers say about it; until then, the catalog and the model's ID
+  decide.
 
 ## From 0.6 to 0.7
 

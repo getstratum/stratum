@@ -57,27 +57,44 @@ func (h *Handler) Models(w http.ResponseWriter, r *http.Request) {
 		OwnedBy string `json:"owned_by"`
 		Name    string `json:"name,omitempty"`
 		Kind    string `json:"kind,omitempty"`
-		Default bool   `json:"default,omitempty"`
+		// Capabilities: "tools", "vision" (control planes 0.8 and later).
+		Capabilities []string `json:"capabilities,omitempty"`
+		Default      bool     `json:"default,omitempty"`
 	}
 	list := snap.Models()
 	out := []model{}
-	add := func(provider, id, name, kind string) {
+	add := func(provider, id string, m snapshot.WireModel) {
 		if _, configured := snap.Provider(provider); !configured {
 			return
 		}
 		if policy.Check(pol, found, provider, id) != nil {
 			return
 		}
-		out = append(out, model{ID: provider + "/" + id, Object: "model", OwnedBy: provider, Name: name, Kind: kind})
+		out = append(out, model{ID: provider + "/" + id, Object: "model", OwnedBy: provider, Name: m.Name, Kind: m.Kind, Capabilities: m.Capabilities})
 	}
 
+	// A route: the kind of its first model, and only what every model it
+	// may go to can do (a request with an image must not fall back to a
+	// model that cannot read it).
 	addAlias := func(name string) {
 		targets, _ := snap.Alias(name)
+		var caps []string
+		usable := 0
 		for _, t := range targets {
-			if _, configured := snap.Provider(t.Provider); configured && policy.Check(pol, found, t.Provider, t.Model) == nil {
-				out = append(out, model{ID: AliasPrefix + "/" + name, Object: "model", OwnedBy: AliasPrefix, Kind: kindIn(list, targets[0].Provider, targets[0].Model)})
-				return
+			if _, configured := snap.Provider(t.Provider); !configured || policy.Check(pol, found, t.Provider, t.Model) != nil {
+				continue
 			}
+			c := modelIn(list, t.Provider, t.Model).Capabilities
+			if usable == 0 {
+				caps = slices.Clone(c)
+			} else {
+				caps = slices.DeleteFunc(caps, func(x string) bool { return !slices.Contains(c, x) })
+			}
+			usable++
+		}
+		if usable > 0 {
+			first := modelIn(list, targets[0].Provider, targets[0].Model)
+			out = append(out, model{ID: AliasPrefix + "/" + name, Object: "model", OwnedBy: AliasPrefix, Kind: first.Kind, Capabilities: caps})
 		}
 	}
 
@@ -92,14 +109,14 @@ func (h *Handler) Models(w http.ResponseWriter, r *http.Request) {
 			prov = pickOnly(snap, pol)
 		}
 		if prov != "" {
-			add(prov, key.Model, nameIn(list, prov, key.Model), kindIn(list, prov, key.Model))
+			add(prov, key.Model, modelIn(list, prov, key.Model))
 		}
 	case list != nil:
 		for _, name := range snap.AliasNames() {
 			addAlias(name)
 		}
 		for _, m := range list {
-			add(m.Provider, m.ID, m.Name, m.Kind)
+			add(m.Provider, m.ID, m)
 		}
 	default:
 		for _, name := range snap.AliasNames() {
@@ -108,7 +125,7 @@ func (h *Handler) Models(w http.ResponseWriter, r *http.Request) {
 		n := len(out)
 		for name := range pol.AllowedModels {
 			if prov, id, ok := strings.Cut(name, "/"); ok {
-				add(strings.ToLower(prov), id, "", "")
+				add(strings.ToLower(prov), id, snapshot.WireModel{})
 			}
 		}
 		slices.SortFunc(out[n:], func(a, b model) int { return strings.Compare(a.ID, b.ID) })
@@ -155,24 +172,15 @@ func pickOnly(snap *snapshot.Snapshot, pol snapshot.Policy) string {
 	return ""
 }
 
-// kindIn is the kind the control plane sent for a model, "" when it sent
-// none or does not list the model.
-func kindIn(list []snapshot.WireModel, provider, id string) string {
+// modelIn is what the control plane sent about a model: its name, kind
+// and capabilities; empty when it does not list the model.
+func modelIn(list []snapshot.WireModel, provider, id string) snapshot.WireModel {
 	for _, m := range list {
 		if m.Provider == provider && m.ID == id {
-			return m.Kind
+			return m
 		}
 	}
-	return ""
-}
-
-func nameIn(list []snapshot.WireModel, provider, id string) string {
-	for _, m := range list {
-		if m.Provider == provider && m.ID == id {
-			return m.Name
-		}
-	}
-	return ""
+	return snapshot.WireModel{}
 }
 
 // finishModels counts the listing like any other answer, without a usage

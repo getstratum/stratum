@@ -10,6 +10,7 @@ import { ignoresAliases, ignoresModelSwitch, ALIASES_SINCE, MODEL_SWITCH_SINCE }
 import Aliases from './Aliases'
 import { co2, middle, METHOD_URL } from '../../lib/impacts/format'
 import { KINDS, KIND_LABELS } from '../../lib/model-kind'
+import { CAPABILITIES, CAPABILITY_LABELS } from '../../lib/model-capabilities'
 
 // Estimated emissions per 1,000 output tokens: the middle, the range on hover.
 function Intensity({ impact }) {
@@ -168,6 +169,18 @@ function Models() {
     await fetch('/api/models', {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ provider: m.provider, model_id: m.model_id, kind }),
+    }).catch(() => {})
+    setBusy('')
+    load()
+  }
+
+  // Whether it reads images or calls tools, for the organization; null: as
+  // the catalog, the provider or its ID say (lib/model-capabilities.js).
+  async function setCapability(m, cap, value) {
+    setBusy(`${m.provider}/${m.model_id}`)
+    await fetch('/api/models', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ provider: m.provider, model_id: m.model_id, [cap]: value }),
     }).catch(() => {})
     setBusy('')
     load()
@@ -374,6 +387,29 @@ function Models() {
                         </>
                       ) : (
                         <span>{KIND_LABELS[m.kind] ?? m.kind}</span>
+                      )}
+                      {m.kind === 'chat' && (
+                        <div className="flex flex-col gap-1 mt-1" data-testid="model-capabilities">
+                          {CAPABILITIES.map(c => {
+                            const own = m[`org_${c}`]
+                            const auto = m.auto_capabilities?.[c]
+                            return can('models.manage') ? (
+                              <label key={c} className="flex items-center gap-1 text-xs text-muted">
+                                {CAPABILITY_LABELS[c]}
+                                <select value={own === true ? 'yes' : own === false ? 'no' : ''}
+                                        aria-label={`${CAPABILITY_LABELS[c]}: ${m.display_name}`}
+                                        disabled={busy === `${m.provider}/${m.model_id}`}
+                                        onChange={e => setCapability(m, c, e.target.value === '' ? null : e.target.value === 'yes')}
+                                        title={own === null || own === undefined ? 'Según el catálogo, lo que dijo el proveedor o su ID' : 'Elegido por tu organización'}
+                                        className="h-7 px-1 rounded border border-border bg-card text-xs text-strong">
+                                  <option value="">{`Automático: ${auto ? 'sí' : 'no'}`}</option>
+                                  <option value="yes">Sí</option>
+                                  <option value="no">No</option>
+                                </select>
+                              </label>
+                            ) : m.capabilities?.[c] ? <Badge key={c} tone="info">{CAPABILITY_LABELS[c]}</Badge> : null
+                          })}
+                        </div>
                       )}
                     </td>
                     <td className="px-3 py-3 text-right"><Price list={m.cost_per_1k_input_tokens} own={m.org_cost_per_1k_input_tokens} /></td>

@@ -9,12 +9,16 @@
  *       null when the model has no estimate.
  *       Each with its kind (lib/model-kind.js): "kind", what it is for the
  *       organization; "org_kind", its own choice when it made one; and
- *       "auto_kind", what it would be without that choice.
- * PATCH /api/models  { provider, model_id, enabled?, input_per_mtok?, output_per_mtok?, kind? }
+ *       "auto_kind", what it would be without that choice. And what it can
+ *       do (lib/model-capabilities.js): "capabilities" { vision, tools },
+ *       "org_vision" / "org_tools" (its own choice, or null) and
+ *       "auto_capabilities".
+ * PATCH /api/models  { provider, model_id, enabled?, input_per_mtok?, output_per_mtok?, kind?, vision?, tools? }
  *       — turn a model off or on for the organization (gateways refuse it
  *       even under "all models"), set the prices it pays (null: list
  *       price), or say what kind of model it is (null: as the catalog, the
- *       provider or its ID say). Prices in US$ per million tokens.
+ *       provider or its ID say), or whether it reads images and calls tools
+ *       (null: as they say). Prices in US$ per million tokens.
  */
 
 export const dynamic = 'force-dynamic'
@@ -22,6 +26,7 @@ import { route, json, readJson, badRequest } from '../../../lib/route.js'
 import { audit } from '../../../lib/audit.js'
 import { estimate } from '../../../lib/impacts/index.js'
 import { effectiveKind, isKind, KINDS } from '../../../lib/model-kind.js'
+import { CAPABILITIES, effectiveCapabilities } from '../../../lib/model-capabilities.js'
 
 // Per 1,000 output tokens, generation time from the model's own figures.
 function perThousand(provider, model) {
@@ -37,7 +42,9 @@ export const GET = route('models.read', async (req, { db, session }) => {
            COALESCE(s.enabled, true) AS enabled,
            s.cost_per_1k_input_tokens AS org_cost_per_1k_input_tokens,
            s.cost_per_1k_output_tokens AS org_cost_per_1k_output_tokens,
-           s.kind AS org_kind, m.kind AS catalog_kind, NULL AS listed_kind
+           s.kind AS org_kind, m.kind AS catalog_kind, NULL AS listed_kind,
+           s.vision AS org_vision, s.tools AS org_tools, m.vision AS catalog_vision, m.tools AS catalog_tools,
+           NULL::boolean AS listed_vision, NULL::boolean AS listed_tools
       FROM ai_models m
       LEFT JOIN org_model_settings s
         ON s.org_id = $1 AND s.provider = m.provider AND s.model_id = m.model_id
@@ -47,7 +54,8 @@ export const GET = route('models.read', async (req, { db, session }) => {
            NULL, NULL, NULL, pm.seen_at, 'provider',
            COALESCE(s.enabled, true),
            s.cost_per_1k_input_tokens, s.cost_per_1k_output_tokens,
-           s.kind, NULL, pm.kind
+           s.kind, NULL, pm.kind,
+           s.vision, s.tools, NULL, NULL, pm.vision, pm.tools
       FROM provider_models pm
       LEFT JOIN org_model_settings s
         ON s.org_id = pm.org_id AND s.provider = pm.provider AND s.model_id = pm.model_id
@@ -57,12 +65,20 @@ export const GET = route('models.read', async (req, { db, session }) => {
                           AND (m.model_id = pm.model_id OR pm.model_id = ANY(m.aliases)))
      ORDER BY 1, 3
   `, [session.orgId])
-  return json(rows.map(({ catalog_kind: catalog, listed_kind: listed, ...r }) => ({
-    ...r,
-    kind: effectiveKind({ own: r.org_kind, catalog, listed, id: r.model_id }),
-    auto_kind: effectiveKind({ catalog, listed, id: r.model_id }),
-    impact_per_1k: perThousand(r.provider, r.model_id),
-  })))
+  return json(rows.map(({ catalog_kind: catalog, listed_kind: listed, catalog_vision, catalog_tools, listed_vision, listed_tools, ...r }) => {
+    const kind = effectiveKind({ own: r.org_kind, catalog, listed, id: r.model_id })
+    const sources = { catalog: { vision: catalog_vision, tools: catalog_tools }, listed: { vision: listed_vision, tools: listed_tools }, id: r.model_id, kind }
+    return {
+      ...r,
+      kind,
+      auto_kind: effectiveKind({ catalog, listed, id: r.model_id }),
+      // What it can do (lib/model-capabilities.js): with the organization's
+      // choice, and without it ("Automático").
+      capabilities: effectiveCapabilities({ ...sources, own: { vision: r.org_vision, tools: r.org_tools } }),
+      auto_capabilities: effectiveCapabilities(sources),
+      impact_per_1k: perThousand(r.provider, r.model_id),
+    }
+  }))
 })
 
 const MODEL_RE = /^[A-Za-z0-9][A-Za-z0-9._:@/+-]{0,199}$/
@@ -103,6 +119,12 @@ export const PATCH = route('models.manage', async (req, { db, session }) => {
     if (body.kind !== null && !isKind(body.kind)) throw badRequest(`kind: uno de ${KINDS.join(', ')}, o null para el que dicen el catálogo, el proveedor o su ID.`)
     values.push(body.kind); sets.push(['kind', `$${values.length}`]); changed.kind = body.kind
   }
+  for (const c of CAPABILITIES) {
+    if (body[c] !== undefined) {
+      if (body[c] !== null && typeof body[c] !== 'boolean') throw badRequest(`${c}: true, false, o null para lo que dicen el catálogo, el proveedor o su ID.`)
+      values.push(body[c]); sets.push([c, `$${values.length}`]); changed[c] = body[c]
+    }
+  }
   if (!sets.length) throw badRequest('Nada para actualizar.')
 
   const cols = sets.map(([c]) => c)
@@ -112,7 +134,7 @@ export const PATCH = route('models.manage', async (req, { db, session }) => {
     ON CONFLICT (org_id, provider, model_id) DO UPDATE
        SET updated_by = EXCLUDED.updated_by, updated_at = now(),
            ${cols.map(c => `${c} = EXCLUDED.${c}`).join(', ')}
-    RETURNING provider, model_id, enabled, cost_per_1k_input_tokens, cost_per_1k_output_tokens, kind`, values)
+    RETURNING provider, model_id, enabled, cost_per_1k_input_tokens, cost_per_1k_output_tokens, kind, vision, tools`, values)
   await audit(db, {
     req, session, action: 'model.update', targetType: 'model', targetId: `${provider}/${modelId}`, details: changed,
   })
