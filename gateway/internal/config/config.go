@@ -81,6 +81,11 @@ type Config struct {
 	DecisionToken      string        // bearer token sent to them
 	DecisionTimeout    time.Duration // per check, all services at once
 	DecisionFailClosed bool          // a service that does not answer refuses the request
+	// MCP tool calls: their own wait, and closed unless said otherwise (a
+	// tool acts; an approval rule skipped because the guard was slow is no
+	// rule).
+	DecisionToolTimeout  time.Duration
+	DecisionToolFailOpen bool
 	// DecisionToolArguments: MCP tool calls go to the services with their
 	// arguments, not only their hash (ADR-0017).
 	DecisionToolArguments bool
@@ -158,6 +163,7 @@ func Load(getenv func(string) string) (*Config, error) {
 		DecisionToken:          e.str("STRATUM_DECISION_TOKEN", ""),
 		DecisionTimeout:        e.dur("STRATUM_DECISION_TIMEOUT", 200*time.Millisecond),
 		DecisionToolArguments:  e.bool("STRATUM_DECISION_TOOL_ARGUMENTS", false),
+		DecisionToolTimeout:    e.dur("STRATUM_DECISION_TOOL_TIMEOUT", time.Second),
 
 		ValkeyURL:         e.str("STRATUM_VALKEY_URL", ""),
 		ValkeyPassword:    e.str("STRATUM_VALKEY_PASSWORD", ""),
@@ -424,7 +430,8 @@ func (e *env) list(k string) []string {
 }
 
 // validateDecision checks the external decision services (ADR-0014): up to
-// four http(s) base URLs, a timeout between 10ms and 5s, and the fail mode.
+// four http(s) base URLs, a timeout between 10ms and 5s, and the fail mode;
+// for MCP tool calls, their own timeout (up to 10s) and fail mode.
 func (c *Config) validateDecision(e *env) {
 	switch strings.ToLower(e.str("STRATUM_DECISION_FAIL", "open")) {
 	case "open":
@@ -432,6 +439,13 @@ func (c *Config) validateDecision(e *env) {
 		c.DecisionFailClosed = true
 	default:
 		e.fail("STRATUM_DECISION_FAIL must be open or closed")
+	}
+	switch strings.ToLower(e.str("STRATUM_DECISION_TOOL_FAIL", "closed")) {
+	case "closed":
+	case "open":
+		c.DecisionToolFailOpen = true
+	default:
+		e.fail("STRATUM_DECISION_TOOL_FAIL must be open or closed")
 	}
 	if len(c.DecisionURLs) > 4 {
 		e.fail("STRATUM_DECISION_URLS takes at most 4 services")
@@ -446,6 +460,9 @@ func (c *Config) validateDecision(e *env) {
 	}
 	if c.DecisionTimeout < 10*time.Millisecond || c.DecisionTimeout > 5*time.Second {
 		e.fail("STRATUM_DECISION_TIMEOUT must be between 10ms and 5s")
+	}
+	if c.DecisionToolTimeout < 10*time.Millisecond || c.DecisionToolTimeout > 10*time.Second {
+		e.fail("STRATUM_DECISION_TOOL_TIMEOUT must be between 10ms and 10s")
 	}
 }
 

@@ -68,8 +68,14 @@ an MCP client's request cannot.
   portal, rules on arguments, and its pause, task budget and loop brake
   for tools too.
 - One more round trip per tool call when decision services are on, within
-  their timeout (200 ms by default). Failing open sends the call labelled
-  `decision_skipped`; an operator who needs approvals enforced fails
-  closed.
+  their own timeout (`STRATUM_DECISION_TOOL_TIMEOUT`, a second by default).
+- Tool calls fail closed by default (`STRATUM_DECISION_TOOL_FAIL=closed`),
+  whatever `STRATUM_DECISION_FAIL` says for models: a tool acts, and an
+  approval rule skipped because the service answered late is no rule. The
+  0.8 tests showed it: the guard's first answer after a restart took over
+  200 ms, the gateway sent the call, and the guard kept a request waiting
+  for an approval of something already done. Refused, the agent reads
+  that it was not made and may try again; `open` sends it labelled
+  `decision_skipped`, as before.
 - A service that does not know `tool_call` sees an ordinary request with
   provider `mcp`, and applies its rules to it.

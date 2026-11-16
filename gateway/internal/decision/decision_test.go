@@ -150,6 +150,26 @@ func TestAServiceThatDoesNotAnswerFailsOpenOrClosed(t *testing.T) {
 			t.Errorf("fail closed: %+v", d)
 		}
 	}
+	// A tool call has its own wait, and is not made when no answer came,
+	// unless the gateway says so.
+	tool := Request{Operation: OperationToolCall}
+	late := start(t, &service{answer: allow, delay: 300 * time.Millisecond})
+	c0 := New(Options{URLs: []string{late}, Timeout: 50 * time.Millisecond})
+	if d := c0.Check(context.Background(), tool); !d.Allow || d.Skipped {
+		t.Errorf("a tool call waits its own second: %+v", d)
+	}
+	if d := c0.Check(context.Background(), Request{}); !d.Allow || !d.Skipped {
+		t.Errorf("a model request keeps its 50ms: %+v", d)
+	}
+	slowURL := start(t, slow)
+	c1 := New(Options{URLs: []string{slowURL}, ToolTimeout: 50 * time.Millisecond})
+	if d := c1.Check(context.Background(), tool); d.Allow || d.Status != 503 || d.Code != "decision_unavailable" || !strings.Contains(d.Message, "no se hizo") {
+		t.Errorf("a tool call fails closed by default: %+v", d)
+	}
+	c2 := New(Options{URLs: []string{slowURL}, ToolTimeout: 50 * time.Millisecond, ToolFailOpen: true})
+	if d := c2.Check(context.Background(), tool); !d.Allow || !d.Skipped {
+		t.Errorf("ToolFailOpen: %+v", d)
+	}
 	// A deny still wins over a service that did not answer.
 	deny := &service{answer: `{"decision":"deny","status":403,"code":"agent_paused","message":"pausado"}`}
 	c := New(Options{URLs: []string{start(t, slow), start(t, deny)}, Timeout: 50 * time.Millisecond})

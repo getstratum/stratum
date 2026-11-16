@@ -70,6 +70,10 @@ decision:
   # A Secret holding the bearer token the services expect.
   tokenSecret: ""
   tokenSecretKey: token
+  # MCP tool calls: their own wait, and closed by default (a tool acts; an
+  # approval skipped because the service was slow is no approval).
+  toolTimeout: 1s
+  toolFailMode: closed
   # MCP tool calls go to the services with their arguments, not only their
   # hash (ADR-0017): turn it on for rules on arguments and for approvers to
   # see what they approve.

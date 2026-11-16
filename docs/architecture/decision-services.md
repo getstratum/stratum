@@ -13,11 +13,13 @@ anyone who writes one.
 | `STRATUM_DECISION_TIMEOUT` | `200ms` | How long the gateway waits for all of them together, per request (10 ms to 5 s). |
 | `STRATUM_DECISION_FAIL` | `open` | `open`: a service that does not answer, or answers wrong, is skipped and the request goes, labelled `decision_skipped`. `closed`: the request is refused with 503 `decision_unavailable`. |
 | `STRATUM_DECISION_TOKEN` | | Sent to every service as `Authorization: Bearer <token>`. |
+| `STRATUM_DECISION_TOOL_TIMEOUT` | `1s` | The same wait for an MCP tool call (10 ms to 10 s). |
+| `STRATUM_DECISION_TOOL_FAIL` | `closed` | For MCP tool calls: `closed` refuses a call no service answered (503 `decision_unavailable`, as a tool result the agent reads); `open` sends it labelled `decision_skipped`. Independent of `STRATUM_DECISION_FAIL`: a tool acts. |
 | `STRATUM_DECISION_TOOL_ARGUMENTS` | `false` | `true`: MCP tool calls go to the services with their arguments, not only their hash (below). |
 
 In the chart: `decision.urls`, `decision.timeout`, `decision.failMode`,
-`decision.tokenSecret` (a Secret with the token) and
-`decision.toolArguments`.
+`decision.tokenSecret` (a Secret with the token), `decision.toolTimeout`,
+`decision.toolFailMode` and `decision.toolArguments`.
 
 Run the services on the same network as the gateway, and close them to
 anything else.

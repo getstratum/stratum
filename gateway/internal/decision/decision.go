@@ -114,14 +114,22 @@ type Report struct {
 	UpstreamMs    int64  `json:"upstream_ms"`
 }
 
+// OperationToolCall is the operation of an MCP tool call (ADR-0017).
+const OperationToolCall = "tool_call"
+
 // Options configure a Client.
 type Options struct {
 	URLs       []string
 	Token      string        // sent as "Authorization: Bearer"; empty: none
 	Timeout    time.Duration // per check, all services at once
 	FailClosed bool
-	HTTP       *http.Client
-	Log        *slog.Logger
+	// MCP tool calls (operation tool_call, ADR-0017) have their own: a
+	// tool acts, so a call no service answered is not made unless
+	// ToolFailOpen. ToolTimeout defaults to a second.
+	ToolTimeout  time.Duration
+	ToolFailOpen bool
+	HTTP         *http.Client
+	Log          *slog.Logger
 	// Reports kept while the services do not take them; past it they are dropped.
 	ReportBuffer int
 	// How often reports are sent, and how many at most in one batch.
@@ -150,6 +158,9 @@ type Client struct {
 func New(o Options) *Client {
 	if o.Timeout <= 0 {
 		o.Timeout = 200 * time.Millisecond
+	}
+	if o.ToolTimeout <= 0 {
+		o.ToolTimeout = time.Second
 	}
 	if o.HTTP == nil {
 		o.HTTP = &http.Client{}
@@ -188,7 +199,12 @@ var errBadAnswer = errors.New("not a decision")
 func (c *Client) Check(ctx context.Context, req Request) Decision {
 	req.V = Version
 	body, _ := json.Marshal(req)
-	ctx, cancel := context.WithTimeout(ctx, c.opts.Timeout)
+	timeout, closed := c.opts.Timeout, c.opts.FailClosed
+	tool := req.Operation == OperationToolCall
+	if tool {
+		timeout, closed = c.opts.ToolTimeout, !c.opts.ToolFailOpen
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	answers := make([]answer, len(c.opts.URLs))
@@ -228,10 +244,14 @@ func (c *Client) Check(ctx context.Context, req Request) Decision {
 		}
 	}
 	if failed {
-		if c.opts.FailClosed {
+		if closed {
 			c.Counters.Denied.Add(1)
-			return Decision{Status: http.StatusServiceUnavailable, Code: "decision_unavailable",
-				Message: "a decision service did not answer; the request was not sent"}
+			msg := "a decision service did not answer; the request was not sent"
+			if tool {
+				msg = "no se pudo decidir sobre esta llamada a tiempo, así que no se hizo: probá de nuevo." +
+					" (A decision service did not answer; the tool was not called. Try again.)"
+			}
+			return Decision{Status: http.StatusServiceUnavailable, Code: "decision_unavailable", Message: msg}
 		}
 		c.Counters.Skipped.Add(1)
 		out.Skipped = true

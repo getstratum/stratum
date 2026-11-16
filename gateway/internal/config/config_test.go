@@ -277,7 +277,8 @@ func TestDecisionServices(t *testing.T) {
 		return m
 	}
 	c, err := Load(envOf(base))
-	if err != nil || len(c.DecisionURLs) != 0 || c.DecisionTimeout != 200*time.Millisecond || c.DecisionFailClosed || c.DecisionToolArguments {
+	if err != nil || len(c.DecisionURLs) != 0 || c.DecisionTimeout != 200*time.Millisecond || c.DecisionFailClosed || c.DecisionToolArguments ||
+		c.DecisionToolTimeout != time.Second || c.DecisionToolFailOpen {
 		t.Fatalf("defaults: %+v %v", c, err)
 	}
 	c, err = Load(envOf(with(map[string]string{
@@ -286,12 +287,14 @@ func TestDecisionServices(t *testing.T) {
 		"STRATUM_DECISION_FAIL":           "closed",
 		"STRATUM_DECISION_TOKEN":          "tok",
 		"STRATUM_DECISION_TOOL_ARGUMENTS": "true",
+		"STRATUM_DECISION_TOOL_TIMEOUT":   "2s",
+		"STRATUM_DECISION_TOOL_FAIL":      "open",
 	})))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if strings.Join(c.DecisionURLs, " ") != "http://127.0.0.1:8090 https://guard.svc:8443" || c.DecisionTimeout != 150*time.Millisecond ||
-		!c.DecisionFailClosed || c.DecisionToken != "tok" || !c.DecisionToolArguments {
+		!c.DecisionFailClosed || c.DecisionToken != "tok" || !c.DecisionToolArguments || c.DecisionToolTimeout != 2*time.Second || !c.DecisionToolFailOpen {
 		t.Fatalf("parsed: %+v", c)
 	}
 	for _, bad := range []map[string]string{
@@ -302,6 +305,8 @@ func TestDecisionServices(t *testing.T) {
 		{"STRATUM_DECISION_TIMEOUT": "6s"},
 		{"STRATUM_DECISION_TIMEOUT": "1ms"},
 		{"STRATUM_DECISION_FAIL": "sometimes"},
+		{"STRATUM_DECISION_TOOL_FAIL": "maybe"},
+		{"STRATUM_DECISION_TOOL_TIMEOUT": "11s"},
 	} {
 		if _, err := Load(envOf(with(bad))); err == nil {
 			t.Errorf("accepted %v", bad)
