@@ -286,3 +286,25 @@ func TestNamesMadeOfWordsAreNotKeys(t *testing.T) {
 		}
 	}
 }
+
+func TestPhonesStandOnTheirOwn(t *testing.T) {
+	// F5 of the 0.8 tests: the guard's approval id reached the person as
+	// ap_[REDACTED:PHONE]6, through the model.
+	notPhones := []string{
+		"el pedido ap_4088b3752e56 está en el portal",
+		"ap_d90f85987696",
+		"commit 9f86d0818847c659",
+		"imagen sha256:12345678abcd",
+	}
+	for _, s := range notPhones {
+		if d := scanText(s, map[string]bool{TypePhone: true}); len(d) != 0 {
+			t.Errorf("%q flagged: %+v", s, d)
+		}
+	}
+	phones := []string{"llamame al 099 123 456", "tel: +598 99 123 456", "(02) 2901 2345", "099123456."}
+	for _, s := range phones {
+		if d := scanText(s, map[string]bool{TypePhone: true}); len(d) == 0 {
+			t.Errorf("%q not flagged", s)
+		}
+	}
+}

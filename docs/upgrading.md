@@ -33,6 +33,10 @@ Back up the database before you upgrade.
   `decision.toolTimeout`). Model requests keep `STRATUM_DECISION_FAIL` and
   `STRATUM_DECISION_TIMEOUT`. For the previous behaviour, set
   `STRATUM_DECISION_TOOL_FAIL=open`.
+- **PII: a phone stands on its own.** Digits inside an identifier (an
+  approval id like `ap_4088b3752e56`, a hash, a digest) are no longer
+  redacted as a phone: the guard's approval id reached the person as
+  `ap_[REDACTED:PHONE]6`.
 - **DLP: names made of words are not keys.** The generic API key pattern
   (32+ letters, digits, `-` and `_`) now needs one stretch of 20+
   characters between `-` and `_` with letters and digits. Container, pod
