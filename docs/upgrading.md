@@ -33,6 +33,10 @@ Back up the database before you upgrade.
   `decision.toolTimeout`). Model requests keep `STRATUM_DECISION_FAIL` and
   `STRATUM_DECISION_TIMEOUT`. For the previous behaviour, set
   `STRATUM_DECISION_TOOL_FAIL=open`.
+- **MCP requests take `X-Stratum-Labels`**, as model requests do: the
+  labels go to the decision services and into Requests (the portal's
+  `portal` and `with_tools` were lost). Malformed labels are refused with
+  400 `invalid_labels`.
 - **PII: a phone stands on its own.** Digits inside an identifier (an
   approval id like `ap_4088b3752e56`, a hash, a digest) are no longer
   redacted as a phone: the guard's approval id reached the person as

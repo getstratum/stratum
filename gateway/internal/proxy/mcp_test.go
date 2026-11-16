@@ -96,9 +96,12 @@ func mcpEnv(t *testing.T, policyJSON string, opts ...func(*Handler)) (*env, *mcp
 	return e, up, gw
 }
 
-func mcpCall(t *testing.T, gw *httptest.Server, path, key, body string) (*http.Response, map[string]any) {
+func mcpCall(t *testing.T, gw *httptest.Server, path, key, body string, headers ...string) (*http.Response, map[string]any) {
 	t.Helper()
 	req, _ := http.NewRequest(http.MethodPost, gw.URL+path, strings.NewReader(body))
+	for i := 0; i+1 < len(headers); i += 2 {
+		req.Header.Set(headers[i], headers[i+1])
+	}
 	req.Header.Set("Authorization", "Bearer "+key)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json, text/event-stream")
@@ -227,7 +230,10 @@ func TestMCPCallsGoThroughTheDecisionServices(t *testing.T) {
 	if result, _ := msg["result"].(map[string]any); result["isError"] == true {
 		t.Fatalf("allowed call: %v", msg)
 	}
-	mcpCall(t, gw, "/mcp/demo", devKey, `{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"clima","arguments":{"dias":3,"ciudad":"Salto"}}}`)
+	// The application's labels go to the services and into Requests (F6 of
+	// the 0.8 tests: the portal's were lost).
+	mcpCall(t, gw, "/mcp/demo", devKey, `{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"clima","arguments":{"dias":3,"ciudad":"Salto"}}}`,
+		"X-Stratum-Labels", "portal,with_tools")
 	if len(d.checks) != 2 {
 		t.Fatalf("%d checks", len(d.checks))
 	}
@@ -242,9 +248,18 @@ func TestMCPCallsGoThroughTheDecisionServices(t *testing.T) {
 	if d.checks[1].Tool.ArgumentsSHA256 != c.Tool.ArgumentsSHA256 {
 		t.Error("the same arguments in another order have another hash")
 	}
+	if strings.Join(d.checks[1].Labels, ",") != "mcp,portal,with_tools" {
+		t.Errorf("labels to the services: %v", d.checks[1].Labels)
+	}
 	got := e.usage.wait(t, 2)
 	if len(got) != 2 || got[0].Status != 200 || !strings.Contains(strings.Join(got[0].Labels, ","), "guard_seen") {
 		t.Errorf("usage %+v", got)
+	}
+	if l := strings.Join(got[1].Labels, ","); l != "guard_seen,mcp,portal,with_tools" {
+		t.Errorf("labels in Requests: %s", l)
+	}
+	if res, _ := mcpCall(t, gw, "/mcp/demo", devKey, `{"jsonrpc":"2.0","id":4,"method":"tools/list"}`, "X-Stratum-Labels", "NO VALE"); res.StatusCode != 400 {
+		t.Errorf("bad labels: %d", res.StatusCode)
 	}
 	if reps := d.waitReports(t, 2); len(reps) != 2 || reps[0].Model != "demo/clima" || reps[0].Status != 200 || reps[0].ContentSHA256 != c.Tool.ArgumentsSHA256 {
 		t.Errorf("reports %+v", reps)
