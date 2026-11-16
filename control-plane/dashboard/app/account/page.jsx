@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import PasswordInput from '../../components/PasswordInput'
 
 const input = 'w-full bg-raised border border-border rounded-lg px-3.5 py-2.5 text-sm text-strong focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent'
 const label = 'block text-xs font-semibold text-muted mb-1.5'
@@ -49,15 +50,15 @@ function PasswordForm() {
       <form onSubmit={submit} className="space-y-4">
         <div>
           <label htmlFor="current" className={label}>Contraseña actual</label>
-          <input id="current" type="password" autoComplete="current-password" required value={current} onChange={e => setCurrent(e.target.value)} className={input} />
+          <PasswordInput id="current" autoComplete="current-password" required value={current} onChange={e => setCurrent(e.target.value)} className={input} />
         </div>
         <div>
           <label htmlFor="next" className={label}>Contraseña nueva (mínimo 12 caracteres)</label>
-          <input id="next" type="password" autoComplete="new-password" required minLength={12} value={next} onChange={e => setNext(e.target.value)} className={input} />
+          <PasswordInput id="next" autoComplete="new-password" required minLength={12} value={next} onChange={e => setNext(e.target.value)} className={input} />
         </div>
         <div>
           <label htmlFor="repeat" className={label}>Repetir la nueva</label>
-          <input id="repeat" type="password" autoComplete="new-password" required minLength={12} value={repeat} onChange={e => setRepeat(e.target.value)} className={input} />
+          <PasswordInput id="repeat" autoComplete="new-password" required minLength={12} value={repeat} onChange={e => setRepeat(e.target.value)} className={input} />
         </div>
         <Message error={state.error} ok={state.done && 'Contraseña cambiada.'} />
         <button type="submit" disabled={state.saving} className={`w-full ${primary}`}>
@@ -163,7 +164,7 @@ function SecondFactor({ me, reload }) {
           <form onSubmit={begin} className="space-y-3">
             <div>
               <label htmlFor="mfa-password" className={label}>Tu contraseña, para confirmar</label>
-              <input id="mfa-password" type="password" autoComplete="current-password" required value={password}
+              <PasswordInput id="mfa-password" autoComplete="current-password" required value={password}
                 onChange={e => setPassword(e.target.value)} className={input} autoFocus />
             </div>
             <Message error={error} />
@@ -227,7 +228,7 @@ function SecondFactor({ me, reload }) {
             <form onSubmit={turnOff} className="space-y-3">
               <div>
                 <label htmlFor="off-password" className={label}>Contraseña</label>
-                <input id="off-password" type="password" autoComplete="current-password" required value={password}
+                <PasswordInput id="off-password" autoComplete="current-password" required value={password}
                   onChange={e => setPassword(e.target.value)} className={input} autoFocus />
               </div>
               <div>
