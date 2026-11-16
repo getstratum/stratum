@@ -27,6 +27,12 @@ Back up the database before you upgrade.
   thinking block, the `encrypted_content` of a reasoning item): provider
   values sent back as they came, that the API key pattern mistook for keys.
   A call's arguments and every tool result are still scanned.
+- **MCP tool calls fail closed** when the decision services do not answer
+  (`STRATUM_DECISION_TOOL_FAIL=closed`, chart `decision.toolFailMode`),
+  and wait for them up to a second (`STRATUM_DECISION_TOOL_TIMEOUT`,
+  `decision.toolTimeout`). Model requests keep `STRATUM_DECISION_FAIL` and
+  `STRATUM_DECISION_TIMEOUT`. For the previous behaviour, set
+  `STRATUM_DECISION_TOOL_FAIL=open`.
 - **DLP: names made of words are not keys.** The generic API key pattern
   (32+ letters, digits, `-` and `_`) now needs one stretch of 20+
   characters between `-` and `_` with letters and digits. Container, pod

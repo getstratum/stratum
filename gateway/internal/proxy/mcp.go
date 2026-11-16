@@ -208,7 +208,7 @@ func (h *Handler) MCP(w http.ResponseWriter, r *http.Request) {
 			d := h.Decision.Check(r.Context(), decision.Request{
 				RequestID: requestID, Time: start.UTC().Format(time.RFC3339Nano),
 				KeyID: key.ID, KeyLabel: key.Label, TeamID: teamID, UserID: userID, Task: task,
-				Provider: "mcp", Model: name + "/" + m.Params.Name, Operation: "tool_call",
+				Provider: "mcp", Model: name + "/" + m.Params.Name, Operation: decision.OperationToolCall,
 				Labels: []string{"mcp"}, ContentSHA256: sum, ContentBytes: len(canon), Tool: tool,
 			})
 			checks[i] = checked{sum: sum, labels: d.Labels}

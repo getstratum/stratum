@@ -195,6 +195,7 @@ func serve() int {
 	if len(cfg.DecisionURLs) > 0 {
 		decider = decision.New(decision.Options{
 			URLs: cfg.DecisionURLs, Token: cfg.DecisionToken, Timeout: cfg.DecisionTimeout, FailClosed: cfg.DecisionFailClosed,
+			ToolTimeout: cfg.DecisionToolTimeout, ToolFailOpen: cfg.DecisionToolFailOpen,
 			HTTP: &http.Client{Transport: &http.Transport{Proxy: http.ProxyFromEnvironment, MaxIdleConnsPerHost: 64, IdleConnTimeout: 90 * time.Second}},
 			Log:  log.With("component", "decision"),
 		})
@@ -202,7 +203,7 @@ func serve() int {
 		px.Decision, px.ToolArguments = decider, cfg.DecisionToolArguments
 		go func() { defer close(decisionDone); decider.Run(ctx) }()
 		log.Info("decision services on", "services", len(cfg.DecisionURLs), "timeout", cfg.DecisionTimeout, "fail_closed", cfg.DecisionFailClosed,
-			"tool_arguments", cfg.DecisionToolArguments)
+			"tool_arguments", cfg.DecisionToolArguments, "tool_timeout", cfg.DecisionToolTimeout, "tool_fail_closed", !cfg.DecisionToolFailOpen)
 	} else {
 		close(decisionDone)
 	}
