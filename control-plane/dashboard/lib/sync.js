@@ -226,7 +226,7 @@ export async function buildSyncResponse(client, { orgId, sinceVersion, syncInter
     // MCP servers (migration 040, ADR-0016): every sync, the whole list of
     // the ones turned on, with their credential.
     mcpServers = await q(`
-      SELECT name, url, auth_header, secret_encrypted FROM mcp_servers
+      SELECT name, url, auth_header, secret_encrypted, description FROM mcp_servers
        WHERE org_id = $1 AND enabled ORDER BY name
     `, [orgId])
 
@@ -298,7 +298,7 @@ export async function buildSyncResponse(client, { orgId, sinceVersion, syncInter
           return []
         }
       }
-      return [{ name: s.name, url: s.url, headers }]
+      return [{ name: s.name, url: s.url, headers, ...(s.description ? { description: s.description } : {}) }]
     }),
     month_usage: {
       month: usageMonth,

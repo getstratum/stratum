@@ -102,6 +102,8 @@ type WireMCPServer struct {
 	Name    string            `json:"name"`
 	URL     string            `json:"url"`
 	Headers map[string]string `json:"headers,omitempty"`
+	// Description: what it is for, as the console has it (from 0.8).
+	Description string `json:"description,omitempty"`
 }
 
 // WireAliasTarget is one model an alias may go to.

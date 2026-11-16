@@ -294,3 +294,35 @@ func TestMCPCallRefusedByADecisionService(t *testing.T) {
 		t.Errorf("%d checks", len(d.checks))
 	}
 }
+
+func TestMCPServersListsWhatThePolicyAllows(t *testing.T) {
+	list := func(policyJSON string) string {
+		e, _, _ := mcpEnv(t, policyJSON)
+		st, err := e.h.Holder.State().Apply(&snapshot.SyncResponse{CurrentVersion: 5, MCPServers: []snapshot.WireMCPServer{
+			{Name: "demo", URL: "http://demo/mcp", Description: "Hora y clima"},
+			{Name: "wiki", URL: "http://wiki/mcp"},
+		}}, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		e.h.Holder.Store(st, snapshot.Build(st, time.Now()))
+		req := httptest.NewRequest(http.MethodGet, "/v1/stratum/mcp", nil)
+		req.Header.Set("Authorization", "Bearer "+devKey)
+		w := httptest.NewRecorder()
+		e.h.MCPServers(w, req)
+		if w.Code != 200 {
+			t.Fatalf("status %d: %s", w.Code, w.Body)
+		}
+		return strings.TrimSpace(w.Body.String())
+	}
+	if got := list(mcpPolicy); got != `{"servers":[{"name":"demo","description":"Hora y clima","all_tools":false}]}` {
+		t.Errorf("some tools: %s", got)
+	}
+	if got := list(strings.Replace(mcpPolicy, `"demo/hora","demo/clima"`, `"demo/*","wiki/buscar"`, 1)); got !=
+		`{"servers":[{"name":"demo","description":"Hora y clima","all_tools":true},{"name":"wiki","all_tools":false}]}` {
+		t.Errorf("a whole server and one tool: %s", got)
+	}
+	if got := list(allowAll); got != `{"servers":[]}` {
+		t.Errorf("no MCP in the policy: %s", got)
+	}
+}

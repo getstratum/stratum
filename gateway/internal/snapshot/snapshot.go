@@ -91,9 +91,10 @@ type Snapshot struct {
 
 // MCPServer is an MCP server agents reach at /mcp/<name> (ADR-0016).
 type MCPServer struct {
-	Name    string
-	URL     string
-	Headers map[string]string
+	Name        string
+	URL         string
+	Headers     map[string]string
+	Description string
 }
 
 // Build indexes a State into a Snapshot. Revoked keys and disabled or
@@ -135,7 +136,7 @@ func Build(st *State, syncedAt time.Time) *Snapshot {
 		if name == "" || !strings.HasPrefix(m.URL, "http") {
 			continue
 		}
-		s.mcp[name] = MCPServer{Name: name, URL: strings.TrimSpace(m.URL), Headers: maps.Clone(m.Headers)}
+		s.mcp[name] = MCPServer{Name: name, URL: strings.TrimSpace(m.URL), Headers: maps.Clone(m.Headers), Description: m.Description}
 	}
 
 	for _, a := range st.Aliases {
@@ -246,6 +247,16 @@ func (s *Snapshot) Models() []WireModel { return s.models }
 
 // Alias returns a model alias's targets, in order (ADR-0015). Callers must
 // not modify them.
+// MCPNames: the MCP servers' names, sorted.
+func (s *Snapshot) MCPNames() []string {
+	out := make([]string, 0, len(s.mcp))
+	for n := range s.mcp {
+		out = append(out, n)
+	}
+	slices.Sort(out)
+	return out
+}
+
 // MCP returns the MCP server agents reach at /mcp/<name>.
 func (s *Snapshot) MCP(name string) (MCPServer, bool) {
 	m, ok := s.mcp[strings.ToLower(name)]

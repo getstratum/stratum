@@ -137,6 +137,10 @@ console's own changes mean for an organization:
 - With decision services ([ADR-0017](../adr/0017-tool-calls-decision-services.md)),
   they decide on each call the policy allows: an approval, a rule on its
   arguments. Gateways 0.8 or later.
+- An application lists the servers a caller may use with
+  `GET /v1/stratum/mcp` (name, the description written here, and whether
+  every tool is allowed), and their tools with `tools/list`: the Enterprise
+  portal offers them in its chat. Gateways 0.8 or later.
 - Owners and Admins manage servers; Auditors see them. Gateways 0.7 or later.
 
 ## Policies: providers and models

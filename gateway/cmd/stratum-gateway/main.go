@@ -235,7 +235,8 @@ func serve() int {
 		}
 	}
 	opts := server.Options{Proxy: px, Models: http.HandlerFunc(px.Models), Instructions: http.HandlerFunc(px.Instructions),
-		MCP: http.HandlerFunc(px.MCP), Health: hc, Metrics: m, Log: log,
+		MCPServers: http.HandlerFunc(px.MCPServers),
+		MCP:        http.HandlerFunc(px.MCP), Health: hc, Metrics: m, Log: log,
 		MaxInflight: cfg.MaxInflight, AllowedOrigins: cfg.CORSAllowedOrigins}
 
 	public := server.NewHTTPServer(cfg.ListenAddr, server.Public(opts), log)
