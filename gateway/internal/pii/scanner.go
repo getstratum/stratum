@@ -39,6 +39,10 @@ func scanText(text string, enabledTypes map[string]bool) []Detection {
 				if !ciUYValid(nonDigit.ReplaceAllString(match, "")) {
 					continue
 				}
+			case TypeAPIKey:
+				if !secretShaped(match) {
+					continue
+				}
 			}
 
 			out = append(out, Detection{Type: typ, Start: loc[0], End: loc[1], Value: match})

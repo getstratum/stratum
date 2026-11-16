@@ -254,3 +254,35 @@ func TestToolCallIdsAndSignaturesAreNotScanned(t *testing.T) {
 		t.Errorf("redacted: %s", out)
 	}
 }
+
+func TestNamesMadeOfWordsAreNotKeys(t *testing.T) {
+	// F7 of the 0.8 tests: docker ps through an MCP server, its result sent
+	// to the model, was blocked as a secret for its container names.
+	notKeys := []string{
+		"stratum-demo-enterprise-stratum-gateway-1",
+		"stratum-demo-enterprise-stratum-console-1   Up 2 hours   0.0.0.0:3000->3000/tcp",
+		"kube-prometheus-stack-prometheus-node-exporter-x2kq4",
+		"550e8400-e29b-41d4-a716-446655440000",
+		"fc_9a1f0e3c-1b2a-4c3d-8e9f-0a1b2c3d4e5f",
+		"abcdefghijklmnopqrstuvwxyzabcdefgh", // letters only
+	}
+	for _, s := range notKeys {
+		if d := scanText(s, map[string]bool{TypeAPIKey: true}); len(d) != 0 {
+			t.Errorf("%q flagged: %+v", s, d)
+		}
+	}
+	keys := []string{
+		"sk-proj-abcdefghijklmnopqrstuvwx",
+		// Built here so secret scanning does not take them for real keys.
+		"sk_" + "live_" + "51HxYzAbCdEfGhIjKlMnOpQrStUvWx",
+		"gh" + "p_" + "aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789",
+		"AKIAIOSFODNN7EXAMPLE",
+		"token: 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+		"stratum-demo-Zx81kQp0LmN3vB7cR2tY9wE4",
+	}
+	for _, s := range keys {
+		if d := scanText(s, map[string]bool{TypeAPIKey: true}); len(d) == 0 {
+			t.Errorf("%q not flagged", s)
+		}
+	}
+}

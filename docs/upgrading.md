@@ -27,6 +27,14 @@ Back up the database before you upgrade.
   thinking block, the `encrypted_content` of a reasoning item): provider
   values sent back as they came, that the API key pattern mistook for keys.
   A call's arguments and every tool result are still scanned.
+- **DLP: names made of words are not keys.** The generic API key pattern
+  (32+ letters, digits, `-` and `_`) now needs one stretch of 20+
+  characters between `-` and `_` with letters and digits. Container, pod
+  and release names (`stratum-demo-enterprise-stratum-gateway-1`), UUIDs
+  and ids like `fc_<uuid>` no longer count as secrets: a team with
+  `dlp_action: block` could not send the model the result of `docker ps`.
+  Provider prefixes (`sk-`, `ghp_`, `AKIA`, `aig_`) and long random runs
+  still count.
 - **`GET /v1/stratum/mcp`:** the MCP servers a caller's policy allows,
   with the description written in the console (now in the sync too).
 - **Migration 041, additive:** nullable `vision` and `tools` columns on
