@@ -81,6 +81,9 @@ type Config struct {
 	DecisionToken      string        // bearer token sent to them
 	DecisionTimeout    time.Duration // per check, all services at once
 	DecisionFailClosed bool          // a service that does not answer refuses the request
+	// DecisionToolArguments: MCP tool calls go to the services with their
+	// arguments, not only their hash (ADR-0017).
+	DecisionToolArguments bool
 
 	// Traces (ADR-0013), from the standard OpenTelemetry variables. An empty
 	// TracesEndpoint: no spans; the client's traceparent is still passed on
@@ -154,6 +157,7 @@ func Load(getenv func(string) string) (*Config, error) {
 		DecisionURLs:           e.list("STRATUM_DECISION_URLS"),
 		DecisionToken:          e.str("STRATUM_DECISION_TOKEN", ""),
 		DecisionTimeout:        e.dur("STRATUM_DECISION_TIMEOUT", 200*time.Millisecond),
+		DecisionToolArguments:  e.bool("STRATUM_DECISION_TOOL_ARGUMENTS", false),
 
 		ValkeyURL:         e.str("STRATUM_VALKEY_URL", ""),
 		ValkeyPassword:    e.str("STRATUM_VALKEY_PASSWORD", ""),

@@ -199,9 +199,10 @@ func serve() int {
 			Log:  log.With("component", "decision"),
 		})
 		m.Decision, m.DecisionPending = &decider.Counters, decider.Pending
-		px.Decision = decider
+		px.Decision, px.ToolArguments = decider, cfg.DecisionToolArguments
 		go func() { defer close(decisionDone); decider.Run(ctx) }()
-		log.Info("decision services on", "services", len(cfg.DecisionURLs), "timeout", cfg.DecisionTimeout, "fail_closed", cfg.DecisionFailClosed)
+		log.Info("decision services on", "services", len(cfg.DecisionURLs), "timeout", cfg.DecisionTimeout, "fail_closed", cfg.DecisionFailClosed,
+			"tool_arguments", cfg.DecisionToolArguments)
 	} else {
 		close(decisionDone)
 	}

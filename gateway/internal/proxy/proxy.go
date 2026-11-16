@@ -61,6 +61,7 @@ type Handler struct {
 	RequestID         func(context.Context) string
 	Usage             UsageSink // optional
 	Decision          Decider   // optional: external decision services (ADR-0014)
+	ToolArguments     bool      // MCP tool calls go to them with their arguments (ADR-0017)
 
 	// OpenTelemetry traces (ADR-0013). A nil Traces turns them off; the
 	// client's traceparent then goes to the provider unchanged.

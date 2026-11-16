@@ -11,7 +11,19 @@ every pod), by `make up` with Docker Compose, or by you with the
 ([chart README](../deploy/helm/stratum-control-plane/README.md#migrations)).
 Back up the database before you upgrade.
 
-## From 0.6 to 0.7 (in progress)
+## From 0.7 to 0.8 (in progress)
+
+- **MCP tool calls through the decision services**
+  ([ADR-0017](adr/0017-tool-calls-decision-services.md)): with
+  `STRATUM_DECISION_URLS` set, gateways ask the services about each
+  `tools/call` the policy allows. A service that does not know tool calls
+  sees a request with provider `mcp` and model `server/tool`. Their
+  arguments go only with `STRATUM_DECISION_TOOL_ARGUMENTS=true` (chart:
+  `decision.toolArguments`).
+- **Requests:** a team refused an MCP server its policy does not allow is
+  now recorded (model `server`, 403 `mcp_server_not_allowed`).
+
+## From 0.6 to 0.7
 
 - **Migration 040, additive:** the table `mcp_servers` and
   `policies.mcp_tools` (empty: no MCP server).

@@ -57,8 +57,7 @@ tools, the records. In Enterprise, through decision services (ADR-0014) and
 not in the gateway: rules on a tool's arguments, a person's approval before
 a sensitive tool, a budget per task that counts tool calls. The gateway will
 ask the decision services about `tools/call` the way it asks about model
-requests, with the tool and its arguments; that step is not part of this
-decision.
+requests, with the tool and its arguments: [ADR-0017](0017-tool-calls-decision-services.md).
 
 ## Consequences
 

@@ -132,7 +132,11 @@ console's own changes mean for an organization:
   the tool list, and calling it gets a tool result with an error, which the
   agent's model reads; nothing reaches the server.
 - Every tool call is in Requests (provider `mcp`, model `server/tool`,
-  label `mcp`), refused ones too.
+  label `mcp`), refused ones too, and so is a team refused a server it may
+  not use (model `server`).
+- With decision services ([ADR-0017](../adr/0017-tool-calls-decision-services.md)),
+  they decide on each call the policy allows: an approval, a rule on its
+  arguments. Gateways 0.8 or later.
 - Owners and Admins manage servers; Auditors see them. Gateways 0.7 or later.
 
 ## Policies: providers and models

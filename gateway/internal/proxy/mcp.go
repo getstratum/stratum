@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -11,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/getstratum/stratum/gateway/internal/decision"
 	"github.com/getstratum/stratum/gateway/internal/policy"
 	"github.com/getstratum/stratum/gateway/internal/snapshot"
 	"github.com/getstratum/stratum/gateway/internal/usage"
@@ -31,7 +34,10 @@ import (
 //     gateway, as a tool result with isError, so the agent's model reads
 //     why and can go on; nothing reaches the server;
 //   - the answer to tools/list leaves out the tools the policy does not
-//     allow. That is a courtesy: what is enforced is the call.
+//     allow. That is a courtesy: what is enforced is the call;
+//   - with decision services (ADR-0014), each call the policy allows is
+//     checked by them first (ADR-0017); one they refuse is answered like a
+//     call the policy does not allow, with their message.
 //
 // Each tools/call is a usage record (provider "mcp", model
 // "server/tool"), refused ones too, so the console shows them in Requests;
@@ -71,14 +77,14 @@ func (h *Handler) MCP(w http.ResponseWriter, r *http.Request) {
 	}
 	// model is "server/tool" for a call, the server alone when the server
 	// itself is refused.
-	report := func(model string, st int, why string) {
+	report := func(model string, st int, why string, labels ...string) {
 		if h.Usage == nil {
 			return
 		}
 		h.Usage.Add(usage.Record{
 			ID: usage.NewID(), Time: start.UTC(), KeyID: key.ID, UserID: userID, TeamID: teamID,
 			Provider: "mcp", Model: usage.Clip(model, 100), Status: st, Reason: why,
-			DurationMs: time.Since(start).Milliseconds(), Labels: []string{"mcp"},
+			DurationMs: time.Since(start).Milliseconds(), Labels: mergeLabels([]string{"mcp"}, labels),
 		})
 	}
 	if !pol.MCPAllowed(name, "") {
@@ -111,7 +117,16 @@ func (h *Handler) MCP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	var calls []string
+	task := ""
+	if t := strings.TrimSpace(r.Header.Get("X-Stratum-Task")); t != "" {
+		if !validTask(t) {
+			fail(&policy.Violation{Status: http.StatusBadRequest, Code: "invalid_task",
+				Message: "X-Stratum-Task takes 1 to 100 letters, digits and . _ : -"})
+			return
+		}
+		task = t
+	}
+	var calls []mcpMessage
 	lists := map[string]bool{}
 	var refused []mcpMessage
 	for _, m := range msgs {
@@ -121,7 +136,7 @@ func (h *Handler) MCP(w http.ResponseWriter, r *http.Request) {
 				refused = append(refused, m)
 				continue
 			}
-			calls = append(calls, m.Params.Name)
+			calls = append(calls, m)
 		case "tools/list":
 			lists[string(m.ID)] = true
 		}
@@ -135,7 +150,7 @@ func (h *Handler) MCP(w http.ResponseWriter, r *http.Request) {
 		if !batch {
 			// A tool result, not a protocol error: the agent's model reads
 			// it and can do something else.
-			json.NewEncoder(w).Encode(refusal(refused[0]))
+			json.NewEncoder(w).Encode(refusal(refused[0], policyRefusal(refused[0].Params.Name)))
 			return
 		}
 		// A batch (MCP before 2025-06-18) with a refused call is refused whole.
@@ -149,6 +164,82 @@ func (h *Handler) MCP(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
 		json.NewEncoder(w).Encode(out)
 		return
+	}
+
+	// The decision services (ADR-0014), on each call the policy allows
+	// (ADR-0017). The first refusal decides, as for a model request.
+	type checked struct {
+		sum    string
+		labels []string
+	}
+	checks := make([]checked, len(calls))
+	denied := false
+	if h.Decision != nil {
+		var requestID string
+		if h.RequestID != nil {
+			requestID = h.RequestID(r.Context())
+		}
+		rep := func(m mcpMessage, c checked, st int, why string) {
+			h.Decision.Report(decision.Report{
+				RequestID: usage.Clip(requestID, 128), Time: start.UTC().Format(time.RFC3339Nano),
+				KeyID: key.ID, TeamID: teamID, UserID: userID, Task: task, Provider: "mcp",
+				Model: usage.Clip(name+"/"+m.Params.Name, 100), ContentSHA256: c.sum,
+				Status: st, Reason: why, DurationMs: time.Since(start).Milliseconds(),
+			})
+		}
+		defer func() {
+			// How each call that was sent ended.
+			if !denied {
+				for i, m := range calls {
+					rep(m, checks[i], status, reason)
+				}
+			}
+		}()
+		for i, m := range calls {
+			canon, sum := toolArguments(m.Params.Arguments)
+			tool := &decision.Tool{Server: name, Name: m.Params.Name, ArgumentsSHA256: sum}
+			if h.ToolArguments {
+				if len(canon) <= decision.MaxToolArguments {
+					tool.Arguments = canon
+				} else {
+					tool.ArgumentsOmitted = "too_large"
+				}
+			}
+			d := h.Decision.Check(r.Context(), decision.Request{
+				RequestID: requestID, Time: start.UTC().Format(time.RFC3339Nano),
+				KeyID: key.ID, KeyLabel: key.Label, TeamID: teamID, UserID: userID, Task: task,
+				Provider: "mcp", Model: name + "/" + m.Params.Name, Operation: "tool_call",
+				Labels: []string{"mcp"}, ContentSHA256: sum, ContentBytes: len(canon), Tool: tool,
+			})
+			checks[i] = checked{sum: sum, labels: d.Labels}
+			if d.Skipped {
+				checks[i].labels = append(checks[i].labels, "decision_skipped")
+			}
+			for k, v := range d.Headers {
+				w.Header().Set(k, v)
+			}
+			if d.Allow {
+				continue
+			}
+			report(name+"/"+m.Params.Name, d.Status, d.Code)
+			rep(m, checks[i], d.Status, d.Code)
+			status, reason, denied = d.Status, d.Code, true
+			w.Header().Set("Content-Type", "application/json")
+			if !batch {
+				json.NewEncoder(w).Encode(refusal(m, "Stratum: "+d.Message))
+				return
+			}
+			out := make([]any, 0, len(msgs))
+			for _, o := range msgs {
+				if len(o.ID) > 0 {
+					out = append(out, map[string]any{"jsonrpc": "2.0", "id": o.ID,
+						"error": map[string]any{"code": -32001, "message": "this batch calls a tool that was refused: " + d.Message}})
+				}
+			}
+			w.WriteHeader(d.Status)
+			json.NewEncoder(w).Encode(out)
+			return
+		}
 	}
 
 	// To the server, with its headers and none of the agent's credentials.
@@ -177,14 +268,15 @@ func (h *Handler) MCP(w http.ResponseWriter, r *http.Request) {
 	}
 	res, err := h.Client.Do(req)
 	if err != nil {
-		for _, t := range calls {
-			report(name+"/"+t, http.StatusBadGateway, "upstream_error")
+		for i, m := range calls {
+			report(name+"/"+m.Params.Name, http.StatusBadGateway, "upstream_error", checks[i].labels...)
 		}
 		code := "upstream_error"
 		if errors.Is(r.Context().Err(), context.Canceled) {
 			code = "client_closed"
 		}
 		fail(&policy.Violation{Status: http.StatusBadGateway, Code: code, Message: "the MCP server " + name + " could not be reached"})
+		status, reason = http.StatusBadGateway, code
 		return
 	}
 	defer res.Body.Close()
@@ -192,8 +284,8 @@ func (h *Handler) MCP(w http.ResponseWriter, r *http.Request) {
 	if status >= 400 {
 		reason = "upstream_status"
 	}
-	for _, t := range calls {
-		report(name+"/"+t, status, reason)
+	for i, m := range calls {
+		report(name+"/"+m.Params.Name, status, reason, checks[i].labels...)
 	}
 
 	for _, k := range []string{"Content-Type", "Mcp-Session-Id", "Mcp-Protocol-Version", "Cache-Control", "Www-Authenticate"} {
@@ -231,8 +323,31 @@ type mcpMessage struct {
 	ID     json.RawMessage `json:"id,omitempty"`
 	Method string          `json:"method"`
 	Params struct {
-		Name string `json:"name"`
+		Name      string          `json:"name"`
+		Arguments json.RawMessage `json:"arguments"`
 	} `json:"params"`
+}
+
+// toolArguments: a call's arguments, re-encoded with sorted keys and their
+// numbers as written, and their SHA-256. The same arguments in another
+// order have the same hash: a decision service matches a call it saw
+// (an approval, a loop) by it.
+func toolArguments(raw json.RawMessage) ([]byte, string) {
+	canon := []byte("{}")
+	if t := bytes.TrimSpace(raw); len(t) > 0 && !bytes.Equal(t, []byte("null")) {
+		dec := json.NewDecoder(bytes.NewReader(t))
+		dec.UseNumber()
+		var v any
+		if dec.Decode(&v) == nil {
+			if b, err := json.Marshal(v); err == nil {
+				canon = b
+			}
+		} else {
+			canon = t
+		}
+	}
+	sum := sha256.Sum256(canon)
+	return canon, hex.EncodeToString(sum[:])
 }
 
 func parseMCP(raw []byte) ([]mcpMessage, bool, error) {
@@ -247,12 +362,17 @@ func parseMCP(raw []byte) ([]mcpMessage, bool, error) {
 	return []mcpMessage{m}, false, err
 }
 
-func refusal(m mcpMessage) map[string]any {
+// refusal answers a call the gateway did not send, as a tool result with
+// isError: the agent's model reads why and can do something else.
+func refusal(m mcpMessage, text string) map[string]any {
 	return map[string]any{"jsonrpc": "2.0", "id": m.ID, "result": map[string]any{
 		"isError": true,
-		"content": []any{map[string]any{"type": "text",
-			"text": "Stratum: la política de este equipo no permite la herramienta " + m.Params.Name + ". (This team's policy does not allow this tool.)"}},
+		"content": []any{map[string]any{"type": "text", "text": text}},
 	}}
+}
+
+func policyRefusal(tool string) string {
+	return "Stratum: la política de este equipo no permite la herramienta " + tool + ". (This team's policy does not allow this tool.)"
 }
 
 // allTools: the policy allows the server as a whole ("server/*").

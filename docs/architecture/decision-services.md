@@ -13,9 +13,11 @@ anyone who writes one.
 | `STRATUM_DECISION_TIMEOUT` | `200ms` | How long the gateway waits for all of them together, per request (10 ms to 5 s). |
 | `STRATUM_DECISION_FAIL` | `open` | `open`: a service that does not answer, or answers wrong, is skipped and the request goes, labelled `decision_skipped`. `closed`: the request is refused with 503 `decision_unavailable`. |
 | `STRATUM_DECISION_TOKEN` | | Sent to every service as `Authorization: Bearer <token>`. |
+| `STRATUM_DECISION_TOOL_ARGUMENTS` | `false` | `true`: MCP tool calls go to the services with their arguments, not only their hash (below). |
 
-In the chart: `decision.urls`, `decision.timeout`, `decision.failMode` and
-`decision.tokenSecret` (a Secret with the token).
+In the chart: `decision.urls`, `decision.timeout`, `decision.failMode`,
+`decision.tokenSecret` (a Secret with the token) and
+`decision.toolArguments`.
 
 Run the services on the same network as the gateway, and close them to
 anything else.
@@ -57,6 +59,39 @@ once.
 | `content_bytes` | Size of the body that goes to the provider. |
 
 The text never leaves the gateway through this protocol.
+
+### MCP tool calls
+
+From 0.8, the gateway also asks the services about each `tools/call` an
+agent makes through its MCP proxy, once the policy allows the tool
+([ADR-0017](../adr/0017-tool-calls-decision-services.md)). The body is the
+same, with `operation` `tool_call`, `provider` `mcp`, `model`
+`server/tool`, and a `tool`:
+
+```json
+{
+  "v": 1,
+  "operation": "tool_call", "provider": "mcp", "model": "tickets/cerrar",
+  "key_id": "agent:7b0c…", "team_id": "2000…0001", "task": "ticket-4812",
+  "labels": ["mcp"],
+  "content_sha256": "5d1e…", "content_bytes": 31,
+  "tool": {
+    "server": "tickets", "name": "cerrar",
+    "arguments": { "id": 4812, "motivo": "resuelto" },
+    "arguments_sha256": "5d1e…"
+  }
+}
+```
+
+| Field | |
+|---|---|
+| `tool.arguments_sha256` | SHA-256 of the arguments, encoded as JSON with sorted keys and their numbers as written. The same arguments in another order have the same hash. Also in `content_sha256`, and in the call's report. |
+| `tool.arguments` | Only with `STRATUM_DECISION_TOOL_ARGUMENTS=true`: they are what the agent sends, and may hold data. Past 16 KiB they are left out, with `"arguments_omitted": "too_large"`. |
+
+A deny is answered to the agent as a tool result with `isError`, its text
+`Stratum: ` and the service's message, so the agent's model reads it. The
+`headers` go in the response; the usage record has the status and the code.
+`tools/list`, `initialize` and the server's other methods are not checked.
 
 ### The answer
 
