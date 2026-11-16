@@ -111,3 +111,45 @@ func (h *Handler) Instructions(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	json.NewEncoder(w).Encode(out)
 }
+
+// MCPServers is GET /v1/stratum/mcp: the MCP servers the caller's policy
+// lets it use (ADR-0016), with what each one is for, so an application (the
+// Enterprise portal) can offer them. Which of a server's tools it may call
+// is what tools/list at /mcp/<name> answers, already filtered.
+func (h *Handler) MCPServers(w http.ResponseWriter, r *http.Request) {
+	rec := &record{start: time.Now()}
+	defer h.finishModels(rec)
+
+	snap := h.Holder.Load()
+	if snap == nil {
+		h.fail(w, rec, &policy.Violation{Status: http.StatusServiceUnavailable, Code: "not_ready", Message: "gateway has no configuration yet"})
+		return
+	}
+	_, teamID, _, v := h.caller(r, snap)
+	if v != nil {
+		h.fail(w, rec, v)
+		return
+	}
+	pol, found := snap.PolicyForTeam(teamID)
+	if v := policyUsable(pol, found); v != nil {
+		h.fail(w, rec, v)
+		return
+	}
+	type server struct {
+		Name        string `json:"name"`
+		Description string `json:"description,omitempty"`
+		All         bool   `json:"all_tools"`
+	}
+	out := []server{}
+	for _, name := range snap.MCPNames() {
+		if !pol.MCPAllowed(name, "") {
+			continue
+		}
+		s, _ := snap.MCP(name)
+		out = append(out, server{Name: name, Description: s.Description, All: allTools(pol, name)})
+	}
+	rec.status, rec.reason = http.StatusOK, "ok"
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	json.NewEncoder(w).Encode(map[string]any{"servers": out})
+}

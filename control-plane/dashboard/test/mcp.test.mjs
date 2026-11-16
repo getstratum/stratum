@@ -115,7 +115,7 @@ test('mcp servers: kept with their credential encrypted, never shown; gateways g
   try {
     const sync = JSON.parse(JSON.stringify(await buildSyncResponse(client, {
       orgId: A.id, sinceVersion: 0, syncIntervalS: 30, decrypt: decryptSecret, warn: () => {} })))
-    assert.deepEqual(sync.mcp_servers, [{ name: 'tickets', url: 'https://mcp.tickets.test/mcp', headers: { Authorization: 'Bearer tk_secret_123456' } }])
+    assert.deepEqual(sync.mcp_servers, [{ name: 'tickets', url: 'https://mcp.tickets.test/mcp', headers: { Authorization: 'Bearer tk_secret_123456' }, description: 'Soporte' }])
     assert.deepEqual(sync.policies.find(p => p.team_id === A.team).mcp_tools, ['tickets/buscar', 'tickets/crear'])
   } finally {
     client.release()

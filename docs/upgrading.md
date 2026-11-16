@@ -22,6 +22,8 @@ Back up the database before you upgrade.
   `decision.toolArguments`).
 - **Requests:** a team refused an MCP server its policy does not allow is
   now recorded (model `server`, 403 `mcp_server_not_allowed`).
+- **`GET /v1/stratum/mcp`:** the MCP servers a caller's policy allows,
+  with the description written in the console (now in the sync too).
 - **Migration 041, additive:** nullable `vision` and `tools` columns on
   `ai_models`, `provider_models` and `org_model_settings`: what a chat model
   can do besides text. Gateways say it in `GET /v1/models`

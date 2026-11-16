@@ -17,13 +17,19 @@ import (
 // MOCK_MCP_TOKEN, when set, is the bearer token it requires, as a real
 // server would: the gateway adds it, agents never see it.
 
+// hora and clima say they only read (MCP's readOnlyHint): an application
+// such as the Enterprise portal calls them without asking the person;
+// borrar_todo says it destroys.
 var mcpTools = []map[string]any{
 	{"name": "hora", "description": "La hora actual, en UTC.",
-		"inputSchema": map[string]any{"type": "object", "properties": map[string]any{}}},
+		"inputSchema": map[string]any{"type": "object", "properties": map[string]any{}},
+		"annotations": map[string]any{"readOnlyHint": true}},
 	{"name": "clima", "description": "El clima de una ciudad (inventado, para la demo).",
-		"inputSchema": map[string]any{"type": "object", "properties": map[string]any{"ciudad": map[string]any{"type": "string"}}, "required": []string{"ciudad"}}},
+		"inputSchema": map[string]any{"type": "object", "properties": map[string]any{"ciudad": map[string]any{"type": "string"}}, "required": []string{"ciudad"}},
+		"annotations": map[string]any{"readOnlyHint": true}},
 	{"name": "borrar_todo", "description": "Borra todos los registros. Peligrosa: para mostrar que la política la frena.",
-		"inputSchema": map[string]any{"type": "object", "properties": map[string]any{}}},
+		"inputSchema": map[string]any{"type": "object", "properties": map[string]any{}},
+		"annotations": map[string]any{"readOnlyHint": false, "destructiveHint": true}},
 }
 
 func mcp(w http.ResponseWriter, r *http.Request) {

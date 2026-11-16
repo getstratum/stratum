@@ -23,6 +23,7 @@ type Options struct {
 	Proxy          http.Handler
 	Models         http.Handler // GET /v1/models; optional
 	Instructions   http.Handler // GET /v1/stratum/instructions; optional
+	MCPServers     http.Handler // GET /v1/stratum/mcp; optional
 	MCP            http.Handler // /mcp/{server} (ADR-0016); optional
 	Health         *health.Health
 	Metrics        *metrics.Metrics
@@ -42,6 +43,9 @@ func Public(o Options) http.Handler {
 	}
 	if o.Instructions != nil {
 		mux.Handle("GET /v1/stratum/instructions", limit(o.Instructions, o.MaxInflight, o.Metrics))
+	}
+	if o.MCPServers != nil {
+		mux.Handle("GET /v1/stratum/mcp", limit(o.MCPServers, o.MaxInflight, o.Metrics))
 	}
 	if o.MCP != nil {
 		mux.Handle("/mcp/", limit(o.MCP, o.MaxInflight, o.Metrics))
