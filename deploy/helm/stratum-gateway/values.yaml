@@ -70,6 +70,10 @@ decision:
   # A Secret holding the bearer token the services expect.
   tokenSecret: ""
   tokenSecretKey: token
+  # MCP tool calls go to the services with their arguments, not only their
+  # hash (ADR-0017): turn it on for rules on arguments and for approvers to
+  # see what they approve.
+  toolArguments: false
 
 # OpenTelemetry traces (docs/architecture/traces.md): spans sent to a
 # collector over OTLP/HTTP in JSON, metadata only. Empty endpoint: no spans

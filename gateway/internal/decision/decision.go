@@ -12,7 +12,9 @@
 //
 // The gateway sends metadata only: who (key, team, person), the task the
 // application named, the route, and a SHA-256 of the request's content, so
-// a service can tell a repeated request without seeing it. Several services
+// a service can tell a repeated request without seeing it. An MCP tool call
+// (ADR-0017) also names the server and the tool, and carries its arguments
+// only if the operator turns that on. Several services
 // are asked at once; the first one that denies, in the configured order,
 // decides. A service that does not answer in time is skipped (fail open,
 // the default) or refuses the request (fail closed).
@@ -54,11 +56,31 @@ type Request struct {
 	Labels        []string `json:"labels,omitempty"`
 	ContentSHA256 string   `json:"content_sha256,omitempty"`
 	ContentBytes  int      `json:"content_bytes"`
+	// Tool: an MCP tool call (operation "tool_call", ADR-0017), else nil.
+	Tool *Tool `json:"tool,omitempty"`
 
 	// Traceparent, when set, goes to the services as the W3C header, so
 	// their spans join the request's trace (ADR-0013). Not in the body.
 	Traceparent string `json:"-"`
 }
+
+// Tool is an MCP tool call through the gateway (ADR-0016, ADR-0017). Its
+// arguments go only when the operator turns that on
+// (STRATUM_DECISION_TOOL_ARGUMENTS): they are what the agent sends, and may
+// hold data. Their SHA-256 always goes, so a service can match a call it
+// already saw (an approval, a loop) without them.
+type Tool struct {
+	Server          string          `json:"server"`
+	Name            string          `json:"name"`
+	Arguments       json.RawMessage `json:"arguments,omitempty"`
+	ArgumentsSHA256 string          `json:"arguments_sha256"`
+	// Why the arguments are not here, when the operator sends them:
+	// "too_large" (past MaxToolArguments).
+	ArgumentsOmitted string `json:"arguments_omitted,omitempty"`
+}
+
+// MaxToolArguments: larger arguments go as their hash alone.
+const MaxToolArguments = 16 << 10
 
 // Decision is the combined answer of every service.
 type Decision struct {

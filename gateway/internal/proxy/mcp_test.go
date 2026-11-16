@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"encoding/json"
+	"github.com/getstratum/stratum/gateway/internal/decision"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -77,9 +78,9 @@ const mcpPolicy = `{"id":"p","team_id":"t1","version":1,"allow_all_models":true,
 
 // mcpEnv: the gateway with the MCP server "demo" behind it, its credential
 // set in the console.
-func mcpEnv(t *testing.T, policyJSON string) (*env, *mcpUpstream, *httptest.Server) {
+func mcpEnv(t *testing.T, policyJSON string, opts ...func(*Handler)) (*env, *mcpUpstream, *httptest.Server) {
 	t.Helper()
-	e := newEnv(t, policyJSON, time.Minute)
+	e := newEnv(t, policyJSON, time.Minute, opts...)
 	up := &mcpUpstream{}
 	upSrv := httptest.NewServer(up)
 	t.Cleanup(upSrv.Close)
@@ -210,5 +211,86 @@ func TestMCPRefusals(t *testing.T) {
 	res.Body.Close()
 	if res.StatusCode != 403 {
 		t.Errorf("batch: %d", res.StatusCode)
+	}
+}
+
+func TestMCPCallsGoThroughTheDecisionServices(t *testing.T) {
+	d := &decider{answer: decision.Decision{Allow: true, Labels: []string{"guard_seen"}}}
+	e, up, gw := mcpEnv(t, mcpPolicy, func(h *Handler) { h.Decision = d })
+
+	// Only calls are checked: not initialize, not lists.
+	mcpCall(t, gw, "/mcp/demo", devKey, `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`)
+	if len(d.checks) != 0 {
+		t.Fatalf("a list was checked: %+v", d.checks)
+	}
+	_, msg := mcpCall(t, gw, "/mcp/demo", devKey, `{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"clima","arguments":{"ciudad":"Salto","dias":3}}}`)
+	if result, _ := msg["result"].(map[string]any); result["isError"] == true {
+		t.Fatalf("allowed call: %v", msg)
+	}
+	mcpCall(t, gw, "/mcp/demo", devKey, `{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"clima","arguments":{"dias":3,"ciudad":"Salto"}}}`)
+	if len(d.checks) != 2 {
+		t.Fatalf("%d checks", len(d.checks))
+	}
+	c := d.checks[0]
+	if c.Operation != "tool_call" || c.Provider != "mcp" || c.Model != "demo/clima" || c.Tool == nil ||
+		c.Tool.Server != "demo" || c.Tool.Name != "clima" || len(c.Tool.ArgumentsSHA256) != 64 || c.ContentSHA256 != c.Tool.ArgumentsSHA256 {
+		t.Fatalf("check = %+v, tool %+v", c, c.Tool)
+	}
+	if c.Tool.Arguments != nil {
+		t.Errorf("arguments went without the operator turning that on: %s", c.Tool.Arguments)
+	}
+	if d.checks[1].Tool.ArgumentsSHA256 != c.Tool.ArgumentsSHA256 {
+		t.Error("the same arguments in another order have another hash")
+	}
+	got := e.usage.wait(t, 2)
+	if len(got) != 2 || got[0].Status != 200 || !strings.Contains(strings.Join(got[0].Labels, ","), "guard_seen") {
+		t.Errorf("usage %+v", got)
+	}
+	if reps := d.waitReports(t, 2); len(reps) != 2 || reps[0].Model != "demo/clima" || reps[0].Status != 200 || reps[0].ContentSHA256 != c.Tool.ArgumentsSHA256 {
+		t.Errorf("reports %+v", reps)
+	}
+	if calls, _ := up.seen(); len(calls) != 2 {
+		t.Errorf("reached the server: %v", calls)
+	}
+}
+
+func TestMCPToolArgumentsGoOnlyWhenTurnedOn(t *testing.T) {
+	d := &decider{answer: decision.Decision{Allow: true}}
+	_, _, gw := mcpEnv(t, mcpPolicy, func(h *Handler) { h.Decision, h.ToolArguments = d, true })
+	mcpCall(t, gw, "/mcp/demo", devKey, `{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"clima","arguments":{"ciudad":"Salto","dias":30000000000000001}}}`)
+	if len(d.checks) != 1 || string(d.checks[0].Tool.Arguments) != `{"ciudad":"Salto","dias":30000000000000001}` {
+		t.Fatalf("checks %+v", d.checks)
+	}
+	big := strings.Repeat("x", decision.MaxToolArguments)
+	mcpCall(t, gw, "/mcp/demo", devKey, `{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"clima","arguments":{"ciudad":"`+big+`"}}}`)
+	if c := d.checks[1].Tool; c.Arguments != nil || c.ArgumentsOmitted != "too_large" || len(c.ArgumentsSHA256) != 64 {
+		t.Errorf("large arguments: %+v", c)
+	}
+}
+
+func TestMCPCallRefusedByADecisionService(t *testing.T) {
+	d := &decider{answer: decision.Decision{Status: 403, Code: "tool_approval_pending",
+		Message: "esta herramienta necesita la aprobación de una persona", Headers: map[string]string{"Retry-After": "60"}}}
+	e, up, gw := mcpEnv(t, mcpPolicy, func(h *Handler) { h.Decision = d })
+	res, msg := mcpCall(t, gw, "/mcp/demo", devKey, `{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"hora","arguments":{}}}`)
+	result, _ := msg["result"].(map[string]any)
+	content, _ := result["content"].([]any)
+	if res.StatusCode != 200 || result["isError"] != true || len(content) != 1 || msg["id"].(float64) != 7 || res.Header.Get("Retry-After") != "60" ||
+		content[0].(map[string]any)["text"] != "Stratum: esta herramienta necesita la aprobación de una persona" {
+		t.Fatalf("refused call: %d %v", res.StatusCode, msg)
+	}
+	if calls, _ := up.seen(); len(calls) != 0 {
+		t.Errorf("reached the server: %v", calls)
+	}
+	if got := e.usage.wait(t, 1); len(got) != 1 || got[0].Status != 403 || got[0].Reason != "tool_approval_pending" || got[0].Model != "demo/hora" {
+		t.Errorf("usage %+v", got)
+	}
+	if reps := d.waitReports(t, 1); len(reps) != 1 || reps[0].Status != 403 || reps[0].Reason != "tool_approval_pending" {
+		t.Errorf("reports %+v", reps)
+	}
+	// A tool the policy refuses never reaches the services.
+	mcpCall(t, gw, "/mcp/demo", devKey, `{"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"borrar_todo"}}`)
+	if len(d.checks) != 1 {
+		t.Errorf("%d checks", len(d.checks))
 	}
 }

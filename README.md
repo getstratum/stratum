@@ -235,6 +235,9 @@ metadata and a SHA-256 of the content, never the text; they answer allow
 (optionally adding labels and `X-Stratum-*` response headers) or deny with a
 status and a code, and later get how each request ended. A request may name
 its task with `X-Stratum-Task: <1 to 100 letters, digits and . _ : ->`.
+They are also asked about each MCP tool call the policy allows, with the
+server and the tool, and the arguments if the operator turns that on: an
+approval before a sensitive tool, rules on what it may be called with.
 Protocol: [Decision services](docs/architecture/decision-services.md);
 why: [ADR-0014](docs/adr/0014-decision-services.md).
 
@@ -271,6 +274,7 @@ See [Traces](docs/architecture/traces.md) and [ADR-0013](docs/adr/0013-traces.md
 | `STRATUM_DECISION_URLS` | | Up to four external decision services, comma-separated base URLs, asked before each request goes to the provider (below). Empty: off. |
 | `STRATUM_DECISION_TIMEOUT` / `STRATUM_DECISION_FAIL` | `200ms` / `open` | How long the gateway waits for all of them, and what it does when one does not answer: `open` sends the request, labelled `decision_skipped`; `closed` refuses it with 503 `decision_unavailable`. |
 | `STRATUM_DECISION_TOKEN` | | Bearer token sent to the decision services. |
+| `STRATUM_DECISION_TOOL_ARGUMENTS` | `false` | MCP tool calls go to the decision services with their arguments, not only their hash (ADR-0017). |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` / `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | | OpenTelemetry collector for the gateway's spans, OTLP/HTTP in JSON (port 4318). The first gets `/v1/traces` appended, the second is used as is. Empty, or `OTEL_TRACES_EXPORTER=none`: no spans. |
 | `OTEL_TRACES_SAMPLER` / `OTEL_TRACES_SAMPLER_ARG` | `parentbased_always_on` | Which requests are traced: `always_on`, `always_off`, `traceidratio` with a ratio, and their `parentbased_` forms, which follow the client's decision. |
 | `OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES`, `OTEL_EXPORTER_OTLP_HEADERS`, `OTEL_EXPORTER_OTLP_TIMEOUT`, `OTEL_BSP_*` | `stratum-gateway`, ... | As in the OpenTelemetry SDKs (timeouts and delays in milliseconds). `OTEL_EXPORTER_OTLP_PROTOCOL` may only be `http/json`. |
