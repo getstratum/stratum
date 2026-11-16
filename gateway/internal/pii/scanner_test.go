@@ -223,3 +223,34 @@ func TestInlineFilesAreNotScanned(t *testing.T) {
 		t.Errorf("plain data URI: %v", res.Types)
 	}
 }
+
+func TestToolCallIdsAndSignaturesAreNotScanned(t *testing.T) {
+	secret := "sk-abcdefghijklmnopqrstuvwxyz0123456789"
+	// A tool step as the Enterprise portal sends it back (F4 of the 0.8
+	// tests): Groq's call id and Gemini's signature look like keys.
+	body := `{"messages":[{"role":"user","content":"hora"},` +
+		`{"role":"assistant","content":null,"tool_calls":[{"id":"fc_9a1f0e3c-1b2a-4c3d-8e9f-0a1b2c3d4e5f","type":"function",` +
+		`"function":{"name":"demo__hora","arguments":"{}"},"extra_content":{"google":{"thought_signature":"CiQBvj72+3kqZ0P1mN8x5Yq7uG6v2Wb9EjR0aSdFgHjKlZxCvBnMq"}}}]},` +
+		`{"role":"tool","tool_call_id":"fc_9a1f0e3c-1b2a-4c3d-8e9f-0a1b2c3d4e5f","content":"Son las 15:10 UTC."},` +
+		`{"role":"assistant","content":[{"type":"thinking","thinking":"…","signature":"EqoBCkgIARABGAIiQAx1Yz2W3v4U5t6S7r8Q9p0O1n2M3l4K5j6I7h8G9f0E"}]}]}`
+	if res, err := ScanJSON([]byte(body), []string{TypeAPIKey}); err != nil || res.Flagged {
+		t.Fatalf("ids and signatures flagged: %+v %v", res, err)
+	}
+	// A key in a call's arguments or in a tool's result still is.
+	for _, b := range []string{
+		strings.Replace(body, `"arguments":"{}"`, `"arguments":"{\"k\":\"`+secret+`\"}"`, 1),
+		strings.Replace(body, "Son las 15:10 UTC.", "la clave es "+secret, 1),
+		// "signature" or "id" elsewhere is content.
+		`{"messages":[{"role":"user","content":[{"type":"text","text":"x","signature":"` + secret + `"}]}]}`,
+		`{"input":{"id":"` + secret + `"}}`,
+	} {
+		if res, _ := ScanJSON([]byte(b), []string{TypeAPIKey}); !res.Flagged {
+			t.Errorf("not flagged: %s", b)
+		}
+	}
+	// Redaction leaves them as they came.
+	out, _, err := RedactJSON([]byte(body), []string{TypeAPIKey})
+	if err != nil || !strings.Contains(string(out), "fc_9a1f0e3c-1b2a-4c3d-8e9f-0a1b2c3d4e5f") || !strings.Contains(string(out), "CiQBvj72+3kqZ0P1mN8x5Yq7uG6v2Wb9EjR0aSdFgHjKlZxCvBnMq") {
+		t.Errorf("redacted: %s", out)
+	}
+}

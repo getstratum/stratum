@@ -196,7 +196,33 @@ func opaque(s string) bool {
 	return strings.Contains(head, ";base64,")
 }
 
+// Ids and signatures of tool calls are the provider's own opaque values,
+// sent back as they came: Groq's call ids ("fc_" and a UUID) look like a
+// key to the API key pattern, and Gemini 3 refuses a step whose
+// thought_signature changed. They are skipped too:
+//
+//   - "tool_call_id" (OpenAI's tool messages);
+//   - "id" of a tool call (next to "function", or of type tool_use,
+//     function_call or tool_call);
+//   - "thought_signature" (Gemini), "signature" of a thinking block
+//     (Anthropic) and "encrypted_content" of a reasoning item (OpenAI).
+//
+// The arguments of a call, and every tool result, are still scanned.
 func blobKey(m map[string]any, k string) bool {
+	t, _ := m["type"].(string)
+	switch k {
+	case "tool_call_id", "thought_signature", "thoughtSignature":
+		return true
+	case "signature":
+		return t == "thinking"
+	case "encrypted_content":
+		return t == "reasoning"
+	case "id":
+		if _, ok := m["function"]; ok {
+			return true
+		}
+		return t == "tool_use" || t == "function_call" || t == "tool_call"
+	}
 	if k != "data" {
 		return false
 	}

@@ -22,6 +22,11 @@ Back up the database before you upgrade.
   `decision.toolArguments`).
 - **Requests:** a team refused an MCP server its policy does not allow is
   now recorded (model `server`, 403 `mcp_server_not_allowed`).
+- **PII and DLP skip the ids and signatures of tool calls** (`tool_call_id`,
+  a call's `id`, Gemini's `thought_signature`, the `signature` of a
+  thinking block, the `encrypted_content` of a reasoning item): provider
+  values sent back as they came, that the API key pattern mistook for keys.
+  A call's arguments and every tool result are still scanned.
 - **`GET /v1/stratum/mcp`:** the MCP servers a caller's policy allows,
   with the description written in the console (now in the sync too).
 - **Migration 041, additive:** nullable `vision` and `tools` columns on
