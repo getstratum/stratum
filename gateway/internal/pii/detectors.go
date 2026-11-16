@@ -8,7 +8,10 @@
 // customer data shows which patterns matter most.
 package pii
 
-import "regexp"
+import (
+	"regexp"
+	"strings"
+)
 
 type Detection struct {
 	Type  string // see the Type* constants below
@@ -54,6 +57,36 @@ var patterns = map[string]*regexp.Regexp{
 	// Generic API key / secret shapes: provider prefixes (sk-, aig_sk_,
 	// ghp_, AKIA...) or long high-entropy alphanumeric runs (32+ chars).
 	TypeAPIKey: regexp.MustCompile(`\b(?:sk-[A-Za-z0-9]{20,}|aig_(?:sk|agt)_[A-Za-z0-9]{20,}|ghp_[A-Za-z0-9]{30,}|AKIA[A-Z0-9]{16}|[A-Za-z0-9_\-]{32,})\b`),
+}
+
+// secretShaped filters the generic branch of the api_key pattern (a run of
+// 32+ letters, digits, - and _) down to what looks like a credential: one
+// stretch of 20+ characters between - and _ with letters and digits. Names
+// made of words — a container (stratum-demo-enterprise-stratum-gateway-1),
+// a pod, a Helm release —, a UUID and an id like fc_<uuid> are not secrets.
+// The provider prefixes (sk-, aig_sk_, ghp_, AKIA) always count.
+func secretShaped(s string) bool {
+	if strings.HasPrefix(s, "sk-") || strings.HasPrefix(s, "aig_") || strings.HasPrefix(s, "ghp_") || strings.HasPrefix(s, "AKIA") {
+		return true
+	}
+	for _, part := range strings.FieldsFunc(s, func(r rune) bool { return r == '-' || r == '_' }) {
+		if len(part) < 20 {
+			continue
+		}
+		letter, digit := false, false
+		for _, r := range part {
+			switch {
+			case r >= '0' && r <= '9':
+				digit = true
+			case (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z'):
+				letter = true
+			}
+		}
+		if letter && digit {
+			return true
+		}
+	}
+	return false
 }
 
 // luhnValid implements the Luhn checksum used by all major card networks.
