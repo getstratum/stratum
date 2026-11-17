@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { SSO_MESSAGES } from '../../lib/sso-messages.js'
+import PasswordInput from '../../components/PasswordInput'
 
 const INPUT = 'w-full bg-raised border border-border rounded-lg px-3.5 py-2.5 text-sm text-strong placeholder-subtle focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent transition-all disabled:opacity-50'
 const LABEL = 'block text-xs font-semibold text-muted uppercase tracking-wide mb-1.5'
@@ -111,7 +112,7 @@ export default function LoginPage() {
                 </div>
                 <div>
                   <label htmlFor="password" className={LABEL}>Contraseña</label>
-                  <input id="password" type="password" autoComplete="current-password" value={password}
+                  <PasswordInput id="password" autoComplete="current-password" value={password}
                     onChange={e => setPassword(e.target.value)} required disabled={redirecting} className={INPUT} />
                 </div>
                 {error && <p role="alert" className="text-xs text-err bg-err-light rounded-lg px-3 py-2">{error}</p>}

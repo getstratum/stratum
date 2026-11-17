@@ -93,6 +93,13 @@ async function signIn(email, password, { secret = email === OWNER.email ? OWNER.
   await page.goto('/login')
   await page.locator('input[type=email]').fill(email)
   await page.locator('input[type=password]').fill(password)
+  // The eye shows what was typed, and hides it again.
+  const reveal = page.getByRole('button', { name: 'Mostrar lo escrito' })
+  await reveal.click()
+  await expect(page.locator('#password')).toHaveAttribute('type', 'text')
+  await expect(page.locator('#password')).toHaveValue(password)
+  await page.getByRole('button', { name: 'Ocultar lo escrito' }).click()
+  await expect(page.locator('#password')).toHaveAttribute('type', 'password')
   await page.locator('button[type=submit]').click()
   const codeStep = page.getByRole('heading', { level: 1, name: 'Verificación en dos pasos' })
   await expect(codeStep.or(page.getByRole('navigation'))).toBeVisible({ timeout: 30_000 })

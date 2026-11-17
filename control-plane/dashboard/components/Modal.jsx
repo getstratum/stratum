@@ -1,6 +1,7 @@
 'use client'
 
 import { Children, cloneElement, isValidElement, useEffect, useId } from 'react'
+import PasswordInput from './PasswordInput'
 
 export default function Modal({ title, onClose, children, width = 'max-w-lg' }) {
   useEffect(() => {
@@ -62,13 +63,12 @@ export function Field({ label, hint, children }) {
   )
 }
 
+const INPUT = 'w-full bg-card border border-border-strong rounded-md px-3 h-10 text-sm text-strong placeholder-subtle focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent transition-all'
+
+// A password or a secret gets the eye to see what is typed (PasswordInput).
 export function Input({ ...props }) {
-  return (
-    <input
-      {...props}
-      className="w-full bg-card border border-border-strong rounded-md px-3 h-10 text-sm text-strong placeholder-subtle focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent transition-all"
-    />
-  )
+  if (props.type === 'password') return <PasswordInput {...props} className={INPUT} />
+  return <input {...props} className={INPUT} />
 }
 
 export function Select({ children, ...props }) {
