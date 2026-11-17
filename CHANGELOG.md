@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.8.0](https://github.com/getstratum/stratum/compare/v0.7.0...v0.8.0) (2026-11-17)
+
+
+### Features
+
+* **console:** an eye to see the password or key being typed ([#136](https://github.com/getstratum/stratum/issues/136)) ([8dd308b](https://github.com/getstratum/stratum/commit/8dd308b130a13c5327737466a3bb008cae303711))
+* **console:** Requests says who an agent acted for, why a request was refused, and its labels ([#133](https://github.com/getstratum/stratum/issues/133)) ([956855d](https://github.com/getstratum/stratum/commit/956855d705e19413273dc5a7c4c1b58f5ff9d615))
+* **gateway:** GET /v1/stratum/mcp, the MCP servers a caller may use ([#129](https://github.com/getstratum/stratum/issues/129)) ([c9fde19](https://github.com/getstratum/stratum/commit/c9fde198beb394e47a68be71a22883677c718d49))
+* **gateway:** MCP tool calls go through the decision services (ADR-0017) ([#127](https://github.com/getstratum/stratum/issues/127)) ([56d7bf9](https://github.com/getstratum/stratum/commit/56d7bf992df9b236f1587069d48ec3d5322a7bf5))
+* images and transcriptions through the gateway, priced per image and per minute (ADR-0018) ([#137](https://github.com/getstratum/stratum/issues/137)) ([aa481a8](https://github.com/getstratum/stratum/commit/aa481a8295a39ce3c1a6cc1977bff0266afe98de))
+* what a chat model can do besides text — read images, call tools ([#128](https://github.com/getstratum/stratum/issues/128)) ([4eaa223](https://github.com/getstratum/stratum/commit/4eaa223072ea354cb51e73094203ca60cf59d281))
+
+
+### Bug Fixes
+
+* **console:** Realtime models are not transcriptions; Precio says what no price means ([#138](https://github.com/getstratum/stratum/issues/138)) ([17504c8](https://github.com/getstratum/stratum/commit/17504c81016a8e2e6e830d6424650997e7bb3788))
+* **demo:** the mock LLM image builds with its MCP server ([#124](https://github.com/getstratum/stratum/issues/124)) ([52701b9](https://github.com/getstratum/stratum/commit/52701b93b64e86d638f5d246d9e33b0e340271bd))
+* **gateway:** DLP does not take names made of words for API keys ([#131](https://github.com/getstratum/stratum/issues/131)) ([ee5f88d](https://github.com/getstratum/stratum/commit/ee5f88d10816ae7497f705453b574c8a1cd31924))
+* **gateway:** MCP requests keep the application's labels ([#135](https://github.com/getstratum/stratum/issues/135)) ([49c3f80](https://github.com/getstratum/stratum/commit/49c3f80f0b9ecd5ff096060b5e92a2dc7e5db86b))
+* **gateway:** MCP tool calls fail closed when the decision services do not answer ([#132](https://github.com/getstratum/stratum/issues/132)) ([c0a42f5](https://github.com/getstratum/stratum/commit/c0a42f51b4096aa4483380e6f63314951889da81))
+* **gateway:** PII and DLP skip the ids and signatures of tool calls ([#130](https://github.com/getstratum/stratum/issues/130)) ([c6e5f5a](https://github.com/getstratum/stratum/commit/c6e5f5a13a30731d4f647357e9b8d964f5d344c2))
+* **gateway:** PII takes a phone only when its digits stand on their own ([#134](https://github.com/getstratum/stratum/issues/134)) ([c12067d](https://github.com/getstratum/stratum/commit/c12067d745180123f724909a8549c43f8e78061f))
+* what the 0.7 tests with real providers showed ([#126](https://github.com/getstratum/stratum/issues/126)) ([7169297](https://github.com/getstratum/stratum/commit/716929772b03d8e6aee040b35f01b6ac277d09cb))
+
 ## [0.7.0](https://github.com/getstratum/stratum/compare/v0.6.0...v0.7.0) (2026-11-15)
 
 
