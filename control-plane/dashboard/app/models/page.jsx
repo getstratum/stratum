@@ -66,7 +66,7 @@ function PriceModal({ model, onClose, onSaved }) {
       <div className="space-y-4">
         <p className="text-sm text-muted">
           Lo que paga tu organización, si negoció otro precio. Los requests nuevos se cuestan con él; los ya registrados no cambian.
-          {model.source === 'provider' && ' Este modelo no está en el catálogo: sin un precio, su costo se registra como 0.'}
+          {model.source === 'provider' && ' Este modelo no está en el catálogo: sin un precio, sus requests quedan como «Sin precio» y no suman al costo.'}
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Field label="Entrada (US$ por millón)" hint={model.cost_per_1k_input_tokens != null ? `Lista: ${perMillion(model.cost_per_1k_input_tokens)}` : 'Sin precio de lista'}>

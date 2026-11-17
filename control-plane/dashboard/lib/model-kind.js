@@ -36,6 +36,9 @@ export const isKind = v => typeof v === 'string' && KINDS.includes(v)
 // ("gpt-4o-mini-transcribe" is not chat, "gemini-2.5-flash-preview-tts" is
 // not chat, "omni-moderation-latest" is not chat).
 const RULES = [
+  // A Realtime model (WebSocket) is not used through the gateway's endpoints,
+  // whatever else its ID says ("gpt-realtime-whisper" is not a transcription).
+  ['other', /realtime/],
   ['moderation', /moderation|llama-guard|prompt-guard|safeguard|shieldgemma|(^|[/-])guard($|[-:])/],
   ['transcription', /whisper|transcribe|speech-to-text|(^|[/-])stt($|[-:])/],
   ['speech', /(^|[/-])tts($|[-:])|text-to-speech|orpheus|playai|sonic-|(^|[/-])speech($|[-:])/],
