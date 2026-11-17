@@ -66,6 +66,8 @@ func main() {
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.Write([]byte("ok")) })
 	mux.HandleFunc("POST /v1/chat/completions", cfg.chat)
 	mux.HandleFunc("POST /mcp", mcp)
+	mux.HandleFunc("POST /v1/images/generations", images)
+	mux.HandleFunc("POST /v1/audio/transcriptions", transcriptions)
 
 	srv := &http.Server{Addr: ":8080", Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	go func() {

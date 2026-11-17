@@ -64,6 +64,7 @@ type upstream struct {
 	path    string
 	header  http.Header
 	body    map[string]any
+	raw     []byte
 	handler func(w http.ResponseWriter, r *http.Request)
 }
 
@@ -72,7 +73,7 @@ func (u *upstream) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	u.mu.Lock()
 	u.path = r.URL.RequestURI()
 	u.header = r.Header.Clone()
-	u.body = nil
+	u.body, u.raw = nil, raw
 	json.Unmarshal(raw, &u.body)
 	u.mu.Unlock()
 	u.handler(w, r)

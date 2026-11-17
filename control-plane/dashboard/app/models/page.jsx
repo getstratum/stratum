@@ -40,6 +40,11 @@ function PriceModal({ model, onClose, onSaved }) {
   const toM = v => (v == null ? '' : String(Math.round(parseFloat(v) * 1000 * 1e6) / 1e6))
   const [input, setInput] = useState(toM(model.org_cost_per_1k_input_tokens))
   const [output, setOutput] = useState(toM(model.org_cost_per_1k_output_tokens))
+  // Images and transcriptions also have a price per unit (ADR-0018).
+  const unit = model.kind === 'image' ? { field: 'per_image', own: 'org_cost_per_image', list: 'cost_per_image', label: 'Por imagen (US$)' }
+    : model.kind === 'transcription' ? { field: 'per_audio_minute', own: 'org_cost_per_audio_minute', list: 'cost_per_audio_minute', label: 'Por minuto de audio (US$)' }
+    : null
+  const [perUnit, setPerUnit] = useState(unit && model[unit.own] != null ? String(parseFloat(model[unit.own])) : '')
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
 
@@ -70,14 +75,19 @@ function PriceModal({ model, onClose, onSaved }) {
           <Field label="Salida (US$ por millón)" hint={model.cost_per_1k_output_tokens != null ? `Lista: ${perMillion(model.cost_per_1k_output_tokens)}` : 'Sin precio de lista'}>
             <Input inputMode="decimal" value={output} onChange={e => setOutput(e.target.value)} />
           </Field>
+          {unit && (
+            <Field label={unit.label} hint={model[unit.list] != null ? `Lista: US$ ${parseFloat(model[unit.list])}` : 'Sin precio de lista. Se suma al de los tokens, si el proveedor los informa.'}>
+              <Input inputMode="decimal" value={perUnit} onChange={e => setPerUnit(e.target.value)} />
+            </Field>
+          )}
         </div>
         {error && <p className="text-xs text-err bg-err-light rounded-lg px-3 py-2">{error}</p>}
         <div className="flex flex-wrap justify-end gap-2 pt-1">
-          {(model.org_cost_per_1k_input_tokens != null || model.org_cost_per_1k_output_tokens != null) && (
-            <Btn variant="secondary" disabled={saving} onClick={() => save({ input_per_mtok: null, output_per_mtok: null })}>Volver al de lista</Btn>
+          {(model.org_cost_per_1k_input_tokens != null || model.org_cost_per_1k_output_tokens != null || (unit && model[unit.own] != null)) && (
+            <Btn variant="secondary" disabled={saving} onClick={() => save({ input_per_mtok: null, output_per_mtok: null, ...(unit ? { [unit.field]: null } : {}) })}>Volver al de lista</Btn>
           )}
           <Btn variant="secondary" onClick={onClose}>Cancelar</Btn>
-          <Btn disabled={saving} onClick={() => save({ input_per_mtok: num(input), output_per_mtok: num(output) })}>{saving ? 'Guardando…' : 'Guardar'}</Btn>
+          <Btn disabled={saving} onClick={() => save({ input_per_mtok: num(input), output_per_mtok: num(output), ...(unit ? { [unit.field]: num(perUnit) } : {}) })}>{saving ? 'Guardando…' : 'Guardar'}</Btn>
         </div>
       </div>
     </Modal>

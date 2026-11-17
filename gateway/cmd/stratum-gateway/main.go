@@ -181,6 +181,7 @@ func serve() int {
 		Holder: holder, Quota: enforcer, Metrics: m, Log: log.With("component", "proxy"),
 		Client:            &http.Client{Transport: proxy.NewTransport(cfg.UpstreamConnectTimeout, cfg.UpstreamHeaderTimeout)},
 		MaxRequestBytes:   cfg.MaxRequestBytes,
+		MaxAudioBytes:     cfg.MaxAudioBytes,
 		StreamIdleTimeout: cfg.StreamIdleTimeout,
 		PIIEnabled:        cfg.PIIEnabled,
 		UserAgent:         userAgent(),
