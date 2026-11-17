@@ -52,6 +52,8 @@ export const LOG_COLUMNS = [
   { key: 'status_code',  label: 'Status' },
   { key: 'is_stream',    label: 'Streaming' },
   { key: 'error_message', label: 'Reason' },
+  { key: 'images',       label: 'Images' },
+  { key: 'audio_seconds', label: 'Audio seconds' },
   { key: 'labels',       label: 'Labels',        format: v => (Array.isArray(v) ? v.join(';') : '') },
 ]
 

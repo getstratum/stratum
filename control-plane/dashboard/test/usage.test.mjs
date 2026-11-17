@@ -146,6 +146,26 @@ test('usage: a model without a price costs NULL ("sin precio"), not a 0 that rea
   assert.equal(Number(await cost(refused)), 0) // no tokens: nothing to price
 })
 
+test('usage: images and audio are priced per image and per minute (ADR-0018), beside tokens', { skip }, async () => {
+  await sql(`INSERT INTO org_model_settings (org_id, provider, model_id, cost_per_audio_minute) VALUES ($1, 'groq', 'whisper-large-v3', 0.00185)
+             ON CONFLICT (org_id, provider, model_id) DO UPDATE SET cost_per_audio_minute = 0.00185`, [A.id])
+  await sql(`INSERT INTO org_model_settings (org_id, provider, model_id, cost_per_image, cost_per_1k_input_tokens, cost_per_1k_output_tokens)
+             VALUES ($1, 'openai', 'img-test', 0.04, 0.002, 0.008)
+             ON CONFLICT (org_id, provider, model_id) DO UPDATE SET cost_per_image = 0.04`, [A.id])
+  const audio = record(A, { provider: 'groq', model: 'whisper-large-v3', tokens_in: 0, tokens_out: 0, audio_seconds: 120 })
+  const image = record(A, { provider: 'openai', model: 'img-test', tokens_in: 1000, tokens_out: 0, images: 2 })
+  const unpriced = record(A, { provider: 'groq', model: 'whisper-sin-precio', tokens_in: 0, tokens_out: 0, audio_seconds: 60 })
+  assert.equal((await post(A.token, { records: [audio, image, unpriced] })).body.accepted, 3)
+  const row = async r => (await sql('SELECT cost_usd, images, audio_seconds FROM request_logs WHERE id = $1', [r.id]))[0]
+  const a = await row(audio)
+  assert.equal(Number(a.cost_usd), 0.0037) // 2 minutes × 0.00185
+  assert.equal(Number(a.audio_seconds), 120)
+  const i = await row(image)
+  assert.equal(Number(i.cost_usd), 0.082) // 1000 × 0.002/1k + 2 × 0.04
+  assert.equal(i.images, 2)
+  assert.equal((await row(unpriced)).cost_usd, null)
+})
+
 test('usage: each request gets its estimated impact; an unknown model or no output gets none', { skip }, async () => {
   const known = record(A, { provider: 'openai', model: 'gpt-4o-mini', tokens_out: 400, duration_ms: 6000 })
   const unknown = record(A, { provider: 'ollama', model: 'mock-fast', tokens_out: 400 })

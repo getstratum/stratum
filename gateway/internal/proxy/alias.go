@@ -28,6 +28,7 @@ type route struct {
 	kind        provider.Kind
 	path        string // the upstream path
 	final       []byte // the body for this route (prepare)
+	ctype       string // its Content-Type: JSON, or a form's (ADR-0018)
 }
 
 // aliasName is the alias a request names: in its model, or as the fixed
@@ -100,6 +101,9 @@ func aliasRoutes(snap *snapshot.Snapshot, pol snapshot.Policy, polFound bool, na
 // uses, then the policy's PII and DLP rules. body is the request as
 // decoded; nil decodes it again from rec, for a later route.
 func (h *Handler) prepare(w http.ResponseWriter, rec *record, body map[string]any, rt *route, pol snapshot.Policy, polFound bool) *policy.Violation {
+	if rec.form != nil {
+		return h.prepareForm(rec, rt, pol, polFound)
+	}
 	if body == nil {
 		b, err := decodeObject(rec.raw)
 		if err != nil {
@@ -144,7 +148,38 @@ func (h *Handler) prepare(w http.ResponseWriter, rec *record, body map[string]an
 			rec.piiTypes = found
 		}
 	}
-	rt.final = final
+	rt.final, rt.ctype = final, "application/json"
+	return nil
+}
+
+// prepareForm makes rt's body for a transcription: the form again, with
+// rt's model and, under the policy's PII and DLP rules, its prompt field
+// (the audio itself is not scanned).
+func (h *Handler) prepareForm(rec *record, rt *route, pol snapshot.Policy, polFound bool) *policy.Violation {
+	fields := map[string]string{}
+	if rt.model != "" {
+		fields["model"] = rt.model
+	}
+	if prompt, _ := rec.formFields["prompt"].(string); prompt != "" && h.PIIEnabled && polFound {
+		js, _ := json.Marshal(map[string]any{"prompt": prompt})
+		out, found, v := applyContentRules(js, pol)
+		if rec.piiTypes == nil {
+			rec.piiTypes = found
+		}
+		if v != nil {
+			rec.piiTypes = found
+			return v
+		}
+		var back struct{ Prompt string }
+		if json.Unmarshal(out, &back) == nil {
+			fields["prompt"] = back.Prompt
+		}
+	}
+	final, ctype, err := rec.form.encode(fields)
+	if err != nil {
+		return &policy.Violation{Status: http.StatusInternalServerError, Code: "internal", Message: "could not encode the form"}
+	}
+	rt.final, rt.ctype = final, ctype
 	return nil
 }
 

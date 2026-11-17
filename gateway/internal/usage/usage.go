@@ -54,6 +54,10 @@ type Record struct {
 	// Alias is the route the request asked for (ADR-0015), so the control
 	// plane can tell when a policy's default route is falling back.
 	Alias string `json:"alias,omitempty"`
+	// What images and transcriptions are priced by (ADR-0018): images made,
+	// seconds of audio heard.
+	Images       int64   `json:"images,omitempty"`
+	AudioSeconds float64 `json:"audio_seconds,omitempty"`
 }
 
 // Batch is the body of POST /api/internal/usage (api/usage/v1).

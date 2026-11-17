@@ -39,6 +39,15 @@ function price(v, where) {
   return Math.round(v * 1e6) / 1e6
 }
 
+// A price per image or per minute of audio (ADR-0018), optional.
+function unitPrice(v, name, where) {
+  if (v === undefined || v === null) return null
+  if (typeof v !== 'number' || !Number.isFinite(v) || v < 0 || v > 1000) {
+    throw new FeedError(`${where}: ${name} must be a number from 0 to 1000 (US$), or null`)
+  }
+  return Math.round(v * 1e6) / 1e6
+}
+
 /**
  * Validates a feed (already parsed JSON) and returns its models, normalized.
  * Throws FeedError naming the first problem: one bad entry rejects the feed,
@@ -90,6 +99,8 @@ export function parseFeed(feed) {
       kind: m.kind ?? null,
       vision: m.vision ?? null,
       tools: m.tools ?? null,
+      perImage: unitPrice(m.per_image, 'per_image', at),
+      perAudioMinute: unitPrice(m.per_audio_minute, 'per_audio_minute', at),
     }
   })
   return { updated: feed.updated, models }
@@ -118,26 +129,31 @@ export async function applyFeed(db, parsed, { source }) {
     const { rowCount } = await client.query(`
       INSERT INTO ai_models AS a (provider, model_id, display_name, aliases,
                                   cost_per_1k_input_tokens, cost_per_1k_output_tokens,
-                                  deprecated_on, is_active, kind, vision, tools, source, updated_at)
+                                  deprecated_on, is_active, kind, vision, tools, cost_per_image, cost_per_audio_minute,
+                                  source, updated_at)
       SELECT f.provider, f.id, f.name, ARRAY(SELECT jsonb_array_elements_text(f.aliases)),
-             f.input / 1000.0, f.output / 1000.0, f.deprecated_on::date, f.active, f.kind, f.vision, f.tools, 'feed', now()
+             f.input / 1000.0, f.output / 1000.0, f.deprecated_on::date, f.active, f.kind, f.vision, f.tools,
+             f.per_image, f.per_audio_minute, 'feed', now()
         FROM unnest($1::text[], $2::text[], $3::text[], $4::jsonb[], $5::numeric[], $6::numeric[], $7::text[], $8::boolean[], $9::text[],
-                    $10::boolean[], $11::boolean[])
-             AS f(provider, id, name, aliases, input, output, deprecated_on, active, kind, vision, tools)
+                    $10::boolean[], $11::boolean[], $12::numeric[], $13::numeric[])
+             AS f(provider, id, name, aliases, input, output, deprecated_on, active, kind, vision, tools, per_image, per_audio_minute)
       ON CONFLICT (provider, model_id) DO UPDATE
          SET display_name = EXCLUDED.display_name, aliases = EXCLUDED.aliases,
              cost_per_1k_input_tokens = EXCLUDED.cost_per_1k_input_tokens,
              cost_per_1k_output_tokens = EXCLUDED.cost_per_1k_output_tokens,
              deprecated_on = EXCLUDED.deprecated_on, is_active = EXCLUDED.is_active,
-             kind = EXCLUDED.kind, vision = EXCLUDED.vision, tools = EXCLUDED.tools, source = 'feed', updated_at = now()
+             kind = EXCLUDED.kind, vision = EXCLUDED.vision, tools = EXCLUDED.tools,
+             cost_per_image = EXCLUDED.cost_per_image, cost_per_audio_minute = EXCLUDED.cost_per_audio_minute,
+             source = 'feed', updated_at = now()
        WHERE (a.display_name, a.aliases, a.cost_per_1k_input_tokens, a.cost_per_1k_output_tokens,
-              a.deprecated_on, a.is_active, a.kind, a.vision, a.tools)
+              a.deprecated_on, a.is_active, a.kind, a.vision, a.tools, a.cost_per_image, a.cost_per_audio_minute)
              IS DISTINCT FROM
              (EXCLUDED.display_name, EXCLUDED.aliases, EXCLUDED.cost_per_1k_input_tokens,
               EXCLUDED.cost_per_1k_output_tokens, EXCLUDED.deprecated_on, EXCLUDED.is_active, EXCLUDED.kind,
-              EXCLUDED.vision, EXCLUDED.tools)`,
+              EXCLUDED.vision, EXCLUDED.tools, EXCLUDED.cost_per_image, EXCLUDED.cost_per_audio_minute)`,
       [col('provider'), col('id'), col('name'), parsed.models.map(m => JSON.stringify(m.aliases)),
-       col('input'), col('output'), col('deprecatedOn'), col('active'), col('kind'), col('vision'), col('tools')])
+       col('input'), col('output'), col('deprecatedOn'), col('active'), col('kind'), col('vision'), col('tools'),
+       col('perImage'), col('perAudioMinute')])
     await client.query(`
       UPDATE model_catalog_state
          SET source = $1, feed_updated = $2, models = $3, changed = $4,

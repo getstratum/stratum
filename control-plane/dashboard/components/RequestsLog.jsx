@@ -45,13 +45,18 @@ const NOTED_LABELS = {
 
 function RequestFacts({ log }) {
   const labels = Array.isArray(log.labels) ? log.labels : []
-  if (!log.error_message && !labels.length) return null
+  const secs = log.audio_seconds != null ? Math.round(parseFloat(log.audio_seconds)) : 0
+  if (!log.error_message && !labels.length && !log.images && !secs) return null
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs mb-3" data-testid="request-facts">
       {log.error_message && (
         <span className="text-muted">
           Motivo <code className="font-mono text-strong">{log.error_message}</code>
         </span>
+      )}
+      {log.images > 0 && <span className="text-muted">Imágenes <span className="text-strong tabular">{log.images}</span></span>}
+      {secs > 0 && (
+        <span className="text-muted">Audio <span className="text-strong tabular">{Math.floor(secs / 60)}:{String(secs % 60).padStart(2, '0')}</span></span>
       )}
       {labels.length > 0 && (
         <span className="flex flex-wrap items-center gap-1.5 text-muted">

@@ -63,6 +63,7 @@ type Config struct {
 	// Request path
 	MaxInflight            int
 	MaxRequestBytes        int64
+	MaxAudioBytes          int64         // a transcription's body (ADR-0018)
 	UpstreamHeaderTimeout  time.Duration // time to first byte from the provider
 	UpstreamConnectTimeout time.Duration // time to connect to the provider (DNS and TCP)
 	StreamIdleTimeout      time.Duration // max silence between upstream chunks
@@ -149,6 +150,7 @@ func Load(getenv func(string) string) (*Config, error) {
 
 		MaxInflight:            e.int("STRATUM_MAX_INFLIGHT", 1024),
 		MaxRequestBytes:        int64(e.int("STRATUM_MAX_REQUEST_BYTES", 10<<20)),
+		MaxAudioBytes:          int64(e.int("STRATUM_MAX_AUDIO_BYTES", 25<<20)),
 		UpstreamHeaderTimeout:  e.dur("STRATUM_UPSTREAM_HEADER_TIMEOUT", 120*time.Second),
 		UpstreamConnectTimeout: e.dur("STRATUM_UPSTREAM_CONNECT_TIMEOUT", 5*time.Second),
 		StreamIdleTimeout:      e.dur("STRATUM_STREAM_IDLE_TIMEOUT", 60*time.Second),
@@ -222,6 +224,9 @@ func Load(getenv func(string) string) (*Config, error) {
 	}
 	if c.MaxRequestBytes < 1024 {
 		e.fail("STRATUM_MAX_REQUEST_BYTES must be >= 1024")
+	}
+	if c.MaxAudioBytes < 1024 || c.MaxAudioBytes > 200<<20 {
+		e.fail("STRATUM_MAX_AUDIO_BYTES must be between 1024 and 200 MiB")
 	}
 	if c.SnapshotMaxDropRatio <= 0 || c.SnapshotMaxDropRatio > 1 {
 		e.fail("STRATUM_SNAPSHOT_MAX_DROP_RATIO must be in (0, 1]")

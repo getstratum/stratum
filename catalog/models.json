@@ -1,7 +1,7 @@
 {
   "schema": 1,
-  "updated": "2026-10-18",
-  "about": "Stratum model catalog feed (ADR-0012). List prices in US$ per million tokens. The control plane reads this file once a day; a model removed from it stays in installations, use \"retired\": true instead. \"kind\" (chat, embedding, image, transcription, speech, moderation, other) is left out for chat models. Change it with a pull request.",
+  "updated": "2026-11-17",
+  "about": "Stratum model catalog feed (ADR-0012). List prices in US$ per million tokens. The control plane reads this file once a day; a model removed from it stays in installations, use \"retired\": true instead. \"kind\" (chat, embedding, image, transcription, speech, moderation, other) is left out for chat models. \"per_image\" and \"per_audio_minute\" (US$) price images and transcriptions, beside the tokens a provider reports. Change it with a pull request.",
   "models": [
     {"provider": "anthropic", "id": "claude-fable-5-1", "name": "Claude Fable 5.1", "aliases": [], "input_per_mtok": 10, "output_per_mtok": 50, "deprecated_on": null},
     {"provider": "anthropic", "id": "claude-haiku-4-5-20251001", "name": "Claude Haiku 4.5", "aliases": ["claude-haiku-4-5"], "input_per_mtok": 1, "output_per_mtok": 5, "deprecated_on": null},
@@ -26,6 +26,12 @@
     {"provider": "openai", "id": "gpt-4o-mini", "name": "GPT-4o Mini", "aliases": [], "input_per_mtok": 0.15, "output_per_mtok": 0.6, "deprecated_on": null},
     {"provider": "openai", "id": "gpt-5.4", "name": "GPT-5.4", "aliases": ["gpt-5.4-2026-03-05"], "input_per_mtok": 2.5, "output_per_mtok": 15, "deprecated_on": null},
     {"provider": "openai", "id": "gpt-5.5", "name": "GPT-5.5", "aliases": ["gpt-5.5-2026-04-23"], "input_per_mtok": 5, "output_per_mtok": 30, "deprecated_on": null},
-    {"provider": "openai", "id": "o3", "name": "o3", "aliases": [], "input_per_mtok": 2, "output_per_mtok": 8, "deprecated_on": null}
+    {"provider": "openai", "id": "o3", "name": "o3", "aliases": [], "input_per_mtok": 2, "output_per_mtok": 8, "deprecated_on": null},
+    {"provider": "openai", "id": "gpt-image-1-mini", "name": "GPT Image 1 Mini", "aliases": [], "input_per_mtok": 2, "output_per_mtok": 8, "deprecated_on": null, "kind": "image"},
+    {"provider": "openai", "id": "whisper-1", "name": "Whisper", "aliases": [], "input_per_mtok": 0, "output_per_mtok": 0, "deprecated_on": null, "kind": "transcription", "per_audio_minute": 0.006},
+    {"provider": "openai", "id": "gpt-4o-transcribe", "name": "GPT-4o Transcribe", "aliases": [], "input_per_mtok": 2.5, "output_per_mtok": 10, "deprecated_on": null, "kind": "transcription"},
+    {"provider": "openai", "id": "gpt-4o-mini-transcribe", "name": "GPT-4o Mini Transcribe", "aliases": [], "input_per_mtok": 1.25, "output_per_mtok": 5, "deprecated_on": null, "kind": "transcription"},
+    {"provider": "groq", "id": "whisper-large-v3", "name": "Whisper Large v3", "aliases": [], "input_per_mtok": 0, "output_per_mtok": 0, "deprecated_on": null, "kind": "transcription", "per_audio_minute": 0.00185},
+    {"provider": "groq", "id": "whisper-large-v3-turbo", "name": "Whisper Large v3 Turbo", "aliases": [], "input_per_mtok": 0, "output_per_mtok": 0, "deprecated_on": null, "kind": "transcription", "per_audio_minute": 0.000667}
   ]
 }

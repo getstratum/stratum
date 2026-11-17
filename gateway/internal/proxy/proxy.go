@@ -55,6 +55,7 @@ type Handler struct {
 	Log               *slog.Logger
 	Client            *http.Client
 	MaxRequestBytes   int64
+	MaxAudioBytes     int64 // a transcription's body (ADR-0018); at least MaxRequestBytes
 	StreamIdleTimeout time.Duration
 	PIIEnabled        bool
 	UserAgent         string
@@ -120,12 +121,14 @@ type record struct {
 	operation  string   // gen_ai.operation.name, from the path
 	sent       bool     // the request went to the provider
 	keyLabel   string
-	task       string // X-Stratum-Task, for the decision services
-	content    string // SHA-256 of the request's content (contentHash)
-	checked    bool   // the decision services were asked
-	raw        []byte // the request body as it came, for an alias's later routes
-	alias      string // the model alias the request named (ADR-0015)
-	fallbacks  int    // how many of the alias's models failed before the one that answered
+	task       string         // X-Stratum-Task, for the decision services
+	content    string         // SHA-256 of the request's content (contentHash)
+	checked    bool           // the decision services were asked
+	raw        []byte         // the request body as it came, for an alias's later routes
+	form       *form          // a transcription's multipart body (ADR-0018)
+	formFields map[string]any // its text fields
+	alias      string         // the model alias the request named (ADR-0015)
+	fallbacks  int            // how many of the alias's models failed before the one that answered
 
 	// For the trace (ADR-0013).
 	span, parent     trace.SpanContext
@@ -198,7 +201,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// ── Body ────────────────────────────────────────────────────────────
-	raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, h.MaxRequestBytes))
+	// Audio has its own limit: a minute of it is about a megabyte.
+	media := isAudioPath(upstreamPath) || isImagePath(upstreamPath)
+	limit := h.MaxRequestBytes
+	if isAudioPath(upstreamPath) && h.MaxAudioBytes > limit {
+		limit = h.MaxAudioBytes
+	}
+	raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, limit))
 	if err != nil {
 		var tooBig *http.MaxBytesError
 		if errors.As(err, &tooBig) {
@@ -208,22 +217,43 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	body, err := decodeObject(raw)
+	var body map[string]any
+	if ct := r.Header.Get("Content-Type"); isAudioPath(upstreamPath) && strings.HasPrefix(strings.ToLower(ct), "multipart/") {
+		body, rec.form, err = parseForm(ct, raw)
+		rec.formFields = body
+		if err != nil {
+			h.fail(w, rec, &policy.Violation{Status: http.StatusBadRequest, Code: "invalid_form",
+				Message: "a transcription is a multipart/form-data body with the audio as a file and its model"})
+			return
+		}
+	} else {
+		body, err = decodeObject(raw)
+	}
 	rec.raw = raw
 	if err != nil {
 		h.fail(w, rec, &policy.Violation{Status: http.StatusBadRequest, Code: "invalid_json", Message: "request body must be a JSON object"})
 		return
 	}
 	if h.Decision != nil {
-		rec.content = contentHash(body)
+		if rec.form != nil {
+			rec.content = rec.form.fileHash()
+		} else {
+			rec.content = contentHash(body)
+		}
 	}
 	model, _ := body["model"].(string)
 	pol, polFound := snap.PolicyForTeam(teamID)
 	// A request that names no model goes to the policy's default, a model
 	// or a route; an agent's fixed model wins, and /proxy/{provider}/...
 	// names its provider.
-	if model == "" && key.Model == "" && !explicit && polFound && pol.DefaultModel != "" {
+	// Not for an image or a transcription: the default is a chat model.
+	if model == "" && key.Model == "" && !explicit && polFound && pol.DefaultModel != "" && !media {
 		model = pol.DefaultModel
+	}
+	if model == "" && key.Model == "" && media {
+		h.fail(w, rec, &policy.Violation{Status: http.StatusBadRequest, Code: "model_required",
+			Message: "an image or a transcription names its model"})
+		return
 	}
 	rec.model = model // as asked, until the route is resolved: errors before that still say what was asked
 
@@ -396,7 +426,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 			rec.upHost = ureq.URL.Hostname()
 			h.traceHeaders(ureq.Header, r.Header, rec)
-			ureq.Header.Set("Content-Type", "application/json")
+			ureq.Header.Set("Content-Type", rt.ctype)
 			for _, name := range []string{"Accept", "Anthropic-Version", "Anthropic-Beta", "OpenAI-Beta"} {
 				if v := r.Header.Get(name); v != "" {
 					ureq.Header.Set(name, v)
@@ -466,6 +496,14 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	usage, perr := pump(w, res.Body, cancel, h.StreamIdleTimeout, rec.stream && res.StatusCode == http.StatusOK, rt.kind)
+	// Images and seconds of audio count only on their own paths (an
+	// embeddings answer has a "data" list too).
+	if !isImagePath(rt.path) {
+		usage.Images = 0
+	}
+	if !isAudioPath(rt.path) {
+		usage.AudioSeconds = 0
+	}
 	rec.usage, rec.upEnd = usage, time.Now()
 	switch {
 	case perr == nil:
@@ -670,7 +708,7 @@ func (h *Handler) finish(r *http.Request, rec *record) {
 			Status: rec.status, Reason: rec.reason, Stream: rec.stream,
 			DurationMs: duration, UpstreamMs: rec.upstreamMs,
 			TokensIn: rec.usage.Input, TokensOut: rec.usage.Output, ContentFlags: rec.piiTypes, Labels: rec.labels,
-			Alias: rec.alias,
+			Alias: rec.alias, Images: rec.usage.Images, AudioSeconds: rec.usage.AudioSeconds,
 		})
 	}
 	attrs := []any{
@@ -777,6 +815,10 @@ func operationName(upstreamPath string, kind provider.Kind) string {
 		return "text_completion"
 	case strings.HasSuffix(p, "embeddings"):
 		return "embeddings"
+	case isImagePath(p):
+		return "image_generation"
+	case isAudioPath(p):
+		return "transcription"
 	case strings.Contains(p, ":generateContent"), strings.Contains(p, ":streamGenerateContent"):
 		return "generate_content"
 	}

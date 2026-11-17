@@ -33,6 +33,15 @@ Back up the database before you upgrade.
   `decision.toolTimeout`). Model requests keep `STRATUM_DECISION_FAIL` and
   `STRATUM_DECISION_TIMEOUT`. For the previous behaviour, set
   `STRATUM_DECISION_TOOL_FAIL=open`.
+- **Images and transcriptions** ([ADR-0018](adr/0018-images-and-transcriptions.md)):
+  `/v1/images/generations` and `/v1/audio/transcriptions` (multipart) go
+  through the policy, PII and DLP (the prompt), the decision services and
+  Requests, priced per image and per minute of audio beside the tokens.
+  **Migration 042**, additive: `images` and `audio_seconds` on
+  `request_logs`; `cost_per_image` and `cost_per_audio_minute` on
+  `ai_models` and `org_model_settings`. New `STRATUM_MAX_AUDIO_BYTES`
+  (25 MiB). An image or a transcription without a model is refused
+  (400 `model_required`): the policy's default model is for chat.
 - **MCP requests take `X-Stratum-Labels`**, as model requests do: the
   labels go to the decision services and into Requests (the portal's
   `portal` and `with_tools` were lost). Malformed labels are refused with

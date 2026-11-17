@@ -16,6 +16,9 @@ import (
 type Usage struct {
 	Input  int64
 	Output int64
+	// What images and transcriptions are priced by (ADR-0018).
+	Images       int64
+	AudioSeconds float64
 }
 
 var errIdle = errors.New("upstream stream idle timeout")
@@ -144,9 +147,13 @@ func parseBodyUsage(body []byte, kind provider.Kind, u *Usage) {
 //	                   {"type": "message_delta", "usage": {"output_tokens"}}
 //	                   non-stream: {"usage": {"input_tokens", "output_tokens"}}
 type usageEvent struct {
-	Type    string      `json:"type"`
-	Usage   *usageField `json:"usage"`
-	Message *struct {
+	Type  string      `json:"type"`
+	Usage *usageField `json:"usage"`
+	// An image generation: the images made.
+	Data []json.RawMessage `json:"data"`
+	// A transcription in verbose_json: the audio's length.
+	Duration float64 `json:"duration"`
+	Message  *struct {
 		Usage *usageField `json:"usage"`
 	} `json:"message"`
 }
@@ -156,12 +163,29 @@ type usageField struct {
 	CompletionTokens int64 `json:"completion_tokens"`
 	InputTokens      int64 `json:"input_tokens"`
 	OutputTokens     int64 `json:"output_tokens"`
+	// A transcription billed by duration: {"type":"duration","seconds":N}.
+	Kind    string  `json:"type"`
+	Seconds float64 `json:"seconds"`
 }
 
 func (e *usageEvent) apply(kind provider.Kind, u *Usage) {
 	if kind != provider.KindAnthropic {
 		if e.Usage != nil {
 			u.Input, u.Output = e.Usage.PromptTokens, e.Usage.CompletionTokens
+			// Images and transcriptions name them as Anthropic does
+			// (gpt-image-1, gpt-4o-transcribe).
+			if u.Input == 0 && u.Output == 0 {
+				u.Input, u.Output = e.Usage.InputTokens, e.Usage.OutputTokens
+			}
+			if e.Usage.Kind == "duration" && e.Usage.Seconds > 0 {
+				u.AudioSeconds = e.Usage.Seconds
+			}
+		}
+		if len(e.Data) > 0 {
+			u.Images = int64(len(e.Data))
+		}
+		if e.Duration > 0 && u.AudioSeconds == 0 {
+			u.AudioSeconds = e.Duration
 		}
 		return
 	}

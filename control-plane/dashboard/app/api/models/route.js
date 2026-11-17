@@ -38,10 +38,12 @@ export const GET = route('models.read', async (req, { db, session }) => {
   const { rows } = await db.query(`
     SELECT m.provider, m.model_id, m.display_name, m.aliases,
            m.cost_per_1k_input_tokens, m.cost_per_1k_output_tokens,
+           m.cost_per_image, m.cost_per_audio_minute,
            m.deprecated_on, m.updated_at, 'catalog' AS source,
            COALESCE(s.enabled, true) AS enabled,
            s.cost_per_1k_input_tokens AS org_cost_per_1k_input_tokens,
            s.cost_per_1k_output_tokens AS org_cost_per_1k_output_tokens,
+           s.cost_per_image AS org_cost_per_image, s.cost_per_audio_minute AS org_cost_per_audio_minute,
            s.kind AS org_kind, m.kind AS catalog_kind, NULL AS listed_kind,
            s.vision AS org_vision, s.tools AS org_tools, m.vision AS catalog_vision, m.tools AS catalog_tools,
            NULL::boolean AS listed_vision, NULL::boolean AS listed_tools
@@ -51,9 +53,9 @@ export const GET = route('models.read', async (req, { db, session }) => {
      WHERE m.is_active = true
     UNION ALL
     SELECT pm.provider, pm.model_id, pm.model_id, '{}'::text[],
-           NULL, NULL, NULL, pm.seen_at, 'provider',
+           NULL, NULL, NULL, NULL, NULL, pm.seen_at, 'provider',
            COALESCE(s.enabled, true),
-           s.cost_per_1k_input_tokens, s.cost_per_1k_output_tokens,
+           s.cost_per_1k_input_tokens, s.cost_per_1k_output_tokens, s.cost_per_image, s.cost_per_audio_minute,
            s.kind, NULL, pm.kind,
            s.vision, s.tools, NULL, NULL, pm.vision, pm.tools
       FROM provider_models pm
@@ -91,6 +93,15 @@ function perMillion(v, name) {
   return Math.round(v * 1e6) / 1e9 // stored per 1K tokens
 }
 
+// A price per image or per minute of audio, in US$ (ADR-0018).
+function perUnit(v, name) {
+  if (v === null) return null
+  if (typeof v !== 'number' || !Number.isFinite(v) || v < 0 || v > 1000) {
+    throw badRequest(`${name}: un precio en US$ de 0 a 1000, o null para el de lista.`)
+  }
+  return Math.round(v * 1e6) / 1e6
+}
+
 export const PATCH = route('models.manage', async (req, { db, session }) => {
   const body = await readJson(req)
   const { provider, model_id: modelId } = body
@@ -115,6 +126,11 @@ export const PATCH = route('models.manage', async (req, { db, session }) => {
       values.push(perMillion(body[field], field)); sets.push([col, `$${values.length}`]); changed[field] = body[field]
     }
   }
+  for (const [field, col] of [['per_image', 'cost_per_image'], ['per_audio_minute', 'cost_per_audio_minute']]) {
+    if (body[field] !== undefined) {
+      values.push(perUnit(body[field], field)); sets.push([col, `$${values.length}`]); changed[field] = body[field]
+    }
+  }
   if (body.kind !== undefined) {
     if (body.kind !== null && !isKind(body.kind)) throw badRequest(`kind: uno de ${KINDS.join(', ')}, o null para el que dicen el catálogo, el proveedor o su ID.`)
     values.push(body.kind); sets.push(['kind', `$${values.length}`]); changed.kind = body.kind
@@ -134,7 +150,8 @@ export const PATCH = route('models.manage', async (req, { db, session }) => {
     ON CONFLICT (org_id, provider, model_id) DO UPDATE
        SET updated_by = EXCLUDED.updated_by, updated_at = now(),
            ${cols.map(c => `${c} = EXCLUDED.${c}`).join(', ')}
-    RETURNING provider, model_id, enabled, cost_per_1k_input_tokens, cost_per_1k_output_tokens, kind, vision, tools`, values)
+    RETURNING provider, model_id, enabled, cost_per_1k_input_tokens, cost_per_1k_output_tokens,
+              cost_per_image, cost_per_audio_minute, kind, vision, tools`, values)
   await audit(db, {
     req, session, action: 'model.update', targetType: 'model', targetId: `${provider}/${modelId}`, details: changed,
   })

@@ -60,6 +60,14 @@
           "description": "Optional, from 0.6. The route the request asked for (stratum/<name>, without the prefix), so the control plane can tell when a policy's default route is falling back (label routed_fallback).",
           "type": "string",
           "pattern": "^[a-z0-9][a-z0-9._-]{0,49}$"
+        },
+        "images": {
+          "description": "Optional, from 0.8 (ADR-0018). Images an image generation made, priced per image.",
+          "type": "integer", "minimum": 0
+        },
+        "audio_seconds": {
+          "description": "Optional, from 0.8 (ADR-0018). Seconds of audio a transcription heard, priced per minute.",
+          "type": "number", "minimum": 0
         }
       }
     }
