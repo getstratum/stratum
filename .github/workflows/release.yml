@@ -196,12 +196,32 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           version: ${{ needs.tag.outputs.version }}
+        # pipefail: without it `helm push | tee` hides a failed push. v0.8.0
+        # went green that way: ghcr refused the tag ("failed to perform Tag
+        # ... not found"), the digest in that error was signed, and the chart
+        # had no version. The digest is read from the "Digest:" line only.
         run: |
+          set -o pipefail
           echo "$GH_TOKEN" | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
           for chart in stratum-gateway stratum-control-plane; do
             helm package "deploy/helm/${chart}" --version "$version" --app-version "$version" -d dist
             helm push "dist/${chart}-${version}.tgz" "oci://ghcr.io/${OWNER}/charts" 2>&1 | tee push.log
-            digest=$(grep -o 'sha256:[a-f0-9]\{64\}' push.log | head -1)
+            digest=$(sed -n 's/^Digest: \(sha256:[a-f0-9]\{64\}\)$/\1/p' push.log | head -1)
             [ -n "$digest" ] || { echo "::error::no digest in the helm push output for ${chart}"; exit 1; }
             cosign sign --yes "ghcr.io/${OWNER}/charts/${chart}@${digest}"
+          done
+      # A green release must mean the charts can be installed by version, as
+      # the Enterprise chart and the install guide ask for them.
+      - name: the charts answer by version
+        env:
+          version: ${{ needs.tag.outputs.version }}
+        run: |
+          for chart in stratum-gateway stratum-control-plane; do
+            ref="oci://ghcr.io/${OWNER}/charts/${chart}"
+            for i in 1 2 3 4 5 6; do
+              out="$(helm show chart "$ref" --version "$version" 2>&1)" && break
+              echo "${chart} ${version} not there yet (${i}): ${out}"; sleep 10
+            done
+            grep -qx "version: ${version}" <<<"$out" || { echo "::error::${ref} ${version} cannot be pulled by its version"; exit 1; }
+            echo "ok ${chart} ${version}"
           done
