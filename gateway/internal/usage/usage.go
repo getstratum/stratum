@@ -58,6 +58,14 @@ type Record struct {
 	// seconds of audio heard.
 	Images       int64   `json:"images,omitempty"`
 	AudioSeconds float64 `json:"audio_seconds,omitempty"`
+	// Task is the X-Stratum-Task the request named (ADR-0019).
+	Task string `json:"task,omitempty"`
+	// Outcome makes the record a task's end, as the application said it
+	// (POST /v1/stratum/tasks/{task}): resolved, escalated or failed, and
+	// why (OutcomeReason). Such a record is no request: the control plane
+	// keeps it apart (task_outcomes).
+	Outcome       string `json:"outcome,omitempty"`
+	OutcomeReason string `json:"outcome_reason,omitempty"`
 }
 
 // Batch is the body of POST /api/internal/usage (api/usage/v1).

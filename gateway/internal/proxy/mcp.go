@@ -83,6 +83,17 @@ func (h *Handler) MCP(w http.ResponseWriter, r *http.Request) {
 			Message: "X-Stratum-Labels takes up to 8 comma-separated labels of lowercase letters, digits and _ (1 to 40 each)"})
 		return
 	}
+	// The task, as on a model request: on every record (ADR-0019) and for
+	// the decision services.
+	task := ""
+	if t := strings.TrimSpace(r.Header.Get("X-Stratum-Task")); t != "" {
+		if !validTask(t) {
+			fail(&policy.Violation{Status: http.StatusBadRequest, Code: "invalid_task",
+				Message: "X-Stratum-Task takes 1 to 100 letters, digits and . _ : -"})
+			return
+		}
+		task = t
+	}
 	// model is "server/tool" for a call, the server alone when the server
 	// itself is refused.
 	report := func(model string, st int, why string, labels ...string) {
@@ -90,7 +101,7 @@ func (h *Handler) MCP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		h.Usage.Add(usage.Record{
-			ID: usage.NewID(), Time: start.UTC(), KeyID: key.ID, UserID: userID, TeamID: teamID,
+			ID: usage.NewID(), Time: start.UTC(), KeyID: key.ID, UserID: userID, TeamID: teamID, Task: task,
 			Provider: "mcp", Model: usage.Clip(model, 100), Status: st, Reason: why,
 			DurationMs: time.Since(start).Milliseconds(), Labels: mergeLabels(mergeLabels([]string{"mcp"}, appLabels), labels),
 		})
@@ -124,15 +135,6 @@ func (h *Handler) MCP(w http.ResponseWriter, r *http.Request) {
 			fail(&policy.Violation{Status: http.StatusBadRequest, Code: "invalid_json", Message: "an MCP request is a JSON-RPC message"})
 			return
 		}
-	}
-	task := ""
-	if t := strings.TrimSpace(r.Header.Get("X-Stratum-Task")); t != "" {
-		if !validTask(t) {
-			fail(&policy.Violation{Status: http.StatusBadRequest, Code: "invalid_task",
-				Message: "X-Stratum-Task takes 1 to 100 letters, digits and . _ : -"})
-			return
-		}
-		task = t
 	}
 	var calls []mcpMessage
 	lists := map[string]bool{}
