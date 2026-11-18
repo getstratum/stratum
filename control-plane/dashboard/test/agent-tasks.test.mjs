@@ -77,6 +77,7 @@ test('summaries: tasks by their last outcome, their cost and time; open tasks; n
   assert.deepEqual(s[other], { closed: 0, resolved: 0, escalated: 0, failed: 0, open: 0, resolution_rate: null, escalation_rate: null,
     cost_usd: null, cost_per_task: null, unpriced_requests: 0, requests_per_task: null, avg_seconds: null })
   assert.equal((await summaries(db, org, [agent], 90))[agent].closed, 5, 't6 within 90 days')
+  assert.equal((await summaries(db, org, [agent], 1))[agent].closed, 4, 'a day, for whoever watches thresholds')
 })
 
 test('detail: why tasks were handed over, the last ones that ended, the open ones', { skip }, async () => {

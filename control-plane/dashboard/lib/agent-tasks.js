@@ -12,7 +12,7 @@
  * application does not say how its tasks end.
  */
 
-export const WINDOWS = [7, 30, 90]
+export const WINDOWS = [1, 7, 30, 90]
 const LOOKBACK_DAYS = 30
 
 const num = (v) => (v === null || v === undefined ? null : Number(v))
