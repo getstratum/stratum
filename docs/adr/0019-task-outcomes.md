@@ -34,7 +34,7 @@ it, and nothing says when a task ended or how.
   the organization is the reporting gateway's; a team, person or agent not
   in it is NULL. A control plane older than 0.9 ignores the new fields and
   stores the end as a request of `stratum/task` that costs nothing.
-- **The console measures each agent** over 7, 30 or 90 days (Agentes; `GET
+- **The console measures each agent** over 1, 7, 30 or 90 days (Agentes; `GET
   /api/agents` says its last 30 days in `tasks_30d`, `GET
   /api/agents/:id/tasks?days=` the detail): tasks that ended in the window
   by their last outcome; the share resolved on its own and escalated; cost

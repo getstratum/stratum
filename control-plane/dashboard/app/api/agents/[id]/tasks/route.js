@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic'
 import { route, json, badRequest, notFound, idParam } from '../../../../../lib/route.js'
 import { detail, WINDOWS } from '../../../../../lib/agent-tasks.js'
 
-// GET /api/agents/:id/tasks?days=7|30|90 → { days, summary, reasons, recent,
+// GET /api/agents/:id/tasks?days=1|7|30|90 → { days, summary, reasons, recent,
 // open }: the agent's results (the gateway's ADR-0019, lib/agent-tasks.js).
 export const GET = route('users.read', async (req, { session, db, params }) => {
   const id = idParam(params)
