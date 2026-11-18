@@ -231,6 +231,15 @@ function AgentModal({ agent, teams, models, aliases = [], canDelegate, onSave, o
   )
 }
 
+// The agent's last request; the console looks back 90 days.
+function lastRequest(at) {
+  if (!at) return <span className="text-muted">Ninguno en 90 días</span>
+  const days = Math.floor((Date.now() - new Date(at)) / 86_400_000)
+  if (days < 1) return 'Hoy'
+  if (days === 1) return 'Ayer'
+  return `Hace ${days} días`
+}
+
 function Metric({ label, children }) {
   return (
     <div className="min-w-0">
@@ -382,10 +391,11 @@ export default function AgentsPage() {
                 </div>
               </div>
 
-              <div className="px-5 py-3 border-t border-border grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <div className="px-5 py-3 border-t border-border grid grid-cols-2 sm:grid-cols-5 gap-4">
                 <Metric label="Requests del mes">{Number(agent.requests_month).toLocaleString('es-UY')}</Metric>
                 <Metric label="Tokens">{formatTokens(agent.tokens_month)}</Metric>
                 <Metric label="Costo estimado">{formatCost(agent.cost_month)}</Metric>
+                <Metric label="Último pedido">{lastRequest(agent.last_request_at)}</Metric>
                 <Metric label="Prefijo de la key"><span className="font-mono text-muted">{agent.api_key_prefix ?? '—'}</span></Metric>
               </div>
             </div>

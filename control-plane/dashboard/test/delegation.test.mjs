@@ -188,3 +188,21 @@ test('delegation: usage reported for a person is theirs, through the agent', { s
   assert.deepEqual(await row(foreign), { user_id: null, agent_id: agent, team_id: B.sales })
   assert.deepEqual(await row(bad), { user_id: null, agent_id: agent, team_id: B.sales })
 })
+
+test('agents: the list says each agent\'s last request in 90 days', { skip }, async () => {
+  const mk = async (name) => (await call('agents', 'POST', { as: A.owner, body: { name, teamId: A.eng } })).body.agent.id
+  const [recent, old, never] = [await mk('recent'), await mk('old'), await mk('never')]
+  const log = (agent, at) => sql(
+    `INSERT INTO request_logs (id, created_at, org_id, team_id, agent_id, provider, model_id, status_code)
+     VALUES ($1, ${at}, $2, $3, $4, 'openai', 'gpt-4o', 200)`, [randomUUID(), A.id, A.eng, agent])
+  await log(recent, "now() - interval '3 days'")
+  await log(recent, "now() - interval '40 days'")
+  await log(old, "now() - interval '120 days'")
+  const r = await call('agents', 'GET', { as: A.owner })
+  assert.equal(r.status, 200)
+  const by = Object.fromEntries(r.body.map(a => [a.id, a]))
+  const days = (t) => Math.round((Date.now() - new Date(t)) / 86_400_000)
+  assert.equal(days(by[recent].last_request_at), 3, 'the newest one')
+  assert.equal(by[old].last_request_at, null, 'older than 90 days does not count')
+  assert.equal(by[never].last_request_at, null)
+})

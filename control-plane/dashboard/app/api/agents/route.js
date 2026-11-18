@@ -4,6 +4,8 @@ import { newApiKey, AGENT_COLUMNS, fixedModel, fixedModelProvider, delegatesFlag
 import { assertAliasExists, PREFIX as ALIAS_PREFIX } from '../../../lib/model-aliases.js'
 import { audit } from '../../../lib/audit.js'
 
+// last_request_at: the agent's last request in 90 days (null: none), for
+// whoever keeps track of agents nobody uses (the Enterprise portal reads it).
 export const GET = route('users.read', async (req, { session, db }) => {
   const team = session.scope === 'team'
   const { rows } = await db.query(`
@@ -11,7 +13,10 @@ export const GET = route('users.read', async (req, { session, db }) => {
       p.name AS policy_name,
       COUNT(r.id)                                        AS requests_month,
       COALESCE(SUM(r.tokens_input + r.tokens_output), 0) AS tokens_month,
-      COALESCE(SUM(r.cost_usd), 0)                       AS cost_month
+      COALESCE(SUM(r.cost_usd), 0)                       AS cost_month,
+      (SELECT max(l.created_at) FROM request_logs l
+        WHERE l.agent_id = a.id AND l.org_id = a.org_id
+          AND l.created_at >= now() - interval '90 days')  AS last_request_at
     FROM agents a
     LEFT JOIN teams t        ON t.id = a.team_id
     LEFT JOIN policies p     ON p.id = t.policy_id
