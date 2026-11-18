@@ -66,6 +66,9 @@ type Record struct {
 	// keeps it apart (task_outcomes).
 	Outcome       string `json:"outcome,omitempty"`
 	OutcomeReason string `json:"outcome_reason,omitempty"`
+	// AgentVersion: the version of its instructions the application named
+	// (X-Stratum-Agent-Version), on its requests and its tasks' ends.
+	AgentVersion string `json:"agent_version,omitempty"`
 }
 
 // Batch is the body of POST /api/internal/usage (api/usage/v1).

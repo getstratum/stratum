@@ -7,7 +7,8 @@ import { summaries } from '../../../lib/agent-tasks.js'
 
 // last_request_at: the agent's last request in 90 days (null: none), for
 // whoever keeps track of agents nobody uses (the Enterprise portal reads it).
-// tasks_30d: its results in the last 30 days (lib/agent-tasks.js).
+// tasks_30d: its results in the last 30 days (lib/agent-tasks.js), by version
+// too; agent_version: the one its last request named, in 30 days.
 export const GET = route('users.read', async (req, { session, db }) => {
   const team = session.scope === 'team'
   const { rows } = await db.query(`
@@ -18,7 +19,11 @@ export const GET = route('users.read', async (req, { session, db }) => {
       COALESCE(SUM(r.cost_usd), 0)                       AS cost_month,
       (SELECT max(l.created_at) FROM request_logs l
         WHERE l.agent_id = a.id AND l.org_id = a.org_id
-          AND l.created_at >= now() - interval '90 days')  AS last_request_at
+          AND l.created_at >= now() - interval '90 days')  AS last_request_at,
+      (SELECT l.agent_version FROM request_logs l
+        WHERE l.agent_id = a.id AND l.org_id = a.org_id AND l.agent_version IS NOT NULL
+          AND l.created_at >= now() - interval '30 days'
+        ORDER BY l.created_at DESC LIMIT 1)                AS agent_version
     FROM agents a
     LEFT JOIN teams t        ON t.id = a.team_id
     LEFT JOIN policies p     ON p.id = t.policy_id

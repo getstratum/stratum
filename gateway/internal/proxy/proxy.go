@@ -117,6 +117,7 @@ type record struct {
 	usage      Usage
 	piiTypes   []string
 	labels     []string // X-Stratum-Labels, validated
+	version    string   // X-Stratum-Agent-Version (ADR-0019)
 	providerOK bool     // rec.provider is a configured provider
 	operation  string   // gen_ai.operation.name, from the path
 	sent       bool     // the request went to the provider
@@ -177,6 +178,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if !valid {
 		h.fail(w, rec, &policy.Violation{Status: http.StatusBadRequest, Code: "invalid_labels",
 			Message: "X-Stratum-Labels takes up to 8 comma-separated labels of lowercase letters, digits and _ (1 to 40 each)"})
+		return
+	}
+
+	if v, ok := agentVersion(r); ok {
+		rec.version = v
+	} else {
+		h.fail(w, rec, badAgentVersion)
 		return
 	}
 
@@ -710,6 +718,7 @@ func (h *Handler) finish(r *http.Request, rec *record) {
 			DurationMs: duration, UpstreamMs: rec.upstreamMs,
 			TokensIn: rec.usage.Input, TokensOut: rec.usage.Output, ContentFlags: rec.piiTypes, Labels: rec.labels,
 			Alias: rec.alias, Images: rec.usage.Images, AudioSeconds: rec.usage.AudioSeconds, Task: rec.task,
+			AgentVersion: rec.version,
 		})
 	}
 	attrs := []any{
