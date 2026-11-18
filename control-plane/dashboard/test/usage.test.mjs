@@ -255,3 +255,32 @@ test('normalizeRecord: bounds on time, numbers and text', () => {
   assert.equal(big.team_id, null)
   assert.equal(big.reason, 'ok')
 })
+
+// ADR-0019: the task on each request, and a task's end kept apart.
+test('usage: a task on each request; an outcome is a task\'s end, not a request', { skip }, async () => {
+  const bot = `agent:${A.agent}`
+  const r1 = record(A, { key_id: bot, task: 'ticket-7' })
+  const r2 = record(A, { key_id: bot, task: 'bad task' })
+  const end = record(A, { key_id: bot, provider: 'stratum', model: 'task', reason: 'task_outcome', tokens_in: 0, tokens_out: 0,
+    task: 'ticket-7', outcome: 'escalated', outcome_reason: 'customer_asked_for_a_person' })
+  const noTask = record(A, { key_id: bot, outcome: 'resolved' })
+  const badOutcome = record(A, { key_id: bot, task: 'ticket-7', outcome: 'done' })
+  const res = await post(A.token, { instance_id: A.instance, records: [r1, r2, end, noTask, badOutcome] })
+  assert.equal(res.status, 200)
+  assert.deepEqual(res.body, { accepted: 3, duplicates: 0, rejected: 2 })
+  const logs = await sql('SELECT id::text, task FROM request_logs WHERE id = ANY($1::uuid[]) ORDER BY task NULLS LAST', [[r1.id, r2.id, end.id]])
+  assert.deepEqual(logs.map(l => [l.id, l.task]), [[r1.id, 'ticket-7'], [r2.id, null]], 'the end is not a request')
+  const [o] = await sql('SELECT * FROM task_outcomes WHERE id = $1', [end.id])
+  assert.equal(o.org_id, A.id)
+  assert.equal(o.agent_id, A.agent)
+  assert.equal(o.team_id, A.team)
+  assert.equal(o.outcome, 'escalated')
+  assert.equal(o.reason, 'customer_asked_for_a_person')
+  assert.equal(o.instance_id, A.instance)
+  // Sent again: stored once.
+  assert.deepEqual((await post(A.token, { instance_id: A.instance, records: [end] })).body, { accepted: 0, duplicates: 1, rejected: 0 })
+  // Another organization's agent is not attributed.
+  const other = record(B, { key_id: bot, provider: 'stratum', model: 'task', task: 'x-1', outcome: 'resolved', tokens_in: 0, tokens_out: 0 })
+  await post(B.token, { instance_id: B.instance, records: [other] })
+  assert.equal((await sql('SELECT agent_id FROM task_outcomes WHERE id = $1', [other.id]))[0].agent_id, null)
+})

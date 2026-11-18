@@ -12,6 +12,9 @@
  * 400 / 413: the batch itself is malformed or too large; the gateway drops it.
  * 401: unknown or disabled gateway; the gateway keeps the batch and retries.
  *
+ * A record with an outcome is a task's end (ADR-0019), stored in
+ * task_outcomes.
+ *
  * Never carries prompts, completions or credentials.
  */
 
@@ -19,7 +22,7 @@ import { NextResponse } from 'next/server'
 import { getDb } from '@/lib/db'
 import { tokenRoute } from '@/lib/route'
 import { authenticateInstance } from '@/lib/instance-auth'
-import { ingest, normalizeRecord, MAX_RECORDS, MAX_BODY_BYTES } from '@/lib/usage-ingest'
+import { ingest, ingestOutcomes, isOutcome, normalizeRecord, MAX_RECORDS, MAX_BODY_BYTES } from '@/lib/usage-ingest'
 
 export const dynamic = 'force-dynamic'
 
@@ -56,6 +59,8 @@ export const POST = tokenRoute(async (req) => {
   const rejected = body.records.length - valid.length
   if (rejected) console.warn(`[usage] ${instance.id}: ${rejected} of ${body.records.length} records rejected`)
 
-  const accepted = await ingest(db, instance, valid)
+  // A task's end (ADR-0019) is kept apart from the requests.
+  const accepted = await ingest(db, instance, valid.filter(r => !isOutcome(r)))
+    + await ingestOutcomes(db, instance, valid.filter(isOutcome))
   return NextResponse.json({ accepted, duplicates: valid.length - accepted, rejected })
 })

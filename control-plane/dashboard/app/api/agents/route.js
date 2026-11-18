@@ -3,9 +3,11 @@ import { route, readJson, json, badRequest, assertTeamInScope } from '../../../l
 import { newApiKey, AGENT_COLUMNS, fixedModel, fixedModelProvider, delegatesFlag } from '../../../lib/users.js'
 import { assertAliasExists, PREFIX as ALIAS_PREFIX } from '../../../lib/model-aliases.js'
 import { audit } from '../../../lib/audit.js'
+import { summaries } from '../../../lib/agent-tasks.js'
 
 // last_request_at: the agent's last request in 90 days (null: none), for
 // whoever keeps track of agents nobody uses (the Enterprise portal reads it).
+// tasks_30d: its results in the last 30 days (lib/agent-tasks.js).
 export const GET = route('users.read', async (req, { session, db }) => {
   const team = session.scope === 'team'
   const { rows } = await db.query(`
@@ -27,7 +29,8 @@ export const GET = route('users.read', async (req, { session, db }) => {
     GROUP BY a.id, t.id, t.name, p.name
     ORDER BY a.created_at DESC
   `, team ? [session.orgId, session.teamId] : [session.orgId])
-  return json(rows)
+  const tasks = await summaries(db, session.orgId, rows.map(a => a.id), 30)
+  return json(rows.map(a => ({ ...a, tasks_30d: tasks[a.id] })))
 })
 
 export const POST = route('keys.manage', async (req, { session, db }) => {

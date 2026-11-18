@@ -68,6 +68,18 @@
         "audio_seconds": {
           "description": "Optional, from 0.8 (ADR-0018). Seconds of audio a transcription heard, priced per minute.",
           "type": "number", "minimum": 0
+        },
+        "task": {
+          "description": "Optional, from 0.9 (ADR-0019). The X-Stratum-Task the request named, or the task an outcome ends.",
+          "type": "string", "pattern": "^[A-Za-z0-9._:-]{1,100}$"
+        },
+        "outcome": {
+          "description": "Optional, from 0.9 (ADR-0019). Present only on a task's end (POST /v1/stratum/tasks/{task}), which is no request: provider \"stratum\", model \"task\", reason \"task_outcome\", no tokens. A control plane older than 0.9 stores it as a request of stratum/task.",
+          "enum": ["resolved", "escalated", "failed"]
+        },
+        "outcome_reason": {
+          "description": "Optional, from 0.9 (ADR-0019). Why the task ended so, as a code.",
+          "type": "string", "pattern": "^[a-z0-9_]{1,40}$"
         }
       }
     }

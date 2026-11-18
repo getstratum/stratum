@@ -24,6 +24,7 @@ type Options struct {
 	Models         http.Handler // GET /v1/models; optional
 	Instructions   http.Handler // GET /v1/stratum/instructions; optional
 	MCPServers     http.Handler // GET /v1/stratum/mcp; optional
+	TaskOutcome    http.Handler // POST /v1/stratum/tasks/{task} (ADR-0019); optional
 	MCP            http.Handler // /mcp/{server} (ADR-0016); optional
 	Health         *health.Health
 	Metrics        *metrics.Metrics
@@ -46,6 +47,9 @@ func Public(o Options) http.Handler {
 	}
 	if o.MCPServers != nil {
 		mux.Handle("GET /v1/stratum/mcp", limit(o.MCPServers, o.MaxInflight, o.Metrics))
+	}
+	if o.TaskOutcome != nil {
+		mux.Handle("POST /v1/stratum/tasks/{task}", limit(o.TaskOutcome, o.MaxInflight, o.Metrics))
 	}
 	if o.MCP != nil {
 		mux.Handle("/mcp/", limit(o.MCP, o.MaxInflight, o.Metrics))

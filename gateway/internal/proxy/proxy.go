@@ -180,8 +180,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// ── The task an application names, for the decision services ────────
-	// and the trace. Only the decision services refuse a malformed one.
+	// ── The task an application names, for the decision services, ────────
+	// the trace and the usage record (ADR-0019). Only the decision
+	// services refuse a malformed one; without them it is left out.
 	if t := strings.TrimSpace(r.Header.Get("X-Stratum-Task")); t != "" {
 		switch {
 		case validTask(t):
@@ -708,7 +709,7 @@ func (h *Handler) finish(r *http.Request, rec *record) {
 			Status: rec.status, Reason: rec.reason, Stream: rec.stream,
 			DurationMs: duration, UpstreamMs: rec.upstreamMs,
 			TokensIn: rec.usage.Input, TokensOut: rec.usage.Output, ContentFlags: rec.piiTypes, Labels: rec.labels,
-			Alias: rec.alias, Images: rec.usage.Images, AudioSeconds: rec.usage.AudioSeconds,
+			Alias: rec.alias, Images: rec.usage.Images, AudioSeconds: rec.usage.AudioSeconds, Task: rec.task,
 		})
 	}
 	attrs := []any{

@@ -8,6 +8,119 @@ import { formatCost, formatTokens } from '../../lib/format'
 import { allowedBy } from '../../lib/catalog'
 import { KINDS, KIND_LABELS } from '../../lib/model-kind'
 
+// ─── Results: the agent's tasks (the gateway's ADR-0019) ─────────────────────
+const OUTCOME = { resolved: 'Resuelta', escalated: 'Escalada', failed: 'Fallida' }
+const OUTCOME_CLS = { resolved: 'text-ok', escalated: 'text-warn', failed: 'text-err' }
+
+function duration(s) {
+  if (s === null || s === undefined) return '—'
+  if (s < 90) return `${s} s`
+  if (s < 5400) return `${Math.round(s / 60)} min`
+  return `${Math.round(s / 360) / 10} h`
+}
+const pct = (v) => (v === null || v === undefined ? '—' : `${v.toLocaleString('es-UY')} %`)
+
+function Results({ agent }) {
+  const t = agent.tasks_30d
+  const [open, setOpen] = useState(false)
+  const [days, setDays] = useState(30)
+  const [detail, setDetail] = useState(null)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    if (!open) return
+    let gone = false
+    setError('')
+    fetch(`/api/agents/${agent.id}/tasks?days=${days}`, { cache: 'no-store' })
+      .then(r => (r.ok ? r.json() : Promise.reject(new Error())))
+      .then(d => { if (!gone) setDetail(d) })
+      .catch(() => { if (!gone) setError('No se pudieron cargar las tareas.') })
+    return () => { gone = true }
+  }, [open, days, agent.id])
+
+  if (!t) return null
+  if (t.closed === 0 && t.open === 0) {
+    return (
+      <div className="px-5 py-3 border-t border-border text-xs text-muted" data-testid="agent-results">
+        Sin tareas informadas en 30 días. Para medir sus resultados, el agente nombra cada tarea con{' '}
+        <code className="font-mono text-default">X-Stratum-Task</code> y, al terminarla, dice cómo terminó con{' '}
+        <code className="font-mono text-default">POST /v1/stratum/tasks/&lt;tarea&gt;</code>.
+      </div>
+    )
+  }
+  const s = detail?.summary ?? t
+  return (
+    <div className="px-5 py-3 border-t border-border space-y-3" data-testid="agent-results">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-6 gap-4 flex-1 min-w-0">
+          <Metric label={`Tareas (${open ? days : 30} días)`}>{s.closed.toLocaleString('es-UY')}{s.open > 0 && <span className="text-muted"> · {s.open} abiertas</span>}</Metric>
+          <Metric label="Resueltas solo"><span data-testid="resolution-rate">{pct(s.resolution_rate)}</span></Metric>
+          <Metric label="Escaladas">{pct(s.escalation_rate)}</Metric>
+          <Metric label="Fallidas">{s.failed.toLocaleString('es-UY')}</Metric>
+          <Metric label="Costo por tarea">{s.cost_per_task === null ? '—' : formatCost(s.cost_per_task)}{s.unpriced_requests > 0 && <span className="text-muted" title="Pedidos de modelos sin precio: no suman al costo"> *</span>}</Metric>
+          <Metric label="Duración media">{duration(s.avg_seconds)}</Metric>
+        </div>
+        <button type="button" onClick={() => setOpen(o => !o)} className="min-h-[36px] px-2.5 rounded-md text-[13px] text-accent hover:bg-accent-light">
+          {open ? 'Ocultar tareas' : 'Ver tareas'}
+        </button>
+      </div>
+      {open && (
+        <div className="space-y-3 text-sm" data-testid="agent-tasks">
+          <div className="flex gap-1">
+            {[7, 30, 90].map(d => (
+              <button key={d} type="button" onClick={() => setDays(d)}
+                      className={`min-h-[32px] px-2.5 rounded-md text-xs border ${days === d ? 'border-accent text-accent bg-accent-light' : 'border-border text-muted'}`}>
+                {d} días
+              </button>
+            ))}
+          </div>
+          {error && <p className="text-err text-xs">{error}</p>}
+          {detail && (
+            <>
+              {detail.reasons.length > 0 && (
+                <div>
+                  <div className="text-xs text-muted mb-1">Por qué no las resolvió solo</div>
+                  <ul className="text-xs space-y-0.5">
+                    {detail.reasons.map((r, i) => (
+                      <li key={i}><span className={OUTCOME_CLS[r.outcome]}>{OUTCOME[r.outcome]}</span> · <code className="font-mono">{r.reason ?? 'sin motivo'}</code> · {r.count}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {detail.recent.length > 0 && (
+                <div className="overflow-x-auto">
+                  <table className="text-xs min-w-[34rem] w-full">
+                    <thead className="text-muted text-left">
+                      <tr><th className="font-normal py-1 pr-3">Tarea</th><th className="font-normal pr-3">Cómo terminó</th><th className="font-normal pr-3">Cuándo</th><th className="font-normal pr-3 text-right">Pedidos</th><th className="font-normal pr-3 text-right">Costo</th><th className="font-normal text-right">Duración</th></tr>
+                    </thead>
+                    <tbody>
+                      {detail.recent.map(r => (
+                        <tr key={r.task} className="border-t border-border">
+                          <td className="py-1 pr-3 font-mono text-default">{r.task}</td>
+                          <td className={`pr-3 ${OUTCOME_CLS[r.outcome]}`}>{OUTCOME[r.outcome]}{r.reason ? <span className="text-muted"> · {r.reason}</span> : null}</td>
+                          <td className="pr-3 text-muted">{new Date(r.ended_at).toLocaleString('es-UY', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</td>
+                          <td className="pr-3 text-right tabular">{r.requests}</td>
+                          <td className="pr-3 text-right tabular">{r.cost_usd === null ? '—' : formatCost(r.cost_usd)}</td>
+                          <td className="text-right tabular">{duration(r.seconds)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              {detail.open.length > 0 && (
+                <div className="text-xs text-muted">
+                  Sin cerrar: {detail.open.map(o => o.task).join(', ')}. Si ya terminaron, el agente no está diciendo cómo.
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── One-time key reveal ──────────────────────────────────────────────────────
 function KeyReveal({ apiKey, onClose }) {
   const [copied, setCopied] = useState(false)
@@ -398,6 +511,7 @@ export default function AgentsPage() {
                 <Metric label="Último pedido">{lastRequest(agent.last_request_at)}</Metric>
                 <Metric label="Prefijo de la key"><span className="font-mono text-muted">{agent.api_key_prefix ?? '—'}</span></Metric>
               </div>
+              <Results agent={agent} />
             </div>
           ))}
         </div>

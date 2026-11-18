@@ -54,7 +54,7 @@ once.
 |---|---|
 | `key_id`, `key_label` | The key or agent that made the request. |
 | `user_id` | The person a key that acts for people acted for (`X-Stratum-User`), if any. |
-| `task` | `X-Stratum-Task` from the application: 1 to 100 letters, digits and `. _ : -`. A malformed one is refused before the services are asked (400 `invalid_task`). Without decision services the header is ignored. |
+| `task` | `X-Stratum-Task` from the application: 1 to 100 letters, digits and `. _ : -`. A malformed one is refused before the services are asked (400 `invalid_task`). Without decision services a malformed one is left out; a valid one is kept on the usage record either way (ADR-0019). |
 | `provider`, `model`, `operation` | Where the request goes, after routing and any fixed model of the agent. `operation` is `gen_ai.operation.name` (`chat`, `embeddings`…). |
 | `labels` | The application's `X-Stratum-Labels`. |
 | `content_sha256` | SHA-256 of what is asked: the `messages`, `prompt`, `input`, `system`, `instructions` or `contents` fields, encoded as JSON with sorted keys. It does not depend on the model, the sampling settings or the order of the keys. Two identical requests have the same hash. |
