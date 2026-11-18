@@ -87,6 +87,8 @@ export function normalizeRecord(r, now = Date.now()) {
     audio_seconds: typeof r.audio_seconds === 'number' && Number.isFinite(r.audio_seconds) && r.audio_seconds > 0
       ? Math.min(Math.round(r.audio_seconds * 100) / 100, 99999999) : 0,
     task,
+    // The version of its instructions the application named (ADR-0019, from 0.9).
+    agent_version: typeof r.agent_version === 'string' && VERSION_RE.test(r.agent_version) ? r.agent_version : null,
     ...(end ?? {}),
   }
 }
@@ -109,6 +111,7 @@ const ALIAS_RE = /^[a-z0-9][a-z0-9._-]{0,49}$/
 const TASK_RE = /^[A-Za-z0-9._:-]{1,100}$/
 const OUTCOMES = new Set(['resolved', 'escalated', 'failed'])
 const OUTCOME_REASON_RE = /^[a-z0-9_]{1,40}$/
+const VERSION_RE = /^[A-Za-z0-9._:-]{1,64}$/
 
 const col = (records, k) => records.map(r => r[k])
 
@@ -139,11 +142,11 @@ export async function ingest(db, instance, records) {
          $18::text[], $19::text[],
          $20::float8[], $21::float8[], $22::float8[], $23::float8[], $24::float8[],
          $25::float8[], $26::float8[], $27::float8[], $28::float8[], $29::float8[], $30::text[], $31::text[],
-         $32::text[], $33::int[], $34::float8[], $35::text[]
+         $32::text[], $33::int[], $34::float8[], $35::text[], $36::text[]
        ) AS t(id, ts, request_id, key_id, team_id, provider, model,
               status, reason, stream, duration_ms, upstream_ms, tokens_in, tokens_out, flags, user_id, labels,
               e_min, e_max, g_min, g_max, w_min, w_max, pe_min, pe_max, ad_min, ad_max, zone, method, alias,
-              images, audio_seconds, task)
+              images, audio_seconds, task, agent_version)
      )
      INSERT INTO request_logs (
        id, created_at, org_id, team_id, user_id, agent_id, provider, model_id,
@@ -151,7 +154,7 @@ export async function ingest(db, instance, records) {
        is_stream, error_message, pii_flagged, pii_types, instance_id, request_id, labels,
        impact_energy_wh_min, impact_energy_wh_max, impact_gwp_g_min, impact_gwp_g_max,
        impact_water_ml_min, impact_water_ml_max, impact_pe_kj_min, impact_pe_kj_max,
-       impact_adpe_mg_min, impact_adpe_mg_max, impact_zone, impact_method, alias, images, audio_seconds, task)
+       impact_adpe_mg_min, impact_adpe_mg_max, impact_zone, impact_method, alias, images, audio_seconds, task, agent_version)
      SELECT r.id, r.ts, $1::uuid, tm.id, u.id, a.id, r.provider, r.model,
             r.tokens_in, r.tokens_out,
             -- No price for a request that used tokens: NULL, "sin precio",
@@ -180,7 +183,7 @@ export async function ingest(db, instance, records) {
             COALESCE(string_to_array(NULLIF(r.labels, ''), ','), '{}'),
             r.e_min, r.e_max, r.g_min, r.g_max, r.w_min, r.w_max, r.pe_min, r.pe_max,
             r.ad_min, r.ad_max, r.zone, r.method, r.alias,
-            NULLIF(r.images, 0), NULLIF(r.audio_seconds, 0), r.task
+            NULLIF(r.images, 0), NULLIF(r.audio_seconds, 0), r.task, r.agent_version
        FROM r
        LEFT JOIN teams tm  ON tm.id::text = r.team_id AND tm.org_id = $1::uuid
        -- The person: the one a delegating key acted for, else the key's owner.
@@ -215,7 +218,7 @@ export async function ingest(db, instance, records) {
      col(records, 'reason'), col(records, 'stream'), col(records, 'duration_ms'), col(records, 'upstream_ms'),
      col(records, 'tokens_in'), col(records, 'tokens_out'), col(records, 'flags'), col(records, 'user_id'),
      col(records, 'labels'), ...impactColumns(records), col(records, 'alias'),
-     col(records, 'images'), col(records, 'audio_seconds'), col(records, 'task')])
+     col(records, 'images'), col(records, 'audio_seconds'), col(records, 'task'), col(records, 'agent_version')])
   await db.query('UPDATE data_plane_instances SET last_usage_at = now() WHERE id = $1', [instance.id])
   return rowCount
 }
@@ -228,16 +231,16 @@ export async function ingest(db, instance, records) {
 export async function ingestOutcomes(db, instance, records) {
   if (!records.length) return 0
   const { rowCount } = await db.query(
-    `INSERT INTO task_outcomes (id, created_at, org_id, team_id, user_id, agent_id, task, outcome, reason, instance_id)
-     SELECT r.id, r.ts, $1::uuid, tm.id, u.id, a.id, r.task, r.outcome, r.reason, $2
-       FROM unnest($3::uuid[], $4::timestamptz[], $5::text[], $6::text[], $7::text[], $8::text[], $9::text[], $10::text[])
-            AS r(id, ts, key_id, team_id, user_id, task, outcome, reason)
+    `INSERT INTO task_outcomes (id, created_at, org_id, team_id, user_id, agent_id, task, outcome, reason, instance_id, agent_version)
+     SELECT r.id, r.ts, $1::uuid, tm.id, u.id, a.id, r.task, r.outcome, r.reason, $2, r.agent_version
+       FROM unnest($3::uuid[], $4::timestamptz[], $5::text[], $6::text[], $7::text[], $8::text[], $9::text[], $10::text[], $11::text[])
+            AS r(id, ts, key_id, team_id, user_id, task, outcome, reason, agent_version)
        LEFT JOIN teams tm ON tm.id::text = r.team_id AND tm.org_id = $1::uuid
        LEFT JOIN users u  ON u.id::text = COALESCE(r.user_id, CASE WHEN r.key_id NOT LIKE 'agent:%' THEN r.key_id END)
                          AND u.org_id = $1::uuid
        LEFT JOIN agents a ON r.key_id LIKE 'agent:%' AND a.id::text = substr(r.key_id, 7) AND a.org_id = $1::uuid
      ON CONFLICT (id) DO NOTHING`,
     [instance.org_id, instance.id, col(records, 'id'), col(records, 'ts'), col(records, 'key_id'), col(records, 'team_id'),
-     col(records, 'user_id'), col(records, 'task'), col(records, 'outcome'), col(records, 'outcome_reason')])
+     col(records, 'user_id'), col(records, 'task'), col(records, 'outcome'), col(records, 'outcome_reason'), col(records, 'agent_version')])
   return rowCount
 }

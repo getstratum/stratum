@@ -43,6 +43,16 @@ it, and nothing says when a task ended or how.
   end; why tasks were escalated or failed; and tasks with requests and no
   end, open.
 
+- **By version of the agent's instructions.** An application may name
+  the version of its instructions with `X-Stratum-Agent-Version` (1 to 64
+  letters, digits and `. _ : -`; a malformed one is refused, 400
+  `invalid_agent_version`) on its requests and on a task's end. Both
+  records keep it (`agent_version`, migration 044), and the console groups
+  an agent's results by the version its tasks ended with: a change of
+  prompt shows as a change of results. The version is the application's
+  to name, not derived from the system prompt: a prompt with a date or a
+  name in it would be a new version on every request.
+
 ## Consequences
 
 - An agent gets a measure in the terms of whoever answers for it, and the
