@@ -83,6 +83,11 @@ func (h *Handler) MCP(w http.ResponseWriter, r *http.Request) {
 			Message: "X-Stratum-Labels takes up to 8 comma-separated labels of lowercase letters, digits and _ (1 to 40 each)"})
 		return
 	}
+	version, ok := agentVersion(r)
+	if !ok {
+		fail(badAgentVersion)
+		return
+	}
 	// The task, as on a model request: on every record (ADR-0019) and for
 	// the decision services.
 	task := ""
@@ -101,7 +106,7 @@ func (h *Handler) MCP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		h.Usage.Add(usage.Record{
-			ID: usage.NewID(), Time: start.UTC(), KeyID: key.ID, UserID: userID, TeamID: teamID, Task: task,
+			ID: usage.NewID(), Time: start.UTC(), KeyID: key.ID, UserID: userID, TeamID: teamID, Task: task, AgentVersion: version,
 			Provider: "mcp", Model: usage.Clip(model, 100), Status: st, Reason: why,
 			DurationMs: time.Since(start).Milliseconds(), Labels: mergeLabels(mergeLabels([]string{"mcp"}, appLabels), labels),
 		})

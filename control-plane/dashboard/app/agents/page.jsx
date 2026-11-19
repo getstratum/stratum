@@ -77,6 +77,28 @@ function Results({ agent }) {
           {error && <p className="text-err text-xs">{error}</p>}
           {detail && (
             <>
+              {detail.versions.some(v => v.version) && (
+                <div className="overflow-x-auto">
+                  <div className="text-xs text-muted mb-1">Por versión de sus instrucciones (<code className="font-mono">X-Stratum-Agent-Version</code>)</div>
+                  <table className="text-xs min-w-[30rem] w-full" data-testid="agent-versions">
+                    <thead className="text-muted text-left">
+                      <tr><th className="font-normal py-1 pr-3">Versión</th><th className="font-normal pr-3 text-right">Tareas</th><th className="font-normal pr-3 text-right">Resueltas solo</th><th className="font-normal pr-3 text-right">Escaladas</th><th className="font-normal pr-3 text-right">Costo por tarea</th><th className="font-normal">Desde</th></tr>
+                    </thead>
+                    <tbody>
+                      {detail.versions.map(v => (
+                        <tr key={v.version ?? '-'} className="border-t border-border">
+                          <td className="py-1 pr-3 font-mono text-default">{v.version ?? <span className="text-muted font-sans">sin versión</span>}</td>
+                          <td className="pr-3 text-right tabular">{v.closed}</td>
+                          <td className="pr-3 text-right tabular">{pct(v.resolution_rate)}</td>
+                          <td className="pr-3 text-right tabular">{pct(v.escalation_rate)}</td>
+                          <td className="pr-3 text-right tabular">{v.cost_per_task === null ? '—' : formatCost(v.cost_per_task)}</td>
+                          <td className="text-muted">{new Date(v.first_at).toLocaleDateString('es-UY', { day: 'numeric', month: 'short' })}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
               {detail.reasons.length > 0 && (
                 <div>
                   <div className="text-xs text-muted mb-1">Por qué no las resolvió solo</div>
@@ -474,6 +496,11 @@ export default function AgentsPage() {
                     </span>
                   ) : (
                     <span className="text-xs text-muted">el agente elige el modelo</span>
+                  )}
+                  {agent.agent_version && (
+                    <span className="text-xs font-mono text-default border border-border rounded px-2 py-0.5" title="La versión de sus instrucciones que nombró su último pedido (X-Stratum-Agent-Version)">
+                      {agent.agent_version}
+                    </span>
                   )}
                   {agent.delegates && (
                     <span className="text-xs text-accent border border-accent/40 rounded px-2 py-0.5" title="Su key puede actuar en nombre de personas (X-Stratum-User)">

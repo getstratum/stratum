@@ -259,10 +259,10 @@ test('normalizeRecord: bounds on time, numbers and text', () => {
 // ADR-0019: the task on each request, and a task's end kept apart.
 test('usage: a task on each request; an outcome is a task\'s end, not a request', { skip }, async () => {
   const bot = `agent:${A.agent}`
-  const r1 = record(A, { key_id: bot, task: 'ticket-7' })
+  const r1 = record(A, { key_id: bot, task: 'ticket-7', agent_version: 'v12' })
   const r2 = record(A, { key_id: bot, task: 'bad task' })
   const end = record(A, { key_id: bot, provider: 'stratum', model: 'task', reason: 'task_outcome', tokens_in: 0, tokens_out: 0,
-    task: 'ticket-7', outcome: 'escalated', outcome_reason: 'customer_asked_for_a_person' })
+    task: 'ticket-7', outcome: 'escalated', outcome_reason: 'customer_asked_for_a_person', agent_version: 'v12' })
   const noTask = record(A, { key_id: bot, outcome: 'resolved' })
   const badOutcome = record(A, { key_id: bot, task: 'ticket-7', outcome: 'done' })
   const res = await post(A.token, { instance_id: A.instance, records: [r1, r2, end, noTask, badOutcome] })
@@ -277,6 +277,8 @@ test('usage: a task on each request; an outcome is a task\'s end, not a request'
   assert.equal(o.outcome, 'escalated')
   assert.equal(o.reason, 'customer_asked_for_a_person')
   assert.equal(o.instance_id, A.instance)
+  assert.equal(o.agent_version, 'v12')
+  assert.equal((await sql('SELECT agent_version FROM request_logs WHERE id = $1', [r1.id]))[0].agent_version, 'v12')
   // Sent again: stored once.
   assert.deepEqual((await post(A.token, { instance_id: A.instance, records: [end] })).body, { accepted: 0, duplicates: 1, rejected: 0 })
   // Another organization's agent is not attributed.

@@ -247,7 +247,9 @@ when the task ends the application says how: `POST /v1/stratum/tasks/<task>`
 with `{ "outcome": "resolved" | "escalated" | "failed", "reason": "<code>" }`.
 Agentes shows, for each agent, the share of its tasks it resolved on its own
 and handed over to a person, why, and what a task costs and takes; tasks with
-requests and no end show as open. Why:
+requests and no end show as open. With `X-Stratum-Agent-Version` on its
+requests and ends, the results also come by version of its instructions, to
+see what a change of prompt did. Why:
 [ADR-0019](docs/adr/0019-task-outcomes.md).
 
 **Traces.** With `OTEL_EXPORTER_OTLP_ENDPOINT` set, the gateway sends

@@ -86,3 +86,33 @@ func TestTaskOnRecordsAndOutcome(t *testing.T) {
 		}
 	}
 }
+
+// The version of its instructions an application names goes on its
+// requests and its tasks' ends; a malformed one is refused.
+func TestAgentVersion(t *testing.T) {
+	e := newEnv(t, allowAll, time.Minute)
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /v1/stratum/tasks/{task}", e.h.TaskOutcome)
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	chat := `{"model":"openai/gpt-4o","messages":[{"role":"user","content":"hola"}]}`
+	h := map[string]string{"X-Stratum-Task": "t-1", "X-Stratum-Agent-Version": "v12"}
+	if res := e.postWith("/v1/chat/completions", agentKey, chat, h); res.StatusCode != 200 {
+		t.Fatalf("status %d", res.StatusCode)
+	}
+	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/v1/stratum/tasks/t-1", strings.NewReader(`{"outcome":"resolved"}`))
+	req.Header.Set("Authorization", "Bearer "+agentKey)
+	req.Header.Set("X-Stratum-Agent-Version", "v12")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil || res.StatusCode != 202 {
+		t.Fatalf("outcome: %v %v", res, err)
+	}
+	got := e.usage.wait(t, 2)
+	if got[0].AgentVersion != "v12" || got[1].AgentVersion != "v12" || got[1].Outcome != "resolved" {
+		t.Errorf("records: %+v %+v", got[0], got[1])
+	}
+	bad := e.postWith("/v1/chat/completions", agentKey, chat, map[string]string{"X-Stratum-Agent-Version": "v 12 nueva"})
+	if bad.StatusCode != 400 || errCode(t, bad) != "invalid_agent_version" {
+		t.Errorf("malformed: %d", bad.StatusCode)
+	}
+}

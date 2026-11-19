@@ -10,6 +10,10 @@
  * end, looked for up to 30 days before the window. A task with requests in
  * the window and no outcome ever is open: either still going, or the
  * application does not say how its tasks end.
+ *
+ * By version: the X-Stratum-Agent-Version a task's end named, so a change
+ * of instructions shows as a change of results (versions, most recent
+ * first; null for the tasks that named none).
  */
 
 export const WINDOWS = [1, 7, 30, 90]
@@ -38,7 +42,7 @@ function summaryOf(row, open) {
 // The last outcome of each task that ended in the window, with its requests.
 const ENDED = `
   WITH last AS (
-    SELECT DISTINCT ON (o.agent_id, o.task) o.agent_id, o.task, o.outcome, o.reason, o.created_at AS ended_at
+    SELECT DISTINCT ON (o.agent_id, o.task) o.agent_id, o.task, o.outcome, o.reason, o.agent_version, o.created_at AS ended_at
       FROM task_outcomes o
      WHERE o.org_id = $1 AND o.agent_id = ANY($2::uuid[])
        AND o.created_at >= now() - make_interval(days => $3)
@@ -53,11 +57,31 @@ const ENDED = `
      GROUP BY l.agent_id, l.task
   )`
 
-/** Each agent's summary over the last `days`: { [agentId]: summary }. */
+const BY_VERSION = `
+  SELECT l.agent_id::text AS agent_id, l.agent_version AS version, count(*) AS closed,
+         count(*) FILTER (WHERE l.outcome = 'resolved')  AS resolved,
+         count(*) FILTER (WHERE l.outcome = 'escalated') AS escalated,
+         count(*) FILTER (WHERE l.outcome = 'failed')    AS failed,
+         sum(s.cost) AS cost, sum(s.unpriced) AS unpriced, sum(s.requests) AS requests,
+         avg(extract(epoch FROM l.ended_at - s.started_at)) FILTER (WHERE s.started_at IS NOT NULL) AS avg_seconds,
+         min(l.ended_at) AS first_at, max(l.ended_at) AS last_at
+    FROM last l JOIN spent s USING (agent_id, task)
+   GROUP BY l.agent_id, l.agent_version
+   ORDER BY max(l.ended_at) DESC`
+
+function versionOf(r) {
+  const { open: _, ...s } = summaryOf(r, 0)
+  return { version: r.version, ...s, first_at: r.first_at, last_at: r.last_at }
+}
+
+/**
+ * Each agent's summary over the last `days`: { [agentId]: summary }, with
+ * its last three versions (versions).
+ */
 export async function summaries(db, orgId, agentIds, days = 30) {
   const out = {}
   if (!agentIds.length) return out
-  const [{ rows }, { rows: open }] = await Promise.all([
+  const [{ rows }, { rows: open }, { rows: byVersion }] = await Promise.all([
     db.query(`${ENDED}
       SELECT l.agent_id::text AS agent_id, count(*) AS closed,
              count(*) FILTER (WHERE l.outcome = 'resolved')  AS resolved,
@@ -74,10 +98,13 @@ export async function summaries(db, orgId, agentIds, days = 30) {
          AND r.created_at >= now() - make_interval(days => $3)
          AND NOT EXISTS (SELECT 1 FROM task_outcomes o WHERE o.org_id = $1 AND o.agent_id = r.agent_id AND o.task = r.task)
        GROUP BY r.agent_id`, [orgId, agentIds, days]),
+    db.query(`${ENDED} ${BY_VERSION}`, [orgId, agentIds, days]),
   ])
   const byAgent = new Map(rows.map(r => [r.agent_id, r]))
   const openBy = new Map(open.map(r => [r.agent_id, r.open]))
-  for (const id of agentIds) out[id] = summaryOf(byAgent.get(id), openBy.get(id))
+  const versionsBy = new Map()
+  for (const r of byVersion) (versionsBy.get(r.agent_id) ?? versionsBy.set(r.agent_id, []).get(r.agent_id)).push(versionOf(r))
+  for (const id of agentIds) out[id] = { ...summaryOf(byAgent.get(id), openBy.get(id)), versions: (versionsBy.get(id) ?? []).slice(0, 3) }
   return out
 }
 
@@ -94,7 +121,7 @@ export async function detail(db, orgId, agentId, days = 30) {
         FROM last l WHERE l.outcome <> 'resolved'
        GROUP BY l.outcome, l.reason ORDER BY n DESC, l.outcome LIMIT 10`, [orgId, [agentId], days]),
     db.query(`${ENDED}
-      SELECT l.task, l.outcome, l.reason, l.ended_at, s.requests, s.cost, s.unpriced,
+      SELECT l.task, l.outcome, l.reason, l.agent_version, l.ended_at, s.requests, s.cost, s.unpriced,
              extract(epoch FROM l.ended_at - s.started_at) AS seconds
         FROM last l JOIN spent s USING (agent_id, task)
        ORDER BY l.ended_at DESC LIMIT 20`, [orgId, [agentId], days]),
@@ -106,12 +133,15 @@ export async function detail(db, orgId, agentId, days = 30) {
          AND NOT EXISTS (SELECT 1 FROM task_outcomes o WHERE o.org_id = $1 AND o.agent_id = r.agent_id AND o.task = r.task)
        GROUP BY r.task ORDER BY last_at DESC LIMIT 10`, [orgId, agentId, days]),
   ])
+  const { versions, ...rest } = summary[agentId]
+  const { rows: allVersions } = await db.query(`${ENDED} ${BY_VERSION}`, [orgId, [agentId], days])
   return {
     days,
-    summary: summary[agentId],
+    summary: rest,
+    versions: allVersions.map(versionOf),
     reasons: reasons.map(r => ({ outcome: r.outcome, reason: r.reason || null, count: Number(r.n) })),
     recent: recent.map(r => ({
-      task: r.task, outcome: r.outcome, reason: r.reason, ended_at: r.ended_at, requests: Number(r.requests),
+      task: r.task, outcome: r.outcome, reason: r.reason, agent_version: r.agent_version, ended_at: r.ended_at, requests: Number(r.requests),
       cost_usd: num(r.cost), unpriced_requests: Number(r.unpriced), seconds: r.seconds === null ? null : Math.round(Number(r.seconds)),
     })),
     open: open.map(r => ({ task: r.task, requests: Number(r.requests), cost_usd: num(r.cost), started_at: r.started_at, last_at: r.last_at })),

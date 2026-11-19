@@ -27,6 +27,24 @@ var outcomeReasonRE = regexp.MustCompile(`^[a-z0-9_]{1,40}$`)
 
 const maxOutcomeBody = 4 << 10
 
+// agentVersionRE: the version of its instructions an application names
+// (X-Stratum-Agent-Version, ADR-0019): "v12", "2026-11-18.1", a commit.
+var agentVersionRE = regexp.MustCompile(`^[A-Za-z0-9._:-]{1,64}$`)
+
+// agentVersion reads X-Stratum-Agent-Version: "" when absent, ok false
+// when malformed (the request is refused: a version nobody can group by
+// helps nobody).
+func agentVersion(r *http.Request) (string, bool) {
+	v := r.Header.Get("X-Stratum-Agent-Version")
+	if v == "" {
+		return "", true
+	}
+	return v, agentVersionRE.MatchString(v)
+}
+
+var badAgentVersion = &policy.Violation{Status: http.StatusBadRequest, Code: "invalid_agent_version",
+	Message: "X-Stratum-Agent-Version takes 1 to 64 letters, digits and . _ : -"}
+
 // TaskOutcome is POST /v1/stratum/tasks/{task}: { "outcome": "resolved" |
 // "escalated" | "failed", "reason": "<code>" }. It answers 202: the outcome
 // travels to the control plane with the usage, off the request path. A
@@ -44,6 +62,11 @@ func (h *Handler) TaskOutcome(w http.ResponseWriter, r *http.Request) {
 	key, teamID, userID, v := h.caller(r, snap)
 	if v != nil {
 		h.fail(w, rec, v)
+		return
+	}
+	version, ok := agentVersion(r)
+	if !ok {
+		h.fail(w, rec, badAgentVersion)
 		return
 	}
 	task := r.PathValue("task")
@@ -77,10 +100,13 @@ func (h *Handler) TaskOutcome(w http.ResponseWriter, r *http.Request) {
 		h.Usage.Add(usage.Record{
 			ID: usage.NewID(), Time: rec.start.UTC(), KeyID: key.ID, UserID: userID, TeamID: teamID,
 			Provider: "stratum", Model: "task", Status: http.StatusOK, Reason: "task_outcome",
-			Task: task, Outcome: body.Outcome, OutcomeReason: body.Reason,
+			Task: task, Outcome: body.Outcome, OutcomeReason: body.Reason, AgentVersion: version,
 		})
 	}
 	attrs := []any{"key_id", key.ID, "team_id", teamID, "task", task, "outcome", body.Outcome}
+	if version != "" {
+		attrs = append(attrs, "agent_version", version)
+	}
 	if body.Reason != "" {
 		attrs = append(attrs, "reason", body.Reason)
 	}
