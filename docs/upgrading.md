@@ -11,7 +11,54 @@ every pod), by `make up` with Docker Compose, or by you with the
 ([chart README](../deploy/helm/stratum-control-plane/README.md#migrations)).
 Back up the database before you upgrade.
 
-## From 0.7 to 0.8 (in progress)
+## From 0.8 to 0.9
+
+0.9 is about measuring and governing agents by their results. Three
+additive migrations; no setting to change.
+
+- **An agent's tasks and how they end**
+  ([ADR-0019](adr/0019-task-outcomes.md)). The `X-Stratum-Task` a request
+  names (a model request or an MCP call) is now kept on its usage record
+  (**migration 043**: `request_logs.task`, and the table
+  `task_outcomes`). When a task ends, the application says how with
+  `POST /v1/stratum/tasks/{task}` and its key: `{ "outcome": "resolved" |
+  "escalated" | "failed", "reason": "<code>" }`, answered 202. The reason
+  is a code (`customer_asked_for_a_person`), never a sentence: it is
+  stored as usage metadata. The console shows each agent's results in
+  Agentes (1, 7, 30 or 90 days), `GET /api/agents` says its last 30 days
+  in `tasks_30d`, and `GET /api/agents/:id/tasks?days=` the detail. An
+  application that never ends its tasks shows them open.
+- **The version of an agent's instructions**: `X-Stratum-Agent-Version`
+  (`v12`, `2026-11-18.1`, a commit) on its requests and on the end of its
+  tasks, and the console cuts its results by version (**migration 044**).
+  A malformed one (more than 64 characters, or anything but letters,
+  digits and `. _ : -`) is **refused with 400 `invalid_agent_version`**:
+  check what your agents send before you upgrade the gateways.
+- **Each agent's last request**: Agentes and `GET /api/agents`
+  (`last_request_at`, null after 90 days without one).
+- **What each MCP server offers**
+  ([ADR-0016](adr/0016-mcp-proxy.md#what-each-server-offers-from-09)):
+  gateways list the tools of every MCP server turned on (`initialize`,
+  `tools/list`, never a `tools/call`), with the server's credential, when
+  the servers change and every `STRATUM_MCP_CATALOG_INTERVAL` (10 minutes;
+  `0` turns it off), and report them to the console (**migration 045**:
+  `tools`, `tools_error`, `tools_at`, `tools_gateway` on `mcp_servers`).
+  So each gateway now reaches each server on its own, not only when an
+  agent calls it: a server that logs or bills its connections sees them.
+  Herramientas MCP shows each server's tools; `GET /api/mcp-servers`
+  returns them (`providers.read`). The console still never calls a
+  server.
+- **The release workflow** fails when a chart cannot be pushed or tagged
+  (0.8.0 was published with the gateway's chart untagged).
+
+A 0.9 console works with 0.8 gateways: their agents have no tasks and the
+MCP servers no tools until a 0.9 gateway reports them. A 0.8 console
+would store each task's end a 0.9 gateway reports as one more request
+(provider `stratum`, model `task`), and answer its MCP catalog with 404
+(the gateway tries again later): upgrade the control plane first, as
+always.
+
+## From 0.7 to 0.8
 
 - **MCP tool calls through the decision services**
   ([ADR-0017](adr/0017-tool-calls-decision-services.md)): with
