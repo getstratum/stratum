@@ -1,8 +1,9 @@
 /**
  * MCP servers of the session's organization (lib/mcp.js, ADR-0016).
  *
- * GET  /api/mcp-servers — list, with the policies that allow each one; never
- *      the credential, only its last characters
+ * GET  /api/mcp-servers — list, with the policies that allow each one and
+ *      the tools a gateway last saw on it (tools, tools_error, tools_at);
+ *      never the credential, only its last characters
  * POST /api/mcp-servers { name, description?, url, authHeader?, secret?, enabled? }
  *
  * Gateways get them with the next sync and serve them at /mcp/<name>.
@@ -15,6 +16,8 @@ import { encryptSecret, secretHint } from '../../../lib/secrets.js'
 import { serverFields } from '../../../lib/mcp.js'
 
 export const COLUMNS = `id, name, description, url, auth_header, secret_hint, enabled, updated_by, updated_at`
+// What each server offers, as the gateways last reported it (ADR-0016, from 0.9).
+const CATALOG = `tools, tools_error, tools_at`
 
 export function encrypt(value) {
   try {
@@ -26,7 +29,7 @@ export function encrypt(value) {
 
 export const GET = route('providers.read', async (req, { session, db }) => {
   const { rows } = await db.query(`
-    SELECT ${COLUMNS},
+    SELECT ${COLUMNS}, ${CATALOG},
            COALESCE((SELECT array_agg(p.name ORDER BY p.name) FROM policies p
                       WHERE p.org_id = s.org_id
                         AND EXISTS (SELECT 1 FROM unnest(p.mcp_tools) t WHERE t LIKE s.name || '/%')), '{}') AS policies

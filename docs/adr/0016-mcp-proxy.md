@@ -50,6 +50,21 @@ console (*Herramientas MCP*):
    from 0.7.1): a team trying a server it may not use is what an audit looks
    for. The console shows them in Requests.
 
+### What each server offers (from 0.9)
+
+Whoever administers the servers needs to see their tools, whatever their own
+team's policy lets them use: to write a policy, or to mark in Enterprise
+which tools only read. The console never calls the servers: they are in the
+gateways' network, and an address an administrator types is not one the
+console should reach. So each gateway lists them (`initialize`,
+`tools/list`, never a `tools/call`), with the server's credential, when its
+list of servers changes and every `STRATUM_MCP_CATALOG_INTERVAL` (10 minutes),
+and reports the result to `POST /api/internal/mcp-catalog` with its sync
+token: each server's tools (name, description, what the server says with
+`readOnlyHint`, a hint and not a guarantee), or why they could not be
+listed. The console keeps the last report of each server and returns it in
+`GET /api/mcp-servers` (`providers.read`).
+
 ### Open source and Enterprise
 
 In the open source edition: the proxy, the servers, the per-policy list of

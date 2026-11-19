@@ -80,3 +80,53 @@ export function toolAllowed(tools, server, tool) {
   const set = new Set(tools ?? [])
   return set.has(`${server}/*`) || set.has(`${server}/${tool}`)
 }
+
+// ── What each server offers (ADR-0016, from 0.9) ────────────────────────
+// The gateways list each server's tools and report them; the console keeps
+// the last report. It never calls the servers itself.
+
+export const CATALOG_MAX_SERVERS = 200
+export const CATALOG_MAX_TOOLS = 200
+export const CATALOG_MAX_BYTES = 2 * 1024 * 1024
+const TOOL_NAME_RE = /^[A-Za-z0-9_][A-Za-z0-9_.\-/]{0,127}$/
+
+/**
+ * A gateway's report, validated: [{ name, tools: [{ name, description,
+ * read_only }], error }]. A malformed server or tool is left out; a body
+ * that is not a report is a 400.
+ */
+export function catalogReport(body) {
+  if (!body || typeof body !== 'object' || !Array.isArray(body.servers)) throw badRequest('Expected { instance_id, servers: [...] }.')
+  if (body.servers.length > CATALOG_MAX_SERVERS) throw badRequest(`At most ${CATALOG_MAX_SERVERS} servers.`)
+  const out = []
+  for (const s of body.servers) {
+    if (!s || typeof s.name !== 'string' || !NAME_RE.test(s.name)) continue
+    const tools = Array.isArray(s.tools) ? s.tools : []
+    out.push({
+      name: s.name,
+      tools: tools
+        .filter(t => t && typeof t.name === 'string' && TOOL_NAME_RE.test(t.name))
+        .slice(0, CATALOG_MAX_TOOLS)
+        .map(t => ({
+          name: t.name,
+          description: typeof t.description === 'string' ? t.description.slice(0, 300) : '',
+          read_only: t.read_only === true,
+        })),
+      error: typeof s.error === 'string' && s.error ? s.error.slice(0, 300) : null,
+    })
+  }
+  return out
+}
+
+/** Keeps a gateway's report on its organization's servers; returns how many it updated. */
+export async function storeCatalog(db, instance, servers) {
+  let n = 0
+  for (const s of servers) {
+    const { rowCount } = await db.query(
+      `UPDATE mcp_servers SET tools = $3, tools_error = $4, tools_at = now(), tools_gateway = $5
+        WHERE org_id = $1 AND name = $2`,
+      [instance.org_id, s.name, JSON.stringify(s.tools), s.error, instance.id])
+    n += rowCount
+  }
+  return n
+}

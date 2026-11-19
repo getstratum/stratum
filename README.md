@@ -275,6 +275,7 @@ See [Traces](docs/architecture/traces.md) and [ADR-0013](docs/adr/0013-traces.md
 | `STRATUM_SYNC_INTERVAL` / `STRATUM_FULL_RESYNC_INTERVAL` | `30s` / `10m` | Delta sync cadence and full resync cadence. |
 | `STRATUM_USAGE_PUSH` | `true` | Control plane mode: report each request's usage (metadata only) to the control plane, for the console's usage, spend and logs (ADR-0009). |
 | `STRATUM_USAGE_INTERVAL` / `STRATUM_USAGE_BUFFER` | `10s` / `100000` | How often usage is sent, and how many records are kept while the control plane is unreachable (past that, new ones are dropped and counted). |
+| `STRATUM_MCP_CATALOG_INTERVAL` | `10m` | Control plane mode: how often the gateway lists the tools of each MCP server (`tools/list`, never a call) and reports them to the console, which shows them to whoever administers the servers (ADR-0016). Also when the servers change. `0` turns it off. |
 | `STRATUM_MAX_INFLIGHT` | `1024` | Concurrent requests before shedding load with 503 + `Retry-After`. |
 | `STRATUM_UPSTREAM_CONNECT_TIMEOUT` | `5s` | Max wait to connect to a provider, DNS included (100ms to 1m). With a route (`stratum/<name>`), it is what an unreachable first model costs each request until its breaker opens. |
 | `STRATUM_UPSTREAM_HEADER_TIMEOUT` | `120s` | Max wait for the provider's first response byte. |

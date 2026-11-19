@@ -263,6 +263,16 @@ func (s *Snapshot) MCP(name string) (MCPServer, bool) {
 	return m, ok
 }
 
+// MCPServers is every MCP server, by name.
+func (s *Snapshot) MCPServers() []MCPServer {
+	out := make([]MCPServer, 0, len(s.mcp))
+	for _, m := range s.mcp {
+		out = append(out, m)
+	}
+	slices.SortFunc(out, func(a, b MCPServer) int { return strings.Compare(a.Name, b.Name) })
+	return out
+}
+
 // MCPAllowed says whether the policy lets its teams use server at all
 // (tool ""), or call one of its tools.
 func (p Policy) MCPAllowed(server, tool string) bool {

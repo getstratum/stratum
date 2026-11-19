@@ -47,6 +47,7 @@ const DURING_ENROLLMENT = new Set([
 const SYNC_TOKEN = {
   'internal/sync/route.js:GET':     'gateways fetch their configuration',
   'internal/usage/route.js:POST':   'gateways report what each request consumed (ADR-0009)',
+  'internal/mcp-catalog/route.js:POST': 'gateways report the tools of each MCP server (ADR-0016)',
 }
 
 function routeFiles(dir) {
