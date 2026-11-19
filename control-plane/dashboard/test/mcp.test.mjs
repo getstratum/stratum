@@ -16,7 +16,7 @@ const { hashPassword } = await import('../lib/password.js')
 const { closeDb } = await import('../lib/db.js')
 const { decryptSecret } = await import('../lib/secrets.js')
 const { buildSyncResponse } = await import('../lib/sync.js')
-const { serverFields, mcpToolsField, toolAllowed } = await import('../lib/mcp.js')
+const { serverFields, mcpToolsField, toolAllowed, catalogReport } = await import('../lib/mcp.js')
 
 const url = process.env.DATABASE_URL
 const skip = url ? false : 'DATABASE_URL not set'
@@ -132,4 +132,50 @@ test('mcp servers: kept with their credential encrypted, never shown; gateways g
   assert.match(del.body.message, /Soporte/)
   await call('policies/[id]', 'PATCH', { as: A.admin, params: { id: pol.body.id }, body: { mcpTools: [] } })
   assert.equal((await call('mcp-servers/[id]', 'DELETE', { as: A.admin, params: { id } })).status, 200)
+})
+
+test('catalogReport: what a gateway may report', () => {
+  assert.throws(() => catalogReport({ servers: 'x' }), /servers/)
+  assert.deepEqual(catalogReport({ servers: [
+    { name: 'demo', tools: [{ name: 'hora', description: 'La hora', read_only: true }, { name: '' }, { name: 'x'.repeat(200) }, { name: 'borrar', read_only: 'si' }] },
+    { name: 'No Vale', tools: [] },
+    { name: 'caido', tools: null, error: 'initialize: the server could not be reached' },
+  ] }), [
+    { name: 'demo', tools: [{ name: 'hora', description: 'La hora', read_only: true }, { name: 'borrar', description: '', read_only: false }], error: null },
+    { name: 'caido', tools: [], error: 'initialize: the server could not be reached' },
+  ])
+})
+
+test('what each server offers: a gateway reports it with its sync token; the list shows it, only for its organization', { skip }, async () => {
+  const B = await org()
+  for (const o of [A, B]) await sql(`INSERT INTO mcp_servers (id, org_id, name, url) VALUES ($1, $2, 'demo', 'http://mock:8080/mcp')`, [`mcp_${randomBytes(8).toString('hex')}`, o.id])
+  await sql(`INSERT INTO mcp_servers (id, org_id, name, url) VALUES ($1, $2, 'caido', 'http://nadie:1/mcp')`, [`mcp_${randomBytes(8).toString('hex')}`, A.id])
+  const token = randomBytes(16).toString('hex')
+  const gw = `dp_${randomBytes(8).toString('hex')}`
+  await sql(`INSERT INTO data_plane_instances (id, org_id, name, sync_token_hash) VALUES ($1, $2, 'gw', $3)`,
+    [gw, A.id, createHash('sha256').update(token).digest('hex')])
+  const report = async (body, auth = `Bearer ${token}`) => {
+    const { POST } = await import('../app/api/internal/mcp-catalog/route.js')
+    const res = await POST(new NextRequest('http://console.test/api/internal/mcp-catalog', {
+      method: 'POST', headers: { authorization: auth, 'content-type': 'application/json' }, body: JSON.stringify(body) }))
+    return { status: res.status, body: await res.json() }
+  }
+  const body = { instance_id: gw, servers: [
+    { name: 'demo', tools: [{ name: 'clima', description: 'El clima' }, { name: 'hora', read_only: true }] },
+    { name: 'caido', tools: [], error: 'initialize: the server could not be reached' },
+    { name: 'ajeno', tools: [{ name: 'x' }] },
+  ] }
+  assert.equal((await report(body, 'Bearer otro')).status, 401)
+  assert.equal((await report({ ...body, instance_id: 'dp_otro' })).status, 403)
+  assert.equal((await report({ servers: 'x' })).status, 400)
+  assert.deepEqual((await report(body)).body, { updated: 2 }, 'its organization\'s servers only')
+
+  const list = (await call('mcp-servers', 'GET', { as: A.auditor })).body.servers
+  const demo = list.find(s => s.name === 'demo')
+  assert.deepEqual(demo.tools, [{ name: 'clima', description: 'El clima', read_only: false }, { name: 'hora', description: '', read_only: true }])
+  assert.equal(demo.tools_error, null)
+  assert.ok(demo.tools_at)
+  assert.equal(list.find(s => s.name === 'caido').tools_error, 'initialize: the server could not be reached')
+  const other = (await call('mcp-servers', 'GET', { as: B.auditor })).body.servers
+  assert.equal(other.find(s => s.name === 'demo').tools, null, 'another organization\'s server is untouched')
 })

@@ -46,6 +46,9 @@ type Config struct {
 	UsagePush     bool
 	UsageInterval time.Duration
 	UsageBuffer   int // records kept while the control plane is unreachable
+	// The tools of each MCP server, reported to the control plane
+	// (ADR-0016): how often they are listed again; 0 turns it off.
+	MCPCatalogInterval time.Duration
 
 	// Static mode
 	ConfigFile string
@@ -139,6 +142,7 @@ func Load(getenv func(string) string) (*Config, error) {
 		UsagePush:          e.bool("STRATUM_USAGE_PUSH", true),
 		UsageInterval:      e.dur("STRATUM_USAGE_INTERVAL", 10*time.Second),
 		UsageBuffer:        e.int("STRATUM_USAGE_BUFFER", 100000),
+		MCPCatalogInterval: e.dur("STRATUM_MCP_CATALOG_INTERVAL", 10*time.Minute),
 
 		ConfigFile: e.str("STRATUM_CONFIG_FILE", ""),
 
@@ -308,11 +312,20 @@ func (c *Config) validateControlPlane(e *env) {
 	if c.UsageBuffer < 1000 {
 		e.fail("STRATUM_USAGE_BUFFER must be at least 1000")
 	}
+	if c.MCPCatalogInterval != 0 && (c.MCPCatalogInterval < time.Minute || c.MCPCatalogInterval > 24*time.Hour) {
+		e.fail("STRATUM_MCP_CATALOG_INTERVAL must be 0 (off) or between 1m and 24h")
+	}
 }
 
 // UsagePushEnabled reports whether per-request usage is sent to the control
 // plane (ADR-0009). Static mode has no control plane to send it to.
 func (c *Config) UsagePushEnabled() bool { return c.Mode == ModeControlPlane && c.UsagePush }
+
+// MCPCatalogEnabled reports whether the MCP servers' tools are listed and
+// reported to the control plane (ADR-0016).
+func (c *Config) MCPCatalogEnabled() bool {
+	return c.Mode == ModeControlPlane && c.MCPCatalogInterval > 0
+}
 
 // PersistenceEnabled reports whether snapshots are written to disk.
 func (c *Config) PersistenceEnabled() bool { return c.SnapshotKey != nil && c.SnapshotPath != "" }

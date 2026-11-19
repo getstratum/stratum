@@ -29,6 +29,7 @@ import (
 	"github.com/getstratum/stratum/gateway/internal/config"
 	"github.com/getstratum/stratum/gateway/internal/decision"
 	"github.com/getstratum/stratum/gateway/internal/health"
+	"github.com/getstratum/stratum/gateway/internal/mcpcatalog"
 	"github.com/getstratum/stratum/gateway/internal/metrics"
 	"github.com/getstratum/stratum/gateway/internal/proxy"
 	"github.com/getstratum/stratum/gateway/internal/quota"
@@ -174,6 +175,18 @@ func serve() int {
 		go func() { defer close(usageDone); pusher.Run(ctx) }()
 	} else {
 		close(usageDone)
+	}
+
+	// What each MCP server offers, for whoever administers them (ADR-0016):
+	// listed from here, since the console does not reach the servers.
+	if cfg.MCPCatalogEnabled() {
+		catalog := &mcpcatalog.Reporter{
+			URL: cfg.CPURL, Token: cfg.SyncToken, InstanceID: cfg.InstanceID, UserAgent: userAgent(),
+			Holder: holder, Client: &http.Client{Transport: proxy.NewTransport(cfg.UpstreamConnectTimeout, cfg.UpstreamHeaderTimeout)},
+			CPClient: &http.Client{Timeout: 30 * time.Second},
+			Every:    cfg.MCPCatalogInterval, Timeout: 10 * time.Second, Log: log.With("component", "mcp-catalog"),
+		}
+		go catalog.Run(ctx)
 	}
 
 	// 5. Servers.

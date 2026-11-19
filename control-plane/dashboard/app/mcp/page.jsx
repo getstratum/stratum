@@ -8,6 +8,33 @@ import { useCallback, useEffect, useState } from 'react'
 import Modal, { Field, Input, Btn } from '../../components/Modal'
 import { usePermissions } from '../../components/usePermissions'
 
+const ago = (t) => {
+  const m = Math.max(0, Math.round((Date.now() - new Date(t)) / 60_000))
+  return m < 1 ? 'recién' : m < 60 ? `hace ${m} min` : m < 1440 ? `hace ${Math.round(m / 60)} h` : `hace ${Math.round(m / 1440)} días`
+}
+
+// What the server offers, as a gateway listed it (tools/list; the console
+// never calls the servers). "Solo lee" is what the server says: a hint.
+function Tools({ s }) {
+  if (!s.tools_at) return <div className="text-xs text-subtle mt-1">Ningún gateway informó sus herramientas todavía.</div>
+  if (s.tools_error) return <div className="text-xs text-warn mt-1" data-testid="mcp-tools-error">No se pudieron listar sus herramientas ({ago(s.tools_at)}): {s.tools_error}</div>
+  const tools = s.tools ?? []
+  return (
+    <details className="text-xs mt-1" data-testid="mcp-tools">
+      <summary className="cursor-pointer text-muted">{tools.length === 1 ? '1 herramienta' : `${tools.length} herramientas`} · vistas {ago(s.tools_at)}</summary>
+      <ul className="mt-1 flex flex-col gap-0.5">
+        {tools.map(t => (
+          <li key={t.name}>
+            <span className="font-mono text-strong">{t.name}</span>
+            {t.read_only && <span className="ml-1 text-subtle">· el servidor dice que solo lee</span>}
+            {t.description && <span className="text-muted"> — {t.description}</span>}
+          </li>
+        ))}
+      </ul>
+    </details>
+  )
+}
+
 function ServerModal({ server, onClose, onSaved }) {
   const editing = Boolean(server)
   const [form, setForm] = useState({
@@ -157,6 +184,7 @@ export default function McpPage() {
                   <td className="px-5 py-3">
                     <div className="font-mono text-strong">/mcp/{s.name}</div>
                     {s.description && <div className="text-xs text-muted">{s.description}</div>}
+                    <Tools s={s} />
                   </td>
                   <td className="px-3 py-3 font-mono text-xs text-default break-all max-w-[280px]">{s.url}</td>
                   <td className="px-3 py-3 text-xs">
