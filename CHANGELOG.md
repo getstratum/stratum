@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.9.0](https://github.com/getstratum/stratum/compare/v0.8.0...v0.9.0) (2026-11-19)
+
+
+### Features
+
+* an agent's results by version of its instructions (X-Stratum-Agent-Version) ([#145](https://github.com/getstratum/stratum/issues/145)) ([85ebf4c](https://github.com/getstratum/stratum/commit/85ebf4c5a9da12e740fd181397eb2bd909b383d8))
+* an agent's results: its tasks, how they ended, what each one cost (ADR-0019) ([#142](https://github.com/getstratum/stratum/issues/142)) ([8fc3b5d](https://github.com/getstratum/stratum/commit/8fc3b5da86010aa03559ef6367ac595ed37dbe93))
+* **console:** an agent's results over the last day too ([#143](https://github.com/getstratum/stratum/issues/143)) ([d28fc37](https://github.com/getstratum/stratum/commit/d28fc374be3ab6256a132fdc28682cab825d3332))
+* **console:** each agent's last request, in Agentes and in GET /api/agents ([#141](https://github.com/getstratum/stratum/issues/141)) ([561bc2d](https://github.com/getstratum/stratum/commit/561bc2d28be27917dff2354be157971ffb2dce3e))
+* gateways report each MCP server's tools; the console keeps them for whoever administers the servers ([#146](https://github.com/getstratum/stratum/issues/146)) ([29ee238](https://github.com/getstratum/stratum/commit/29ee2381361b0db04f29830fd7ccce03f86b5d28))
+
+
+### Bug Fixes
+
+* **release:** a chart push that fails fails the release ([#139](https://github.com/getstratum/stratum/issues/139)) ([13ef709](https://github.com/getstratum/stratum/commit/13ef70964f05cfe9ffc9a76b732c5291b1da1095))
+
 ## [0.8.0](https://github.com/getstratum/stratum/compare/v0.7.0...v0.8.0) (2026-11-17)
 
 
