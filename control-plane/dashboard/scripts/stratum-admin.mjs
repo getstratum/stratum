@@ -10,6 +10,7 @@
  *   node scripts/stratum-admin.mjs catalog-update [--file models.json | --url https://...]
  *   node scripts/stratum-admin.mjs org-list
  *   node scripts/stratum-admin.mjs org-create --name "Acme" [--plan "Empresa"] [--people 25 ...]
+ *   node scripts/stratum-admin.mjs org-invite --org-id <uuid> --email ana@acme.com
  *   node scripts/stratum-admin.mjs org-suspend --org-id <uuid> --reason "..."
  *   node scripts/stratum-admin.mjs org-resume --org-id <uuid> --reason "..."
  *   node scripts/stratum-admin.mjs org-limits --org-id <uuid> [--plan "Empresa"] [--people 25] [--agents 10]
@@ -62,8 +63,12 @@
  * writes there and in the organization's own audit log.
  *
  * org-create makes an organization without people, with its plan if given
- * (the same limits as org-limits); its first Owner comes with create-owner
- * --org-id. platform-token-* manage the tokens of the platform API
+ * (the same limits as org-limits). org-invite invites its first Owner: a
+ * link that works once, for 72 hours, where they choose their password and
+ * then their second factor; sent by email when STRATUM_SMTP_URL is set,
+ * printed otherwise, and needs STRATUM_CONSOLE_URL for the link. Inviting
+ * again replaces the open invitation. create-owner --org-id does it
+ * without a link, printing a password instead. platform-token-* manage the tokens of the platform API
  * (/api/platform, ADR-0020): it lists, creates, suspends, deletes and sets
  * the plan of organizations and reads their usage per month, and never
  * reaches inside one. Without tokens the platform API is closed.
@@ -92,6 +97,7 @@ const orgLimits = await import('../lib/org-limits.js')
 const deletion = await import('../lib/org-deletion.js')
 const orgAdmin = await import('../lib/org-admin.js')
 const platform = await import('../lib/platform.js')
+const invitations = await import('../lib/invitations.js')
 const ACTOR = 'stratum-admin (CLI)'
 
 const USAGE = 'usage: stratum-admin create-owner --email <email> [--name <name>] [--org-id <uuid> | --org-name <name>] [--password-stdin]\n' +
@@ -101,6 +107,7 @@ const USAGE = 'usage: stratum-admin create-owner --email <email> [--name <name>]
               '       stratum-admin catalog-update [--file <models.json> | --url <https://...>]\n' +
               '       stratum-admin org-list\n' +
               '       stratum-admin org-create --name <name> [--plan <name>] [--people <n>] ... (the limits of org-limits)\n' +
+              '       stratum-admin org-invite --org-id <uuid> --email <email>\n' +
               '       stratum-admin org-suspend --org-id <uuid> --reason <text>\n' +
               '       stratum-admin org-resume --org-id <uuid> --reason <text>\n' +
               '       stratum-admin org-limits --org-id <uuid> [--plan <name>] [--people <n>] [--agents <n>] [--teams <n>]\n' +
@@ -362,7 +369,25 @@ async function orgCreate(db, opts) {
     if (k !== 'name' && k !== 'plan' && !(k.replaceAll('-', '_') in orgLimits.LIMITS)) throw new Error(USAGE)
   }
   const r = await orgAdmin.createOrg(db, { name: opts.name, plan: opts.plan, limits, actor: ACTOR })
-  console.log(`Created ${r.name} (${r.id}). Its first Owner: create-owner --org-id ${r.id} --email ...`)
+  console.log(`Created ${r.name} (${r.id}). Its first Owner: org-invite --org-id ${r.id} --email ...`)
+}
+
+// The first Owner of an organization, by invitation (lib/invitations.js).
+async function orgInvite(db, opts) {
+  if (!opts['org-id'] || !opts.email) throw new Error(USAGE)
+  if (!process.env.STRATUM_CONSOLE_URL?.trim()) throw new Error('STRATUM_CONSOLE_URL is not set: the link needs the console\'s address (https://consola.example.com).')
+  const base = invitations.baseUrl(null)
+  const inv = await invitations.createInvitation(db, { orgId: opts['org-id'], email: opts.email, role: 'owner', invitedBy: ACTOR })
+  const link = invitations.linkFor(base, inv.raw)
+  const delivery = await invitations.sendInvitation(inv, link)
+  const details = { email: inv.email, role: 'owner', sent: delivery.sent, expires_at: inv.expiresAt }
+  await db.query(
+    `INSERT INTO audit_log (org_id, actor_label, action, target_type, target_id, result, details)
+     VALUES ($1, $2, 'org.invite', 'invitation', $3, 'ok', $4)`, [opts['org-id'], ACTOR, inv.id, JSON.stringify(details)])
+  await deletion.platformAudit(db, { actor: ACTOR, action: 'org.invite', orgId: opts['org-id'], orgName: inv.orgName, details })
+  console.log(`Invited ${inv.email} as Owner of ${inv.orgName}, until ${inv.expiresAt.toISOString()}.`)
+  if (delivery.sent) console.log('The link went by email.')
+  else console.log(`Not sent by email (${delivery.reason}). Pass this link on; it works once:\n${link}`)
 }
 
 // Platform API tokens (lib/platform.js): belong to no organization.
@@ -429,7 +454,7 @@ async function platformAuditList(db, opts) {
 
 async function main() {
   const { command, opts } = parseArgs(process.argv.slice(2))
-  if (!['create-owner', 'reset-password', 'reset-mfa', 'enroll-mfa', 'catalog-update', 'org-list', 'org-suspend', 'org-resume', 'org-limits', 'org-delete', 'org-undelete', 'org-purge', 'platform-audit', 'org-create', 'platform-token-create', 'platform-token-list', 'platform-token-revoke'].includes(command)) throw new Error(USAGE)
+  if (!['create-owner', 'reset-password', 'reset-mfa', 'enroll-mfa', 'catalog-update', 'org-list', 'org-suspend', 'org-resume', 'org-limits', 'org-delete', 'org-undelete', 'org-purge', 'platform-audit', 'org-create', 'org-invite', 'platform-token-create', 'platform-token-list', 'platform-token-revoke'].includes(command)) throw new Error(USAGE)
   if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is not set.')
   const db = new pg.Client({ connectionString: process.env.DATABASE_URL })
   await db.connect()
@@ -448,6 +473,7 @@ async function main() {
     else if (command === 'org-purge') await orgPurge()
     else if (command === 'platform-audit') await platformAuditList(db, opts)
     else if (command === 'org-create') await orgCreate(db, opts)
+    else if (command === 'org-invite') await orgInvite(db, opts)
     else if (command === 'platform-token-create') await platformTokenCreate(db, opts)
     else if (command === 'platform-token-list') await platformTokenList(db)
     else if (command === 'platform-token-revoke') await platformTokenRevoke(db, opts)

@@ -245,6 +245,27 @@ outlives the organizations: who did it, when, why, and for a deleted one
 what it had and its usage per month. The organization's own audit log
 shows it too while the organization exists.
 
+## Invitations
+
+Instead of setting someone's password, Owners, Admins and team managers can
+invite them from **Usuarios → Invitar por email**, with the same roles and
+teams they could give them directly. The person gets a link that works
+once, for 72 hours, where they choose their own password; an Owner or Admin
+then sets up the second factor before using the console, as on a first
+sign-in. Where the organization signs in with its identity provider, the
+link only creates the account.
+
+- The link goes by email when the console has `STRATUM_SMTP_URL`, and is
+  also shown to whoever invited, to pass on another way.
+- The account is created when the link is used: an open invitation does
+  not count against the plan's people, and the plan is checked then.
+- Inviting the same email again replaces the open invitation; **Anular**
+  revokes it. Suspending the organization stops every link.
+- Links point to `STRATUM_CONSOLE_URL` if set, or to the address the
+  console was reached at. The token goes after `#`, so it is in no access
+  log; only its SHA-256 is kept.
+- Service tokens do not invite: they provision people directly.
+
 ## Audit log
 
 `audit_log` records sign-ins (failed ones too), every change made through the

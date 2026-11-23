@@ -5,7 +5,8 @@
  *      limits, the date it is deleted on if marked, and how many people,
  *      agents, teams and gateways it has. Nothing from inside it.
  * POST /api/platform/organizations  { name, plan?, limits? } — a new one,
- *      without people (its first Owner: an invitation, or create-owner).
+ *      without people. Its first Owner comes by invitation:
+ *      POST /api/platform/organizations/:id/invitations.
  */
 export const dynamic = 'force-dynamic'
 import { platformRoute, json, readJson } from '@/lib/route'

@@ -3,7 +3,7 @@
 import { usePathname } from 'next/navigation'
 import Sidebar from './Sidebar'
 
-const NO_SIDEBAR_PATHS = ['/login', '/oidc']
+const NO_SIDEBAR_PATHS = ['/login', '/oidc', '/invite']
 
 // Any console API answer of 401 means the session is gone (expired, revoked,
 // signed out elsewhere, or a database that was recreated): send the browser

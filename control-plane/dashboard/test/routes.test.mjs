@@ -36,6 +36,9 @@ const PUBLIC = {
   // Signing in with the organization's identity provider (lib/sso.js).
   'sso/start/route.js:POST':        'a sign-in with the organization\'s identity provider starts (by email domain)',
   'sso/callback/route.js:GET':      'back from the identity provider: state, browser cookie, code and ID token checked',
+  // Invitations (lib/invitations.js): the token in the body is the access.
+  'invitations/lookup/route.js:POST': 'the invitation page shows what the link is for, from its token',
+  'invitations/accept/route.js:POST': 'whoever holds an invitation chooses their password, with its token',
 }
 // Routes a session that must set up the second factor first may use.
 const DURING_ENROLLMENT = new Set([
