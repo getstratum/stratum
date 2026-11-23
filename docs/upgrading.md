@@ -46,6 +46,10 @@ Back up the database before you upgrade.
   public address so links point there (without it, they point to the
   address the request came to), and `STRATUM_SMTP_URL` for them to go by
   email. Behind a proxy that only lets known paths through, add `/invite`.
+- **Mi organización**: a new page for Owners, Admins and Auditors of an
+  organization with a plan, with each limit against what it has; buttons
+  that would go past a limit say "Fijado por tu plan". Nothing changes for
+  an organization without one.
 - **Refusals for a spent budget count as policy refusals** in Consumo and
   in usage reports, like a spent token quota (`budget_exceeded` was missing
   from that list).

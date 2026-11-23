@@ -125,6 +125,7 @@ export default function GatewaysPage() {
   const [loading, setLoading]     = useState(true)
   const [error, setError]         = useState('')
   const [canManage, setCanManage] = useState(false)
+  const [full, setFull]           = useState(null) // the plan's gateways, reached (ADR-0020)
   const [modal, setModal]         = useState(null)
   const [cpUrl, setCpUrl]         = useState('')
 
@@ -139,7 +140,10 @@ export default function GatewaysPage() {
   useEffect(() => {
     load()
     setCpUrl(window.location.origin)
-    fetch('/api/session').then(r => r.json()).then(me => setCanManage(me.permissions?.['gateways.manage'] === 'org')).catch(() => {})
+    fetch('/api/session').then(r => r.json()).then(me => {
+      setCanManage(me.permissions?.['gateways.manage'] === 'org')
+      setFull(me.org?.reached?.gateways ?? null)
+    }).catch(() => {})
     const t = setInterval(load, 15000)
     return () => clearInterval(t)
   }, [load])
@@ -172,7 +176,8 @@ export default function GatewaysPage() {
             Si el control plane no responde, siguen sirviendo con la última que tienen.
           </p>
         </div>
-        {canManage && <Btn onClick={() => setModal({ register: true })}>Registrar gateway</Btn>}
+        {canManage && <Btn onClick={() => setModal({ register: true })} disabled={!!full} title={full ?? undefined}>Registrar gateway</Btn>}
+        {canManage && full && <p data-testid="plan-fixed" className="basis-full text-right text-xs text-muted">{canManage && full}</p>}
       </div>
 
       {error && <p className="text-sm text-err bg-err-light rounded-lg px-4 py-3 mb-4">{error}</p>}

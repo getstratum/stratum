@@ -22,6 +22,8 @@ const ALL = { owner: 'org', admin: 'org', team_manager: 'team', auditor: 'org' }
 export const PERMISSIONS = {
   // Organization
   'org.read':          { owner: 'org', admin: 'org', team_manager: 'org', auditor: 'org' },
+  // "Mi organización": its plan, limits and usage against them (ADR-0020)
+  'org.plan.read':     { owner: 'org', admin: 'org', auditor: 'org' },
 
   // People and agents
   'users.read':        ALL,

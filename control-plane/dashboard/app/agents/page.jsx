@@ -386,8 +386,9 @@ function Metric({ label, children }) {
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function AgentsPage() {
-  const { can, scope } = usePermissions()
+  const { can, scope, fixed } = usePermissions()
   const canManage = can('keys.manage')
+  const full      = fixed('agents')
   const canDelegate = scope('keys.manage') === 'org'
   const canUsage  = can('usage.read')
   const [agents,    setAgents]    = useState([])
@@ -459,7 +460,8 @@ export default function AgentsPage() {
             Procesos automáticos (bots, pipelines, flujos) con su propia key, su política y su consumo.
           </p>
         </div>
-        {canManage && <Btn onClick={() => setModal('create')}>+ Nuevo agente</Btn>}
+        {canManage && <Btn onClick={() => setModal('create')} disabled={!!full} title={full ?? undefined}>+ Nuevo agente</Btn>}
+        {canManage && full && <p data-testid="plan-fixed" className="basis-full text-right text-xs text-muted">{canManage && full}</p>}
       </div>
 
       {loading && <p className="text-sm text-muted">Cargando…</p>}
