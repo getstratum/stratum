@@ -104,7 +104,7 @@ test('platform: create, list and set the plan; never what is inside', { skip }, 
   await sql(`INSERT INTO users (org_id, email, role) VALUES ($1, $2, 'owner')`, [r.body.id, `o-${r.body.id}@example.com`])
   const list = await call('platform/organizations', 'GET')
   const mine = list.body.organizations.find(o => o.id === r.body.id)
-  assert.deepEqual(Object.keys(mine).sort(), ['counts', 'created_at', 'delete_after', 'id', 'limits', 'name', 'plan', 'status'])
+  assert.deepEqual(Object.keys(mine).sort(), ['counts', 'created_at', 'delete_after', 'features', 'id', 'limits', 'name', 'plan', 'status'])
   assert.equal(mine.counts.people, 1)
   assert.ok(!JSON.stringify(list.body).includes('@example.com'))
 
@@ -173,4 +173,37 @@ test('platform: usage per month for billing, as JSON or CSV', { skip }, async ()
   // A name that starts like a formula is not run by a spreadsheet.
   assert.ok(line.startsWith(`2026-10,${org.id},'=Gamma`), line)
   assert.ok(line.endsWith(',1650,0.3,2,0,0,1,0'), line)
+})
+
+test('platform: what the plan includes, and the organization\'s application reads it', { skip }, async () => {
+  const { body: org } = await create({ name: unique('Delta'), plan: 'Empresa', features: ['portal', 'agent_guard', 'portal'], limits: { portal_seats: 25 } })
+  assert.deepEqual(org.features, ['agent_guard', 'portal'])
+  assert.equal(org.limits.portal_seats, 25)
+  assert.equal((await create({ name: unique('x'), features: ['Portal!'] })).status, 400)
+  assert.equal((await create({ name: unique('x'), features: 'portal' })).status, 400)
+
+  // The organization's application (the portal), with its client secret.
+  const secret = randomBytes(16).toString('hex')
+  const clientId = `app_${randomBytes(6).toString('hex')}`
+  await sql(`INSERT INTO oidc_clients (id, org_id, name, secret_hash, redirect_uris) VALUES ($1, $2, 'Portal', $3, '{}')`,
+    [clientId, org.id, createHash('sha256').update(secret).digest('hex')])
+  process.env.STRATUM_CONSOLE_URL = 'https://consola.test'
+  const ent = async (s = secret) => {
+    mods.ent ??= await import('../app/api/oidc/entitlements/route.js')
+    const res = await mods.ent.GET(new NextRequest('https://consola.test/api/oidc/entitlements', {
+      headers: { authorization: `Basic ${Buffer.from(`${clientId}:${s}`).toString('base64')}` },
+    }))
+    return { status: res.status, body: await res.json() }
+  }
+  assert.deepEqual((await ent()).body, { org_id: org.id, plan: 'Empresa', features: ['agent_guard', 'portal'], portal_seats: 25 })
+  assert.equal((await ent('wrong')).status, 401)
+
+  // Changed from the platform API; null is "whatever the license includes".
+  await call('platform/organizations/[id]', 'PATCH', { params: { id: org.id }, body: { features: [] } })
+  assert.deepEqual((await ent()).body.features, [])
+  await call('platform/organizations/[id]', 'PATCH', { params: { id: org.id }, body: { features: null, limits: { portal_seats: null } } })
+  const after = (await ent()).body
+  assert.deepEqual([after.features, after.portal_seats], [null, null])
+  const [pa] = await sql(`SELECT details FROM platform_audit WHERE org_id = $1 AND action = 'org.limits' ORDER BY id LIMIT 1`, [org.id])
+  assert.deepEqual(pa.details.features, { from: ['agent_guard', 'portal'], to: [] })
 })

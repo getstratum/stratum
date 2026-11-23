@@ -4,7 +4,7 @@
  * GET  /api/platform/organizations  — every organization: state, plan,
  *      limits, the date it is deleted on if marked, and how many people,
  *      agents, teams and gateways it has. Nothing from inside it.
- * POST /api/platform/organizations  { name, plan?, limits? } — a new one,
+ * POST /api/platform/organizations  { name, plan?, limits?, features? } — a new one,
  *      without people. Its first Owner comes by invitation:
  *      POST /api/platform/organizations/:id/invitations.
  */
@@ -17,6 +17,6 @@ export const GET = platformRoute(async (req, { db }) => json({ organizations: aw
 
 export const POST = platformRoute(async (req, { db, actor }) => {
   const body = await readJson(req)
-  const { id } = await withClient(db, c => createOrg(c, { name: body.name, plan: body.plan, limits: body.limits, actor }))
+  const { id } = await withClient(db, c => createOrg(c, { name: body.name, plan: body.plan, limits: body.limits, features: body.features, actor }))
   return json(await getOrg(db, id), 201)
 })

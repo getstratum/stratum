@@ -45,11 +45,11 @@ what is trusted; the header only names.
 | Route | What it does |
 |---|---|
 | `GET /api/platform/organizations` | Every organization: `id`, `name`, `status`, `plan`, `limits`, `delete_after`, `created_at`, `counts` |
-| `POST /api/platform/organizations` | `{ name, plan?, limits? }`: a new organization, without people. 409 if the name is taken (ignoring case) |
+| `POST /api/platform/organizations` | `{ name, plan?, limits?, features? }`: a new organization, without people. 409 if the name is taken (ignoring case) |
 | `POST /api/platform/organizations/:id/invitations` | `{ email }`: invites its first Owner (see below). Again for the same email replaces the open one |
 | `GET /api/platform/organizations/:id/invitations` | The open invitations made from outside the organization, to see whether the Owner came in |
 | `GET /api/platform/organizations/:id` | One organization, with `counts` for each limit |
-| `PATCH /api/platform/organizations/:id` | `{ name?, plan?, limits? }`. Limits are merged: a number sets one, `null` removes it |
+| `PATCH /api/platform/organizations/:id` | `{ name?, plan?, limits?, features? }`. Limits are merged: a number sets one, `null` removes it. `features` replaces the list; `null`: whatever the license includes |
 | `POST /api/platform/organizations/:id` | `{ action, reason, confirm? }`: `suspend`, `resume`, `delete` (with `confirm`, the name as written) or `undelete` |
 | `GET /api/platform/usage?month=YYYY-MM` | Each organization's tokens, estimated cost and requests that month, and what it has now. `&format=csv` for a spreadsheet |
 | `GET /api/platform/audit` | The platform audit log, newest first. `org_id`, `limit` (up to 500), `before=<id>` to page |
@@ -59,7 +59,7 @@ Limits are those of [Plan limits](access-control.md#plan-limits). A reason
 and is kept in both audit logs. Errors are JSON with a stable `error` code
 (`not_found`, `name_taken`, `bad_limits`, `reason_required`,
 `confirm_mismatch`, `already_marked`, `not_marked`, `marked_for_deletion`,
-`bad_email`, `email_taken`, `org_unavailable`)
+`bad_email`, `email_taken`, `org_unavailable`, `bad_features`)
 and a `message` in English.
 
 ## The first Owner

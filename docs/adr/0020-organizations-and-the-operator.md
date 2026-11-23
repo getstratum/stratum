@@ -162,6 +162,26 @@ organization kept using every model it had.
 - **An organization without a plan sees none of it**: no page in the menu,
   no messages. One installation with one organization stays as it was.
 
+### Paid functions by plan
+
+- **One signed license per installation; plans split it.** The license
+  (Enterprise's `licensing/`) is signed with Matech's key, which never
+  leaves Matech: an operator's console that signed would need it on a
+  server. So the installation keeps one license with every function and
+  the total of seats, and each organization's plan says which functions it
+  has (`organizations.features`, migration 050) and how many portal seats
+  (`limits.portal_seats`).
+- **The console knows names, not functions.** It validates their shape
+  and hands them to the organization's applications at
+  `GET /api/oidc/entitlements`, with the client's secret, as the usage
+  reports. The Enterprise portal and guard decide what each name turns on,
+  within what their license allows.
+- **`features` null is "not managed"**: every organization upgrades with
+  what the license gives, as before.
+- **One portal per organization**, as today: in a shared Stratum Cloud each
+  customer's portal is deployed apart, with its own application in the
+  console. A portal for many organizations would be another design.
+
 ## Consequences
 
 - Suspending takes effect in the console at once and in gateways within

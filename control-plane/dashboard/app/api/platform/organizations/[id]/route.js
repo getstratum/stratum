@@ -3,9 +3,10 @@
  *
  * GET   /api/platform/organizations/:id  — as in the list, with what it has
  *       against each limit.
- * PATCH /api/platform/organizations/:id  { name?, plan?, limits? } — limits
- *       are merged: a number sets one, null removes it. Lowering one never
- *       removes anything from the organization.
+ * PATCH /api/platform/organizations/:id  { name?, plan?, limits?, features? }
+ *       — limits are merged: a number sets one, null removes it. Lowering
+ *       one never removes anything from the organization. features replaces
+ *       the list (null: whatever the license includes).
  * POST  /api/platform/organizations/:id  { action, reason, confirm? }
  *       action: suspend | resume | delete | undelete. A reason (5 or more
  *       characters) always; delete also asks for the organization's name as
@@ -25,7 +26,7 @@ export const GET = platformRoute(async (req, { db, params }) => {
 
 export const PATCH = platformRoute(async (req, { db, actor, params }) => {
   const body = await readJson(req)
-  await withClient(db, c => setPlan(c, { orgId: params.id, name: body.name, plan: body.plan, limits: body.limits, actor }))
+  await withClient(db, c => setPlan(c, { orgId: params.id, name: body.name, plan: body.plan, limits: body.limits, features: body.features, actor }))
   return json(await getOrg(db, params.id))
 })
 
