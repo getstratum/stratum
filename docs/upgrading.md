@@ -11,6 +11,15 @@ every pod), by `make up` with Docker Compose, or by you with the
 ([chart README](../deploy/helm/stratum-control-plane/README.md#migrations)).
 Back up the database before you upgrade.
 
+## From 0.9 to 1.0
+
+- **Suspending an organization stops its gateways too**
+  ([ADR-0020](adr/0020-organizations-and-the-operator.md)). The sync now
+  says the organization's state; a gateway from 1.0 refuses every request
+  of a suspended organization with **403 `org_suspended`**. Gateways
+  before 1.0 ignore it and keep serving it: upgrade them. `stratum-admin`
+  gains `org-list`, `org-suspend` and `org-resume`.
+
 ## From 0.8 to 0.9
 
 0.9 is about measuring and governing agents by their results. Three

@@ -87,6 +87,17 @@ type SyncResponse struct {
 	// (ADR-0016), served at /mcp/<name>. Not versioned: a response that
 	// carries the list replaces it. Absent from control planes before 0.7.
 	MCPServers []WireMCPServer `json:"mcp_servers,omitempty"`
+	// Organization is the organization's state: a suspended one is refused
+	// everything (403 org_suspended). Not versioned: sent with every sync,
+	// full or delta. Absent from control planes before 1.0, and then the
+	// organization is active.
+	Organization *WireOrganization `json:"organization,omitempty"`
+}
+
+// WireOrganization is what the gateway needs to know of its organization.
+type WireOrganization struct {
+	// Status is "active" or "suspended" (ADR-0020).
+	Status string `json:"status"`
 }
 
 // WireAlias is a model alias: a name and its targets, in order.

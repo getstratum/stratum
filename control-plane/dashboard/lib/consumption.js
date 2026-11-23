@@ -35,7 +35,7 @@ export const DIMENSIONS = ['team', 'agent', 'app', 'user', 'model', 'provider', 
 // not because something failed.
 export const POLICY_REASONS = [
   'no_policy', 'team_disabled', 'provider_not_allowed', 'model_not_allowed',
-  'quota_exceeded', 'sensitive_data_detected', 'agent_model_mismatch', 'model_disabled',
+  'quota_exceeded', 'sensitive_data_detected', 'agent_model_mismatch', 'model_disabled', 'org_suspended',
 ]
 
 const KEY = {
