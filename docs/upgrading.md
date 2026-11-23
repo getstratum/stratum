@@ -33,6 +33,13 @@ Back up the database before you upgrade.
   upgrade. A new table, `platform_audit`, keeps what is done to
   organizations from outside them. `audit_log` stays append-only, except
   for the rows of an organization whose deletion is due.
+- **Platform API** (migration 048): `/api/platform` lists, creates,
+  suspends, deletes and sets the plan of organizations, and reads their
+  usage per month, with a token that belongs to no organization
+  ([docs/console/platform-api.md](console/platform-api.md)). It is closed
+  until `stratum-admin platform-token-create` makes a token. If your
+  console is public and the platform's clients are not, block
+  `/api/platform/` at the proxy.
 - **Refusals for a spent budget count as policy refusals** in Consumo and
   in usage reports, like a spent token quota (`budget_exceeded` was missing
   from that list).

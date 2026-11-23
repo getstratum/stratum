@@ -109,6 +109,26 @@ organization kept using every model it had.
   in its own database; deleting them with the organization comes with the
   licence per organization (stage 5).
 
+### Platform API
+
+- **A token outside every organization.** `platform_tokens` (migration
+  048), made only by `stratum-admin platform-token-create`, shown once,
+  at most a year. `platformRoute()` is the only door to `/api/platform`
+  and a platform token opens no other route; `test/routes.test.mjs` fails
+  if a route breaks either rule.
+- **The CLI and the API share one implementation** (`lib/org-admin.js`,
+  `lib/org-deletion.js`), so both check the same and write the same two
+  audit entries.
+- **Who did it:** the token's name, and the person its client names in
+  `X-Stratum-Actor`. `stratum-operator` authenticates its operators and
+  says who they are; the console trusts the token, not the header.
+- **Usage for billing comes from `team_usage_monthly`**, which retention
+  never deletes, so a month is billed the same however long the
+  organization keeps its requests. Portal seats come with the licence per
+  organization (stage 5).
+- **No new organization gets people from the API yet.** Its first Owner
+  comes with `create-owner --org-id`; invitations are next.
+
 ## Consequences
 
 - Suspending takes effect in the console at once and in gateways within

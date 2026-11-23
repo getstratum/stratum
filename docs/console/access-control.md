@@ -235,6 +235,10 @@ node scripts/stratum-admin.mjs org-undelete --org-id <uuid> --reason "..."
 node scripts/stratum-admin.mjs platform-audit [--org-id <uuid>]
 ```
 
+All of this can also be done through the [platform API](platform-api.md),
+with a token that belongs to no organization, and an organization without
+people can be made with `org-create`.
+
 What is done to an organization from outside it (suspend, resume, limits,
 delete, undo, and the deletion itself) is kept in `platform_audit`, which
 outlives the organizations: who did it, when, why, and for a deleted one

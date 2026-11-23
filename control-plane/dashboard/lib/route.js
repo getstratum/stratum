@@ -14,8 +14,9 @@
  * with scope 'org', unless the route says { serviceTokens: false }.
  *
  * publicRoute() and tokenRoute() mark the few routes that do not use a
- * console session. test/routes.test.mjs fails if a route file exports a
- * handler that went through none of the three.
+ * console session, and platformRoute() the platform API's (lib/platform.js),
+ * which belong to no organization. test/routes.test.mjs fails if a route
+ * file exports a handler that went through none of the four.
  */
 
 import { NextResponse } from 'next/server'
@@ -25,6 +26,7 @@ import { COOKIE, loadSession } from './session.js'
 import { scopeFor } from './authz.js'
 import { audit } from './audit.js'
 import { bearerToken, loadServiceSession } from './service-tokens.js'
+import { platformBearer, loadPlatformToken, actorOf } from './platform.js'
 
 export const GUARD = Symbol.for('stratum.route.guard')
 
@@ -190,6 +192,31 @@ export function tokenRoute(handler) {
     }
   }
   wrapped[GUARD] = { kind: 'sync-token' }
+  return wrapped
+}
+
+/**
+ * A platform API route (ADR-0020): only a platform token opens it, and the
+ * handler gets { db, token, actor, params }, with no organization. Sessions,
+ * service tokens and sync tokens are refused like no token at all.
+ */
+export function platformRoute(handler) {
+  const wrapped = async (req, ctx) => {
+    try {
+      const raw = platformBearer(req)
+      if (!raw) {
+        return json({ error: 'unauthorized', message: 'A platform token is required (Authorization: Bearer stplat_...).' }, 401)
+      }
+      const db = getDb()
+      const token = await loadPlatformToken(db, raw)
+      if (!token) return json({ error: 'invalid_token', message: 'The token does not exist, expired or was revoked.' }, 401)
+      const params = ctx?.params ? await ctx.params : {}
+      return await handler(req, { db, token, actor: actorOf(token, req), params })
+    } catch (err) {
+      return failure(err)
+    }
+  }
+  wrapped[GUARD] = { kind: 'platform' }
   return wrapped
 }
 

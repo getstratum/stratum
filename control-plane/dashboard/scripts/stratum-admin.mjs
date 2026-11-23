@@ -9,6 +9,7 @@
  *   node scripts/stratum-admin.mjs enroll-mfa --email ana@acme.com [--secret-stdin]
  *   node scripts/stratum-admin.mjs catalog-update [--file models.json | --url https://...]
  *   node scripts/stratum-admin.mjs org-list
+ *   node scripts/stratum-admin.mjs org-create --name "Acme" [--plan "Empresa"] [--people 25 ...]
  *   node scripts/stratum-admin.mjs org-suspend --org-id <uuid> --reason "..."
  *   node scripts/stratum-admin.mjs org-resume --org-id <uuid> --reason "..."
  *   node scripts/stratum-admin.mjs org-limits --org-id <uuid> [--plan "Empresa"] [--people 25] [--agents 10]
@@ -18,6 +19,9 @@
  *   node scripts/stratum-admin.mjs org-undelete --org-id <uuid> --reason "..."
  *   node scripts/stratum-admin.mjs org-purge
  *   node scripts/stratum-admin.mjs platform-audit [--org-id <uuid>] [--limit 50]
+ *   node scripts/stratum-admin.mjs platform-token-create --name "stratum-operator" [--days 90]
+ *   node scripts/stratum-admin.mjs platform-token-list
+ *   node scripts/stratum-admin.mjs platform-token-revoke --id <uuid>
  *
  * create-owner makes (or promotes) the Owner of an organization: the first
  * account of a new installation, or a way back in when nobody can sign in.
@@ -57,6 +61,13 @@
  * here, which outlives them: every org-* command that changes something
  * writes there and in the organization's own audit log.
  *
+ * org-create makes an organization without people, with its plan if given
+ * (the same limits as org-limits); its first Owner comes with create-owner
+ * --org-id. platform-token-* manage the tokens of the platform API
+ * (/api/platform, ADR-0020): it lists, creates, suspends, deletes and sets
+ * the plan of organizations and reads their usage per month, and never
+ * reaches inside one. Without tokens the platform API is closed.
+ *
  * catalog-update applies the model catalog feed now (ADR-0012): from
  * STRATUM_MODEL_CATALOG_URL or the default feed, a URL, or a local file for
  * installations without internet access (the repository's
@@ -79,6 +90,8 @@ const { encryptSecret } = await import('../lib/secrets.js')
 const feed = await import('../lib/model-feed.js')
 const orgLimits = await import('../lib/org-limits.js')
 const deletion = await import('../lib/org-deletion.js')
+const orgAdmin = await import('../lib/org-admin.js')
+const platform = await import('../lib/platform.js')
 const ACTOR = 'stratum-admin (CLI)'
 
 const USAGE = 'usage: stratum-admin create-owner --email <email> [--name <name>] [--org-id <uuid> | --org-name <name>] [--password-stdin]\n' +
@@ -87,6 +100,7 @@ const USAGE = 'usage: stratum-admin create-owner --email <email> [--name <name>]
               '       stratum-admin enroll-mfa --email <email> [--secret-stdin]\n' +
               '       stratum-admin catalog-update [--file <models.json> | --url <https://...>]\n' +
               '       stratum-admin org-list\n' +
+              '       stratum-admin org-create --name <name> [--plan <name>] [--people <n>] ... (the limits of org-limits)\n' +
               '       stratum-admin org-suspend --org-id <uuid> --reason <text>\n' +
               '       stratum-admin org-resume --org-id <uuid> --reason <text>\n' +
               '       stratum-admin org-limits --org-id <uuid> [--plan <name>] [--people <n>] [--agents <n>] [--teams <n>]\n' +
@@ -95,7 +109,10 @@ const USAGE = 'usage: stratum-admin create-owner --email <email> [--name <name>]
               '       stratum-admin org-delete --org-id <uuid> --confirm <its name> --reason <text>\n' +
               '       stratum-admin org-undelete --org-id <uuid> --reason <text>\n' +
               '       stratum-admin org-purge\n' +
-              '       stratum-admin platform-audit [--org-id <uuid>] [--limit <n>]'
+              '       stratum-admin platform-audit [--org-id <uuid>] [--limit <n>]\n' +
+              '       stratum-admin platform-token-create --name <name> [--days <1-365>]\n' +
+              '       stratum-admin platform-token-list\n' +
+              '       stratum-admin platform-token-revoke --id <uuid>'
 
 const FLAGS = new Set(['password-stdin', 'secret-stdin'])
 
@@ -296,28 +313,16 @@ async function orgLimitsCommand(db, opts) {
   for (const k of Object.keys(opts)) {
     if (k !== 'org-id' && k !== 'plan' && !(k.replaceAll('-', '_') in orgLimits.LIMITS)) throw new Error(USAGE)
   }
-  const plan = opts.plan === undefined ? undefined : (opts.plan === 'none' ? null : opts.plan.trim().slice(0, 100) || null)
+  const plan = opts.plan === undefined ? undefined : (opts.plan === 'none' ? null : opts.plan)
 
-  await db.query('BEGIN')
   let org
-  try {
-    const { rows } = await db.query('SELECT id, name, limits, plan_name FROM organizations WHERE id = $1 FOR UPDATE', [opts['org-id']])
-    if (!rows[0]) throw new Error(`No organization with id ${opts['org-id']}.`)
-    org = rows[0]
-    if (Object.keys(changes).length || plan !== undefined) {
-      const limits = orgLimits.mergeLimits(org.limits, changes)
-      const planName = plan === undefined ? org.plan_name : plan
-      await db.query('UPDATE organizations SET limits = $2, plan_name = $3 WHERE id = $1', [org.id, limits, planName])
-      // The organization sees in its audit log what changed in its plan.
-      const details = { plan: { from: org.plan_name, to: planName }, limits: { from: org.limits, to: limits } }
-      await audit(db, org.id, 'org.limits', org.id, details, 'organization')
-      await deletion.platformAudit(db, { actor: ACTOR, action: 'org.limits', orgId: org.id, orgName: org.name, details })
-      org = { ...org, limits, plan_name: planName }
-    }
-    await db.query('COMMIT')
-  } catch (err) {
-    await db.query('ROLLBACK').catch(() => {})
-    throw err
+  if (Object.keys(changes).length || plan !== undefined) {
+    const r = await orgAdmin.setPlan(db, { orgId: opts['org-id'], plan, limits: changes, actor: ACTOR })
+    org = { id: r.id, name: r.name, limits: r.limits, plan_name: r.plan }
+  } else {
+    const o = await orgAdmin.getOrg(db, opts['org-id'])
+    if (!o) throw new Error(`No organization with id ${opts['org-id']}.`)
+    org = { id: o.id, name: o.name, limits: o.limits, plan_name: o.plan }
   }
 
   const have = await orgLimits.countAll(db, org.id)
@@ -338,29 +343,51 @@ async function orgLimitsCommand(db, opts) {
 // with every sync; the console's sessions check it on every request.
 async function orgStatus(db, opts, status) {
   if (!opts['org-id']) throw new Error('--org-id is required (org-list shows them).')
-  const reason = (opts.reason ?? '').trim()
-  if (reason.length < 5) throw new Error('--reason is required: at least 5 characters, kept in the audit log.')
-  await db.query('BEGIN')
-  try {
-    const { rows } = await db.query('SELECT id, name, status, delete_after FROM organizations WHERE id = $1 FOR UPDATE', [opts['org-id']])
-    if (!rows[0]) throw new Error(`No organization with id ${opts['org-id']}.`)
-    if (rows[0].delete_after) throw new Error(`${rows[0].name} is marked for deletion: org-undelete first.`)
-    if (rows[0].status === status) {
-      await db.query('ROLLBACK')
-      return console.log(`${rows[0].name} is already ${status}; nothing done.`)
-    }
-    await db.query('UPDATE organizations SET status = $2 WHERE id = $1', [rows[0].id, status])
-    const action = status === 'suspended' ? 'org.suspend' : 'org.resume'
-    await audit(db, rows[0].id, action, rows[0].id, { reason }, 'organization')
-    await deletion.platformAudit(db, { actor: ACTOR, action, orgId: rows[0].id, orgName: rows[0].name, details: { reason } })
-    await db.query('COMMIT')
-  } catch (err) {
-    await db.query('ROLLBACK').catch(() => {})
-    throw err
-  }
+  const r = await orgAdmin.setStatus(db, { orgId: opts['org-id'], status, reason: opts.reason, actor: ACTOR })
+  if (!r.changed) return console.log(`${r.name} is already ${status}; nothing done.`)
   console.log(status === 'suspended'
     ? 'Suspended. Nobody of it can sign in to the console, and gateways refuse its requests from their next sync.'
     : 'Active again. Gateways take its requests from their next sync.')
+}
+
+// A new organization without people (ADR-0020): its first Owner comes with
+// create-owner --org-id, or by invitation.
+async function orgCreate(db, opts) {
+  const limits = {}
+  for (const key of Object.keys(orgLimits.LIMITS)) {
+    const v = opts[key.replaceAll('_', '-')]
+    if (v !== undefined) limits[key] = v
+  }
+  for (const k of Object.keys(opts)) {
+    if (k !== 'name' && k !== 'plan' && !(k.replaceAll('-', '_') in orgLimits.LIMITS)) throw new Error(USAGE)
+  }
+  const r = await orgAdmin.createOrg(db, { name: opts.name, plan: opts.plan, limits, actor: ACTOR })
+  console.log(`Created ${r.name} (${r.id}). Its first Owner: create-owner --org-id ${r.id} --email ...`)
+}
+
+// Platform API tokens (lib/platform.js): belong to no organization.
+async function platformTokenCreate(db, opts) {
+  const days = opts.days === undefined ? 90 : Number(opts.days)
+  const t = await platform.createPlatformToken(db, { name: opts.name, days })
+  await deletion.platformAudit(db, { actor: ACTOR, action: 'platform_token.create', details: { id: t.id, name: t.name, expires_at: t.expiresAt } })
+  console.log(`Platform token "${t.name}" (${t.id}), valid until ${t.expiresAt.toISOString()}. Shown once:`)
+  console.log(t.raw)
+}
+
+async function platformTokenList(db) {
+  const rows = await platform.listPlatformTokens(db)
+  if (!rows.length) return console.log('No platform tokens: the platform API is closed.')
+  for (const t of rows) {
+    const state = t.revoked_at ? 'revoked' : t.expires_at < new Date() ? 'expired' : 'active'
+    const used = t.last_used_at ? `last used ${t.last_used_at.toISOString()}` : 'never used'
+    console.log(`${t.id}  ${state.padEnd(7)}  ${t.token_prefix}...  until ${t.expires_at.toISOString().slice(0, 10)}  ${used}  ${t.name}`)
+  }
+}
+
+async function platformTokenRevoke(db, opts) {
+  if (!await platform.revokePlatformToken(db, opts.id)) throw new Error(`No active platform token with id ${opts.id} (platform-token-list shows them).`)
+  await deletion.platformAudit(db, { actor: ACTOR, action: 'platform_token.revoke', details: { id: opts.id } })
+  console.log('Revoked: it stops working now.')
 }
 
 async function orgDelete(db, opts) {
@@ -402,7 +429,7 @@ async function platformAuditList(db, opts) {
 
 async function main() {
   const { command, opts } = parseArgs(process.argv.slice(2))
-  if (!['create-owner', 'reset-password', 'reset-mfa', 'enroll-mfa', 'catalog-update', 'org-list', 'org-suspend', 'org-resume', 'org-limits', 'org-delete', 'org-undelete', 'org-purge', 'platform-audit'].includes(command)) throw new Error(USAGE)
+  if (!['create-owner', 'reset-password', 'reset-mfa', 'enroll-mfa', 'catalog-update', 'org-list', 'org-suspend', 'org-resume', 'org-limits', 'org-delete', 'org-undelete', 'org-purge', 'platform-audit', 'org-create', 'platform-token-create', 'platform-token-list', 'platform-token-revoke'].includes(command)) throw new Error(USAGE)
   if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is not set.')
   const db = new pg.Client({ connectionString: process.env.DATABASE_URL })
   await db.connect()
@@ -420,6 +447,10 @@ async function main() {
     else if (command === 'org-undelete') await orgUndelete(db, opts)
     else if (command === 'org-purge') await orgPurge()
     else if (command === 'platform-audit') await platformAuditList(db, opts)
+    else if (command === 'org-create') await orgCreate(db, opts)
+    else if (command === 'platform-token-create') await platformTokenCreate(db, opts)
+    else if (command === 'platform-token-list') await platformTokenList(db)
+    else if (command === 'platform-token-revoke') await platformTokenRevoke(db, opts)
     else throw new Error(USAGE)
   } finally {
     await db.end()

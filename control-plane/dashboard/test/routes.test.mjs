@@ -74,8 +74,11 @@ test('every API handler checks access', async () => {
       assert.ok(guard, `${key} is not wrapped in route(), publicRoute() or tokenRoute()`)
       if (guard.kind === 'public') assert.ok(PUBLIC[key], `${key} is public but not listed in PUBLIC`)
       else if (guard.kind === 'sync-token') assert.ok(SYNC_TOKEN[key], `${key} uses a sync token but is not listed in SYNC_TOKEN`)
+      // The platform API, and only it, takes platform tokens (lib/platform.js).
+      else if (guard.kind === 'platform') assert.ok(rel.startsWith('platform/'), `${key} takes a platform token outside app/api/platform`)
       else {
         assert.equal(guard.kind, 'session')
+        assert.ok(!rel.startsWith('platform/'), `${key}: a route under app/api/platform must use platformRoute()`)
         assert.ok(PERMISSIONS[guard.permission], `${key} uses unknown permission ${guard.permission}`)
         assert.equal(!!guard.duringEnrollment, DURING_ENROLLMENT.has(key),
           `${key}: only the second-factor setup is open to a session that must set it up`)
