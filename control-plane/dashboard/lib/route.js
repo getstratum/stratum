@@ -19,6 +19,7 @@
  */
 
 import { NextResponse } from 'next/server'
+import { HttpError } from './http-error.js'
 import { getDb } from './db.js'
 import { COOKIE, loadSession } from './session.js'
 import { scopeFor } from './authz.js'
@@ -27,13 +28,7 @@ import { bearerToken, loadServiceSession } from './service-tokens.js'
 
 export const GUARD = Symbol.for('stratum.route.guard')
 
-export class HttpError extends Error {
-  constructor(status, code, message) {
-    super(message ?? code)
-    this.status = status
-    this.code = code
-  }
-}
+export { HttpError }
 
 export const badRequest = (message) => new HttpError(400, 'bad_request', message)
 export const notFound   = (what = 'Not found') => new HttpError(404, 'not_found', what)

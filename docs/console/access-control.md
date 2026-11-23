@@ -188,6 +188,37 @@ node scripts/stratum-admin.mjs org-suspend --org-id <uuid> --reason "..."
 node scripts/stratum-admin.mjs org-resume --org-id <uuid> --reason "..."
 ```
 
+### Plan limits
+
+Whoever runs the installation can set limits on an organization that its
+Owner and Admins cannot change (migration 046). A limit that is not set
+does not exist, so an organization without a plan works as always.
+
+| Limit | Enforced by | When it is reached |
+|---|---|---|
+| `people` (active) | the console, when someone is added or turned back on | 409 `plan_limit` |
+| `agents` (active) | the console, when one is created or turned back on | 409 `plan_limit` |
+| `teams` | the console, when one is created | 409 `plan_limit` |
+| `gateways` (not disabled) | the console, when one is registered | 409 `plan_limit` |
+| `monthly_tokens` | gateways from 1.0, every team together | 429 `org_quota_exceeded` |
+| `monthly_budget_usd` | gateways from 1.0, with the spend the console reports | 429 `org_budget_exceeded` |
+| `retention_days` (31 or more) | the console's daily maintenance | older requests and task results are deleted |
+
+The organization's limits come on top of each team's: a request goes only
+if it fits both. Lowering a limit never removes anything; the organization
+just cannot add more until it is under it. The retention deletes requests
+(and task results) one day after they pass it; the month's usage per team,
+which quotas, budgets and billing use, is kept. The plan's name, when it
+has one, appears in the console's message ("Llegaste al límite de tu plan
+(Empresa)"). Changes are kept in the organization's audit log.
+
+```
+node scripts/stratum-admin.mjs org-limits --org-id <uuid>          # what it has, against each limit
+node scripts/stratum-admin.mjs org-limits --org-id <uuid> --plan "Empresa" \
+    --people 25 --agents 10 --monthly-tokens 50000000 --retention-days 90
+node scripts/stratum-admin.mjs org-limits --org-id <uuid> --agents none   # removes one
+```
+
 ## Audit log
 
 `audit_log` records sign-ins (failed ones too), every change made through the

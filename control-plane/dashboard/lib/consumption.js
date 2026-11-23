@@ -32,10 +32,11 @@ import { logsScope } from './usage.js'
 export const DIMENSIONS = ['team', 'agent', 'app', 'user', 'model', 'provider', 'label']
 
 // Reasons a gateway refuses a request because of the team's policy or quota,
-// not because something failed.
+// or the organization's state or plan, not because something failed.
 export const POLICY_REASONS = [
   'no_policy', 'team_disabled', 'provider_not_allowed', 'model_not_allowed',
-  'quota_exceeded', 'sensitive_data_detected', 'agent_model_mismatch', 'model_disabled', 'org_suspended',
+  'quota_exceeded', 'budget_exceeded', 'sensitive_data_detected', 'agent_model_mismatch', 'model_disabled',
+  'org_suspended', 'org_quota_exceeded', 'org_budget_exceeded',
 ]
 
 const KEY = {

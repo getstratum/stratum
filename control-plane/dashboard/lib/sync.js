@@ -16,7 +16,8 @@
  *   - provider configs;
  *   - with every sync, unversioned: the models the organization can use
  *     (GET /v1/models), its model aliases (ADR-0015, "Rutas"), each
- *     team's usage this month and the organization's state (ADR-0020);
+ *     team's usage this month, and the organization's state and plan
+ *     ceilings for the month (ADR-0020);
  *   - deletions, from stratum_sync_tombstones.
  *
  * All reads run in one REPEATABLE READ transaction, so current_version and
@@ -56,8 +57,9 @@ export async function buildSyncResponse(client, { orgId, sinceVersion, syncInter
     ;[{ v: version }] = await q('SELECT stratum_sync_version($1)::bigint AS v', [orgId])
 
     // The organization's state, with every sync (not versioned): gateways
-    // from 1.0 refuse everything of a suspended one (ADR-0020).
-    ;[org] = await q('SELECT status FROM organizations WHERE id = $1', [orgId])
+    // from 1.0 refuse everything of a suspended one, and enforce the plan's
+    // tokens and spend per month for every team together (ADR-0020).
+    ;[org] = await q('SELECT status, limits FROM organizations WHERE id = $1', [orgId])
 
     // One entry per team: what the gateway enforces is keyed by team. The
     // version is the newer of the policy's and the team's assignment, so a
@@ -304,7 +306,11 @@ export async function buildSyncResponse(client, { orgId, sinceVersion, syncInter
       }
       return [{ name: s.name, url: s.url, headers, ...(s.description ? { description: s.description } : {}) }]
     }),
-    organization: { status: org?.status === 'suspended' ? 'suspended' : 'active' },
+    organization: {
+      status: org?.status === 'suspended' ? 'suspended' : 'active',
+      ...(org?.limits?.monthly_tokens != null ? { monthly_token_quota: num(org.limits.monthly_tokens) } : {}),
+      ...(org?.limits?.monthly_budget_usd != null ? { monthly_budget_usd: num(org.limits.monthly_budget_usd) } : {}),
+    },
     month_usage: {
       month: usageMonth,
       teams: usage.map(u => ({ team_id: u.team_id, tokens: num(u.tokens), cost_usd: num(u.cost_usd) })),

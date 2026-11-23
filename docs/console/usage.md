@@ -41,8 +41,10 @@ read a portal's use with `agent=<id>` reads it with `app=<id>`.
 
 Errors are 4xx and 5xx answers, refusals included. Refused by policy:
 `no_policy`, `team_disabled`, `provider_not_allowed`, `model_not_allowed`,
-`quota_exceeded`, `sensitive_data_detected`, `agent_model_mismatch`,
-`model_disabled`.
+`quota_exceeded`, `budget_exceeded`, `sensitive_data_detected`,
+`agent_model_mismatch`, `model_disabled`, and for the whole organization
+`org_suspended`, `org_quota_exceeded` and `org_budget_exceeded`
+([ADR-0020](../adr/0020-organizations-and-the-operator.md)).
 
 The cost is an estimate: tokens the provider reported × the price when the
 request was recorded: the organization's own price for that model if it set

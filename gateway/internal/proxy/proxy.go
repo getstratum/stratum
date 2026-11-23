@@ -359,6 +359,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, rec, v)
 		return
 	}
+	// The organization's plan caps every team together (ADR-0020).
+	if lim, ok := snap.OrgLimits(); ok {
+		if v := quota.CheckOrg(h.Quota, lim); v != nil {
+			h.fail(w, rec, v)
+			return
+		}
+	}
 
 	// ── The body for the provider, and PII / DLP ─────────────────────────
 	rec.stream, _ = body["stream"].(bool)
@@ -531,6 +538,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	if total := usage.Input + usage.Output; total > 0 {
 		h.Quota.Add(teamID, total)
+		h.Quota.Add(quota.OrgKey, total) // counted always: a plan set mid-month finds the month counted
 		h.Metrics.UpstreamTokens.Add(total)
 	}
 }

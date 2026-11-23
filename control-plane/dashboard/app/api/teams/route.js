@@ -1,6 +1,7 @@
 export const dynamic = 'force-dynamic'
 import { route, readJson, json, badRequest, notFound, conflict, isUuid } from '../../../lib/route.js'
 import { audit } from '../../../lib/audit.js'
+import { withRoom } from '../../../lib/org-limits.js'
 
 export const GET = route('teams.read', async (req, { session, db }) => {
   const team = session.scope === 'team'
@@ -39,18 +40,22 @@ export const POST = route('teams.manage', async (req, { session, db }) => {
     if (!(Number.isFinite(budget) && budget >= 0)) throw badRequest('Presupuesto inválido.')
   }
 
-  const { rows: dup } = await db.query(
-    'SELECT 1 FROM teams WHERE org_id = $1 AND lower(name) = lower($2)', [session.orgId, name])
-  if (dup[0]) throw conflict(`Ya hay un equipo llamado ${name}.`)
+  // The plan may cap the organization's teams (ADR-0020).
+  const team = await withRoom(db, session.orgId, 'teams', async (tx) => {
+    const { rows: dup } = await tx.query(
+      'SELECT 1 FROM teams WHERE org_id = $1 AND lower(name) = lower($2)', [session.orgId, name])
+    if (dup[0]) throw conflict(`Ya hay un equipo llamado ${name}.`)
 
-  const { rows } = await db.query(
-    `INSERT INTO teams (org_id, name, department, policy_id, monthly_budget_usd)
-     VALUES ($1, $2, $3, $4, $5)
-     RETURNING id, name, department, policy_id, monthly_budget_usd`,
-    [session.orgId, name, department, policyId, budget])
+    const { rows } = await tx.query(
+      `INSERT INTO teams (org_id, name, department, policy_id, monthly_budget_usd)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id, name, department, policy_id, monthly_budget_usd`,
+      [session.orgId, name, department, policyId, budget])
+    return rows[0]
+  })
   await audit(db, {
-    req, session, action: 'team.create', targetType: 'team', targetId: rows[0].id,
+    req, session, action: 'team.create', targetType: 'team', targetId: team.id,
     details: { name, policyId },
   })
-  return json(rows[0], 201)
+  return json(team, 201)
 })

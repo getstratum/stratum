@@ -88,6 +88,8 @@ type Snapshot struct {
 	mcp             map[string]MCPServer
 	activeKeys      int
 	suspended       bool // the organization is suspended: every request is refused
+	orgLimits       Policy
+	hasOrgLimits    bool // the organization's plan caps its monthly tokens or spend
 }
 
 // MCPServer is an MCP server agents reach at /mcp/<name> (ADR-0016).
@@ -121,6 +123,17 @@ func Build(st *State, syncedAt time.Time) *Snapshot {
 	}
 	s.activeKeys = len(s.keysByHash)
 	s.suspended = st.Org != nil && strings.EqualFold(strings.TrimSpace(st.Org.Status), "suspended")
+	if st.Org != nil {
+		if q := st.Org.MonthlyTokenQuota; q != nil {
+			v := int64(*q)
+			s.orgLimits.MonthlyTokenQuota = &v
+		}
+		if b := st.Org.MonthlyBudgetUSD; b != nil {
+			v := float64(*b)
+			s.orgLimits.MonthlyBudgetUSD = &v
+		}
+		s.hasOrgLimits = s.orgLimits.MonthlyTokenQuota != nil || s.orgLimits.MonthlyBudgetUSD != nil
+	}
 
 	for _, m := range st.Models {
 		if m.Provider = strings.ToLower(strings.TrimSpace(m.Provider)); m.Provider != "" && strings.TrimSpace(m.ID) != "" {
@@ -268,6 +281,11 @@ func (s *Snapshot) MCP(name string) (MCPServer, bool) {
 // Suspended reports whether the organization is suspended: the gateway
 // then refuses every request with 403 org_suspended (ADR-0020).
 func (s *Snapshot) Suspended() bool { return s.suspended }
+
+// OrgLimits is the organization's plan ceilings for the month (only
+// MonthlyTokenQuota and MonthlyBudgetUSD are set), and whether it has any.
+// A request passes only if it fits both its team's and these (ADR-0020).
+func (s *Snapshot) OrgLimits() (Policy, bool) { return s.orgLimits, s.hasOrgLimits }
 
 // MCPServers is every MCP server, by name.
 func (s *Snapshot) MCPServers() []MCPServer {

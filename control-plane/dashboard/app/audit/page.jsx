@@ -22,6 +22,7 @@ const ACTIONS = {
   'owner.bootstrap':        'Creó o restauró un Owner (CLI)',
   'org.suspend':            'Suspendió la organización',
   'org.resume':             'Reactivó la organización',
+  'org.limits':             'Cambió el plan de la organización',
   'agent.create':           'Creó un agente',
   'agent.update':           'Modificó un agente',
   'agent.key.rotate':       'Rotó la key de un agente',

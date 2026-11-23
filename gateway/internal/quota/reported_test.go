@@ -90,9 +90,31 @@ func TestBudgetUsesTheReportedSpend(t *testing.T) {
 
 func TestFromWire(t *testing.T) {
 	month, teams := FromWire(&snapshot.WireMonthUsage{Month: "2026-10", Teams: []snapshot.WireTeamUsage{
-		{TeamID: "a", Tokens: 12, CostUSD: 0.5}, {TeamID: "", Tokens: 99},
+		{TeamID: "a", Tokens: 12, CostUSD: 0.5}, {TeamID: "b", Tokens: 3, CostUSD: 0.25},
+		{TeamID: "", Tokens: 99}, {TeamID: OrgKey, Tokens: 1000},
 	}})
-	if month != "2026-10" || len(teams) != 1 || teams["a"].Tokens != 12 || teams["a"].CostUSD != 0.5 {
+	if month != "2026-10" || len(teams) != 3 || teams["a"].Tokens != 12 || teams["a"].CostUSD != 0.5 {
 		t.Fatalf("got %s %v", month, teams)
 	}
+	// The organization is the sum of its teams; a team named like the
+	// organization's counter is ignored.
+	if org := teams[OrgKey]; org.Tokens != 15 || org.CostUSD != 0.75 {
+		t.Fatalf("organization: %+v", org)
+	}
 }
+
+func TestCheckOrgSaysItIsThePlan(t *testing.T) {
+	l := NewLocal()
+	l.Add(OrgKey, 10)
+	if v := CheckOrg(l, snapshot.Policy{MonthlyTokenQuota: ptr(int64(10))}); v == nil || v.Code != "org_quota_exceeded" {
+		t.Fatalf("tokens: %v", v)
+	}
+	l.SetReported(Month(time.Now()), map[string]Reported{OrgKey: {CostUSD: 7}})
+	if v := CheckOrg(l, snapshot.Policy{MonthlyBudgetUSD: ptr(7.0)}); v == nil || v.Code != "org_budget_exceeded" {
+		t.Fatalf("budget: %v", v)
+	}
+	if v := CheckOrg(l, snapshot.Policy{MonthlyTokenQuota: ptr(int64(11))}); v != nil {
+		t.Fatalf("under the plan: %v", v)
+	}
+}
+func ptr[T any](v T) *T { return &v }

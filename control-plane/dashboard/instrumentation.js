@@ -3,8 +3,9 @@
  * (Next.js). Keeps request_logs' monthly partitions created two years ahead
  * (migration 019): now and every 24 hours. Failures are logged, never fatal:
  * the default partition still takes the rows. Also keeps the model catalog
- * current from its feed, and sends alerts, also when a policy's default
- * model stops working as set.
+ * current from its feed, sends alerts, also when a policy's default model
+ * stops working as set, and deletes requests older than an organization's
+ * plan keeps them.
  */
 export async function register() {
   if (process.env.NEXT_RUNTIME !== 'nodejs' || !process.env.DATABASE_URL) return
@@ -19,6 +20,22 @@ export async function register() {
   }
   ensure() // not awaited: a slow database must not hold up the server start
   setInterval(ensure, 24 * 60 * 60 * 1000).unref()
+
+  // Retention by plan (lib/org-limits.js, ADR-0020): ten minutes after the
+  // start, then every 24 hours. Two replicas doing it at once only delete
+  // the same rows; nothing to coordinate.
+  const { applyRetention } = await import('./lib/org-limits.js')
+  const retain = async () => {
+    try {
+      for (const d of await applyRetention(getDb())) {
+        console.log(`[retention] org ${d.orgId}: deleted ${d.requests} requests and ${d.outcomes} task results older than ${d.days} days`)
+      }
+    } catch (err) {
+      console.error(`[retention] failed: ${err.message}`)
+    }
+  }
+  setTimeout(retain, 10 * 60 * 1000).unref()
+  setInterval(retain, 24 * 60 * 60 * 1000).unref()
 
   // The model catalog feed (lib/model-feed.js, ADR-0012): a minute after the
   // start, then every 24 hours. A failure keeps the catalog as it was and is
