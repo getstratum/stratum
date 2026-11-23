@@ -212,6 +212,13 @@ which quotas, budgets and billing use, is kept. The plan's name, when it
 has one, appears in the console's message ("Llegaste al límite de tu plan
 (Empresa)"). Changes are kept in the organization's audit log.
 
+Inside the organization, **Mi organización** (Owner, Admin and Auditor)
+shows the plan, each limit with what the organization has now (tokens and
+spend: this month, every team together) and how long requests are kept.
+Where a limit is reached, the button that would add one more (new person or
+invitation, agent, team, gateway) is disabled and says "Fijado por tu plan".
+An organization without a plan name or limits does not see the page.
+
 ```
 node scripts/stratum-admin.mjs org-limits --org-id <uuid>          # what it has, against each limit
 node scripts/stratum-admin.mjs org-limits --org-id <uuid> --plan "Empresa" \

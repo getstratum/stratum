@@ -316,8 +316,9 @@ export default function UsersPage() {
   const [rotating,  setRotating]  = useState(null)
   const [search,    setSearch]    = useState('')
   const [filter,    setFilter]    = useState('all')  // all | active | inactive
-  const { can } = usePermissions()
+  const { can, fixed } = usePermissions()
   const canManage = can('users.manage')
+  const full      = fixed('people')
   const canKeys   = can('keys.manage')
 
   const load = useCallback(async () => {
@@ -418,10 +419,11 @@ export default function UsersPage() {
         </div>
         {canManage && (
           <div className="flex gap-2">
-            <Btn variant="secondary" onClick={() => setModal('invite')}>Invitar por email</Btn>
-            <Btn onClick={() => setModal('create')}>+ Nuevo usuario</Btn>
+            <Btn variant="secondary" onClick={() => setModal('invite')} disabled={!!full} title={full ?? undefined}>Invitar por email</Btn>
+            <Btn onClick={() => setModal('create')} disabled={!!full} title={full ?? undefined}>+ Nuevo usuario</Btn>
           </div>
         )}
+        {canManage && full && <p data-testid="plan-fixed" className="basis-full text-right text-xs text-muted">{canManage && full}</p>}
       </div>
 
       {/* Open invitations */}

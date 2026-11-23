@@ -10,6 +10,7 @@ import { mfaRequired, startChallenge, status as mfaStatus } from '../../../lib/m
 
 import { reserveAttempt, recordFailure, recordSuccess, INVALID } from '../../../lib/login.js'
 import { passwordRefused } from '../../../lib/sso.js'
+import { planState } from '../../../lib/org-limits.js'
 
 // POST /api/session  { email, password }  → sign in
 //
@@ -102,9 +103,11 @@ export const GET = route('org.read', async (req, { session, db }) => {
     }
   }
   const mfa = await mfaStatus(db, session.userId)
+  // The plan, so pages can show what it fixes before anyone tries (ADR-0020).
+  const plan = await planState(db, session.orgId)
   return json({
     user: { id: session.userId, email: session.email, name: session.name, role: session.role, teamId: session.teamId },
-    org:  { id: session.orgId, name: session.orgName },
+    org:  { id: session.orgId, name: session.orgName, plan: plan.plan, managed: plan.managed, reached: plan.reached },
     permissions,
     mfa: { enabled: mfa.enabled, required: mfaRequired(session.role), enrollmentRequired: !!session.enrollmentOnly },
   })

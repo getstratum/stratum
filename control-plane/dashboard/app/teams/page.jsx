@@ -120,8 +120,9 @@ function Meter({ label, used, limit, format, formatLimit = format, note }) {
 }
 
 export default function TeamsPage() {
-  const { can } = usePermissions()
+  const { can, fixed } = usePermissions()
   const canManage = can('teams.manage')
+  const full      = fixed('teams')
   const canBudget = can('teams.budget')
   const [teams,    setTeams]    = useState([])
   const [policies, setPolicies] = useState([])
@@ -159,7 +160,8 @@ export default function TeamsPage() {
             Cada persona y cada agente pertenece a un equipo. La política del equipo decide qué modelos usa y cuántos tokens por mes.
           </p>
         </div>
-        {canManage && <Btn onClick={() => setModal({ team: null })}>+ Nuevo equipo</Btn>}
+        {canManage && <Btn onClick={() => setModal({ team: null })} disabled={!!full} title={full ?? undefined}>+ Nuevo equipo</Btn>}
+        {canManage && full && <p data-testid="plan-fixed" className="basis-full text-right text-xs text-muted">{canManage && full}</p>}
       </div>
 
       {notice && (

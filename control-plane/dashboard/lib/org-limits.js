@@ -79,6 +79,33 @@ export async function countAll(db, orgId) {
   return out
 }
 
+/** "Fijado por tu plan (Empresa): 25 personas activas", for a limit the organization reached. */
+export function planHint(kind, max, plan) {
+  return `Fijado por tu plan${plan ? ` (${plan})` : ''}: ${max} ${LIMITS[kind].label(max)}.`
+}
+
+/**
+ * The organization's plan as its console shows it: the limits, what it has
+ * of each (tokens and spend: this UTC month, every team together), and the
+ * countable ones it reached. `managed` is false for an organization nobody
+ * set a plan or a limit for: the console then shows none of this.
+ */
+export async function planState(db, orgId) {
+  const { limits, plan } = await loadLimits(db, orgId)
+  const counts = await countAll(db, orgId)
+  const { rows: [m] } = await db.query(
+    `SELECT COALESCE(sum(tokens), 0)::bigint AS tokens, COALESCE(sum(cost_usd), 0)::float8 AS cost_usd
+       FROM team_usage_monthly
+      WHERE org_id = $1 AND month = date_trunc('month', now() AT TIME ZONE 'UTC')::date`, [orgId])
+  counts.monthly_tokens = Number(m.tokens)
+  counts.monthly_budget_usd = Math.round(m.cost_usd * 100) / 100
+  const reached = {}
+  for (const kind of ['people', 'agents', 'teams', 'gateways']) {
+    if (limits[kind] != null && counts[kind] >= limits[kind]) reached[kind] = planHint(kind, limits[kind], plan)
+  }
+  return { plan, limits, counts, reached, managed: plan != null || Object.keys(limits).length > 0 }
+}
+
 export function planLimitError(kind, max, plan) {
   const which = plan ? `tu plan (${plan})` : 'tu plan'
   return new HttpError(409, 'plan_limit',

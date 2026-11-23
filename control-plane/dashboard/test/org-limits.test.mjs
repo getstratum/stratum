@@ -183,3 +183,26 @@ test('limits: the retention deletes older requests, and keeps the month\'s usage
   assert.equal((await sql('SELECT count(*)::int AS n FROM task_outcomes WHERE org_id = $1', [A.id]))[0].n, 1)
   assert.deepEqual(await sql('SELECT month, tokens FROM team_usage_monthly WHERE org_id = $1 ORDER BY month', [A.id]), usageBefore)
 })
+
+test('limits: "Mi organización" shows the plan, and the session what it fixes', { skip }, async () => {
+  const none = await org()
+  const s0 = await call('session', 'GET', { as: none.owner })
+  assert.deepEqual([s0.body.org.managed, s0.body.org.plan, s0.body.org.reached], [false, null, {}])
+
+  const A = await org({ people: 1, teams: 5, monthly_tokens: 1000, retention_days: 60 }, 'Equipo')
+  const [team] = await sql(`INSERT INTO teams (org_id, name) VALUES ($1, 't') RETURNING id`, [A.id])
+  await sql(`INSERT INTO request_logs (org_id, team_id, provider, model_id, tokens_input, tokens_output, cost_usd)
+             VALUES ($1, $2, 'openai', 'gpt-4o', 300, 100, 0.5)`, [A.id, team.id])
+
+  const s = await call('session', 'GET', { as: A.owner })
+  assert.equal(s.body.org.managed, true)
+  assert.equal(s.body.org.plan, 'Equipo')
+  // The Owner is the one person the plan allows.
+  assert.deepEqual(s.body.org.reached, { people: 'Fijado por tu plan (Equipo): 1 persona activa.' })
+
+  const o = await call('org', 'GET', { as: A.owner })
+  assert.equal(o.status, 200)
+  assert.deepEqual(o.body.limits, { people: 1, teams: 5, monthly_tokens: 1000, retention_days: 60 })
+  assert.deepEqual([o.body.counts.people, o.body.counts.teams, o.body.counts.monthly_tokens, o.body.counts.monthly_budget_usd], [1, 1, 400, 0.5])
+  assert.equal(o.body.status, 'active')
+})

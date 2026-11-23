@@ -10,6 +10,9 @@ import { usePathname } from 'next/navigation'
 const NAV = [
   { group: 'General', items: [
     { href: '/',          label: 'Inicio',      permission: 'usage.read' },
+    // Only for an organization with a plan (ADR-0020): one installation
+    // with one organization and no plan sees nothing of it.
+    { href: '/organization', label: 'Mi organización', permission: 'org.plan.read', managed: true },
   ] },
   { group: 'Conexiones', items: [
     { href: '/providers', label: 'Proveedores', permission: 'providers.read' },
@@ -53,7 +56,7 @@ export default function Sidebar() {
   useEffect(() => { setOpen(false) }, [path])
 
   const groups = me
-    ? NAV.map(g => ({ ...g, items: g.items.filter(n => me.permissions[n.permission]) })).filter(g => g.items.length)
+    ? NAV.map(g => ({ ...g, items: g.items.filter(n => me.permissions[n.permission] && (!n.managed || me.org?.managed)) })).filter(g => g.items.length)
     : []
 
   return (

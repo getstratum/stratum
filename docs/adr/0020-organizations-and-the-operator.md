@@ -151,6 +151,17 @@ organization kept using every model it had.
 - **Accepting needs no session and says one thing for every failure**
   (410: used, expired, replaced, revoked or the organization suspended).
 
+### The organization's console
+
+- **The same console, with what the plan fixes in sight.** "Mi
+  organización" (permission `org.plan.read`: Owner, Admin, Auditor) shows
+  the plan and each limit against what the organization has; `GET
+  /api/session` carries the plan and the limits reached, so pages disable
+  what would add one more and say why before anyone tries. The server
+  refuses anyway (409 `plan_limit`).
+- **An organization without a plan sees none of it**: no page in the menu,
+  no messages. One installation with one organization stays as it was.
+
 ## Consequences
 
 - Suspending takes effect in the console at once and in gateways within
