@@ -12,9 +12,11 @@
  *
  * Runs in Next.js and in scripts/stratum-admin.mjs. markForDeletion and
  * undoDeletion take one connection (they run a transaction on it); purgeDue
- * takes a pool. Their errors are for whoever runs the installation, in
- * English like the rest of the CLI.
+ * takes a pool. Their errors are HttpErrors in English, for the CLI and
+ * the platform API (lib/platform.js).
  */
+
+import { HttpError } from './http-error.js'
 
 export const GRACE_DAYS = 30
 export const MAINTENANCE = 'maintenance'
@@ -48,7 +50,7 @@ async function inTransaction(db, fn) {
 
 function checkReason(reason) {
   const r = (reason ?? '').trim()
-  if (r.length < 5) throw new Error('A reason is required: at least 5 characters, kept in the audit logs.')
+  if (r.length < 5) throw new HttpError(400, 'reason_required', 'A reason is required: at least 5 characters, kept in the audit logs.')
   return r
 }
 
@@ -62,10 +64,10 @@ export async function markForDeletion(db, { orgId, confirmName, reason, actor })
     const { rows } = await db.query(
       'SELECT id, name, status, delete_after FROM organizations WHERE id = $1 FOR UPDATE', [orgId])
     const org = rows[0]
-    if (!org) throw new Error(`No organization with id ${orgId}.`)
-    if (org.delete_after) throw new Error(`${org.name} is already marked for deletion, on ${org.delete_after.toISOString()}.`)
+    if (!org) throw new HttpError(404, 'not_found', `No organization with id ${orgId}.`)
+    if (org.delete_after) throw new HttpError(409, 'already_marked', `${org.name} is already marked for deletion, on ${org.delete_after.toISOString()}.`)
     if ((confirmName ?? '').trim() !== org.name.trim()) {
-      throw new Error('The name to confirm does not match the organization\'s name, as written (org-list shows it).')
+      throw new HttpError(400, 'confirm_mismatch', 'The name to confirm does not match the organization\'s name, as written (org-list shows it).')
     }
     const { rows: [u] } = await db.query(
       `UPDATE organizations
@@ -90,8 +92,8 @@ export async function undoDeletion(db, { orgId, reason, actor }) {
     const { rows } = await db.query(
       'SELECT id, name, delete_after, status_before_delete FROM organizations WHERE id = $1 FOR UPDATE', [orgId])
     const org = rows[0]
-    if (!org) throw new Error(`No organization with id ${orgId}: if it was marked for deletion, it is already deleted.`)
-    if (!org.delete_after) throw new Error(`${org.name} is not marked for deletion.`)
+    if (!org) throw new HttpError(404, 'not_found', `No organization with id ${orgId}: if it was marked for deletion, it is already deleted.`)
+    if (!org.delete_after) throw new HttpError(409, 'not_marked', `${org.name} is not marked for deletion.`)
     const status = org.status_before_delete === 'suspended' ? 'suspended' : 'active'
     await db.query(
       `UPDATE organizations SET status = $2, delete_after = NULL, status_before_delete = NULL WHERE id = $1`,

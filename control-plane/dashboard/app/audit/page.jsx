@@ -23,6 +23,7 @@ const ACTIONS = {
   'org.suspend':            'Suspendió la organización',
   'org.resume':             'Reactivó la organización',
   'org.limits':             'Cambió el plan de la organización',
+  'org.create':             'Creó la organización',
   'org.delete':             'Marcó la organización para borrar',
   'org.undelete':           'Canceló el borrado de la organización',
   'agent.create':           'Creó un agente',
