@@ -48,9 +48,39 @@ organization kept using every model it had.
   a reason kept in the organization's audit log; `org-list` lists the
   organizations. The console's sessions already check the state on every
   request, and gateways follow within one sync interval.
-- **Plan limits** (people, agents, teams, gateways, tokens and budget per
-  month for the whole organization, retention) and deletion in two steps
-  come next, in this order, each with its own section here.
+- **Deletion in two steps** comes next, with its own section here.
+
+### Plan limits
+
+- **The console gets the limits, not the plans.** `organizations.limits`
+  (migration 046) holds the resolved ceilings; `plan_name` only names them
+  for people. Named plans, and what each one costs, live with the operator
+  (`stratum-operator` or the CLI). `org_profiles` (migration 016), reserved
+  for this, stays unused: a plan that changes would have to change every
+  organization on it at once, and a special deal is one organization's own
+  limits anyway.
+- **A missing limit is no limit**, so every organization upgrades to `{}`
+  and nothing changes.
+- **Counts are checked where they grow.** People and agents count when
+  active, gateways when not disabled; creating one or turning one back on
+  past the limit is refused with 409 `plan_limit` and a message that names
+  the plan. The count and the insert run under one advisory lock per
+  organization and kind, so two requests cannot both take the last place;
+  people share the lock the people routes already take. Lowering a limit
+  removes nothing.
+- **Monthly tokens and spend are the gateway's, like a team's quota.** The
+  sync sends them in `organization` (`monthly_token_quota`,
+  `monthly_budget_usd`). The gateway keeps the organization's tokens as one
+  more counter (`@org`, beside its teams', in memory or Valkey) and takes
+  the control plane's count, the sum of its teams', as a floor and as the
+  spend. Its codes are its own (`org_quota_exceeded`,
+  `org_budget_exceeded`, 429), so a team that is under its quota knows the
+  plan stopped it.
+- **Retention is at least 31 days**, so the current month's figures in
+  Consumo stay whole. The daily maintenance deletes `request_logs` and
+  `task_outcomes` past it, in batches; `team_usage_monthly` stays.
+- **Enterprise functions by plan** come with the licence per organization
+  (stage 5), not here.
 
 ## Consequences
 

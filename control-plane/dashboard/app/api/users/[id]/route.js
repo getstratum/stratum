@@ -5,6 +5,7 @@ import { hashPassword, passwordProblem } from '../../../../lib/password.js'
 import { USER_COLUMNS, newApiKey, loadManagedUser, assertAnotherOwner } from '../../../../lib/users.js'
 import { revokeUserSessions } from '../../../../lib/session.js'
 import { audit } from '../../../../lib/audit.js'
+import { assertRoom } from '../../../../lib/org-limits.js'
 
 async function reload(db, id) {
   const { rows } = await db.query(
@@ -46,6 +47,9 @@ export const PATCH = route('users.manage', async (req, { session, db: pool, para
       if (typeof body.isActive !== 'boolean') throw badRequest('isActive tiene que ser true o false.')
       if (self && !body.isActive) throw forbidden('No podés desactivarte a vos mismo.')
       if (target.role === 'owner' && !body.isActive) await assertAnotherOwner(db, session.orgId, target.id)
+      // Turning someone back on counts against the plan (ADR-0020); the lock
+      // above is the one people's limit uses.
+      if (body.isActive && !target.is_active) await assertRoom(db, session.orgId, 'people')
       set('is_active', body.isActive, 'isActive')
     }
     if (body.appAccess !== undefined) {

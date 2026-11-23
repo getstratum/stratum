@@ -19,6 +19,17 @@ Back up the database before you upgrade.
   of a suspended organization with **403 `org_suspended`**. Gateways
   before 1.0 ignore it and keep serving it: upgrade them. `stratum-admin`
   gains `org-list`, `org-suspend` and `org-resume`.
+- **Plan limits per organization** (migration 046). An organization can
+  have limits that its own administrators cannot change: active people,
+  active agents, teams, gateways, tokens and spend per month for every team
+  together, and how many days requests are kept. Every organization starts
+  without any, so nothing changes until someone sets them with
+  `stratum-admin org-limits`. The monthly ones travel with the sync and
+  only gateways from 1.0 enforce them (`org_quota_exceeded`,
+  `org_budget_exceeded`, 429); older gateways ignore them.
+- **Refusals for a spent budget count as policy refusals** in Consumo and
+  in usage reports, like a spent token quota (`budget_exceeded` was missing
+  from that list).
 
 ## From 0.8 to 0.9
 

@@ -3,11 +3,12 @@ import { route, readJson, json, badRequest, notFound, idParam, assertTeamInScope
 import { newApiKey, AGENT_COLUMNS, fixedModel, fixedModelProvider, delegatesFlag } from '../../../../lib/users.js'
 import { assertAliasExists, PREFIX as ALIAS_PREFIX } from '../../../../lib/model-aliases.js'
 import { audit } from '../../../../lib/audit.js'
+import { withRoom } from '../../../../lib/org-limits.js'
 
 async function loadAgent(db, session, params) {
   const id = idParam(params)
   const { rows } = await db.query(
-    'SELECT id, name, team_id::text AS team_id FROM agents WHERE id = $1 AND org_id = $2', [id, session.orgId])
+    'SELECT id, name, team_id::text AS team_id, COALESCE(is_active, true) AS is_active FROM agents WHERE id = $1 AND org_id = $2', [id, session.orgId])
   const a = rows[0]
   if (!a || (session.scope === 'team' && a.team_id !== session.teamId)) throw notFound('Agente no encontrado.')
   return a
@@ -43,8 +44,11 @@ export const PATCH = route('keys.manage', async (req, { session, db, params }) =
   if (!fields.length) throw badRequest('Nada para actualizar.')
 
   values.push(agent.id, session.orgId)
-  await db.query(
+  const update = (tx) => tx.query(
     `UPDATE agents SET ${fields.join(', ')} WHERE id = $${values.length - 1} AND org_id = $${values.length}`, values)
+  // Turning an agent back on counts against the plan (ADR-0020).
+  if (body.isActive === true && !agent.is_active) await withRoom(db, session.orgId, 'agents', update)
+  else await update(db)
   await audit(db, {
     req, session, action: 'agent.update', targetType: 'agent', targetId: agent.id,
     details: {

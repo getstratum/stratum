@@ -98,6 +98,10 @@ type SyncResponse struct {
 type WireOrganization struct {
 	// Status is "active" or "suspended" (ADR-0020).
 	Status string `json:"status"`
+	// The plan's ceilings for the whole organization this month, on top of
+	// each team's (nil: none). Absent from control planes before 1.0.
+	MonthlyTokenQuota *Int64   `json:"monthly_token_quota,omitempty"`
+	MonthlyBudgetUSD  *Float64 `json:"monthly_budget_usd,omitempty"`
 }
 
 // WireAlias is a model alias: a name and its targets, in order.

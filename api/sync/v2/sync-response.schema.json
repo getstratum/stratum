@@ -53,7 +53,15 @@
       "required": ["status"],
       "additionalProperties": false,
       "properties": {
-        "status": { "enum": ["active", "suspended"] }
+        "status": { "enum": ["active", "suspended"] },
+        "monthly_token_quota": {
+          "description": "The plan's tokens per UTC month for the whole organization, on top of each team's quota; absent: no ceiling. Gateways from 1.0 refuse every team's requests (org_quota_exceeded, 429) once the organization reaches it.",
+          "$ref": "#/$defs/integer"
+        },
+        "monthly_budget_usd": {
+          "description": "The plan's spend per UTC month for the whole organization; absent: no ceiling. Gateways from 1.0 refuse every team's requests (org_budget_exceeded, 429) once month_usage reports that much spend, added up over its teams.",
+          "$ref": "#/$defs/decimal"
+        }
       }
     }
   },

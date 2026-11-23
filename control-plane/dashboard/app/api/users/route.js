@@ -4,6 +4,7 @@ import { assignableRoles } from '../../../lib/authz.js'
 import { hashPassword, passwordProblem } from '../../../lib/password.js'
 import { USER_COLUMNS, newApiKey, validEmail } from '../../../lib/users.js'
 import { audit } from '../../../lib/audit.js'
+import { withRoom } from '../../../lib/org-limits.js'
 
 export const GET = route('users.read', async (req, { session, db }) => {
   const team = session.scope === 'team'
@@ -46,19 +47,24 @@ export const POST = route('users.manage', async (req, { session, db }) => {
   const passwordHash = body.password != null ? await hashPassword(body.password) : null
   const name = typeof body.name === 'string' && body.name.trim() ? body.name.trim().slice(0, 255) : email.split('@')[0]
 
-  let created
-  try {
-    const { rows } = await db.query(
-      `INSERT INTO users (org_id, team_id, email, name, role, api_key_hash, api_key_prefix, password_hash)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-       RETURNING id`,
-      [session.orgId, teamId, email, name, role, key?.hash ?? null, key?.prefix ?? null, passwordHash])
-    created = rows[0]
-  } catch (err) {
-    if (err.code === '23505') throw conflict('Ya existe una cuenta con ese email.')
-    throw err
-  }
-
+  // The plan may cap the organization's active people (ADR-0020).
+  const created = await withRoom(db, session.orgId, 'people', async (tx) => {
+    let row
+    try {
+      const { rows } = await tx.query(
+        `INSERT INTO users (org_id, team_id, email, name, role, api_key_hash, api_key_prefix, password_hash)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         RETURNING id`,
+        [session.orgId, teamId, email, name, role, key?.hash ?? null, key?.prefix ?? null, passwordHash])
+      row = rows[0]
+    } catch (err) {
+      if (err.code === '23505') throw conflict('Ya existe una cuenta con ese email.')
+      throw err
+    }
+    return row
+  })
+  // After the transaction: audit() swallows its own errors, and one inside
+  // it would turn the COMMIT into a silent rollback.
   await audit(db, {
     req, session, action: 'user.create', targetType: 'user', targetId: created.id,
     details: { email, role, teamId, password: passwordHash != null, apiKey: key != null },

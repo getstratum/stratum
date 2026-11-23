@@ -126,5 +126,5 @@
     { "name": "tickets", "url": "https://mcp.tickets.internal/mcp", "headers": { "Authorization": "Bearer tk_live_example" } },
     { "name": "wiki", "url": "http://wiki-mcp.tools.svc:8080/mcp" }
   ],
-  "organization": { "status": "active" }
+  "organization": { "status": "active", "monthly_token_quota": 50000000, "monthly_budget_usd": 1500 }
 }

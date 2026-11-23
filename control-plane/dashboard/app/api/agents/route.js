@@ -3,6 +3,7 @@ import { route, readJson, json, badRequest, assertTeamInScope } from '../../../l
 import { newApiKey, AGENT_COLUMNS, fixedModel, fixedModelProvider, delegatesFlag } from '../../../lib/users.js'
 import { assertAliasExists, PREFIX as ALIAS_PREFIX } from '../../../lib/model-aliases.js'
 import { audit } from '../../../lib/audit.js'
+import { withRoom } from '../../../lib/org-limits.js'
 import { summaries } from '../../../lib/agent-tasks.js'
 
 // last_request_at: the agent's last request in 90 days (null: none), for
@@ -52,13 +53,16 @@ export const POST = route('keys.manage', async (req, { session, db }) => {
   if (fixedModelProvider(body.defaultProvider) === ALIAS_PREFIX) await assertAliasExists(db, session.orgId, fixedModel(body.defaultModel))
 
   const key = newApiKey('aig_agt_')
-  const { rows } = await db.query(`
-    INSERT INTO agents (org_id, team_id, name, description, api_key_hash, api_key_prefix, default_model, default_provider, delegates)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-    RETURNING id
-  `, [session.orgId, teamId, name.slice(0, 255), body.description || null, key.hash, key.prefix,
-      fixedModel(body.defaultModel), fixedModelProvider(body.defaultProvider), delegates])
-
+  // The plan may cap the organization's active agents (ADR-0020).
+  const rows = await withRoom(db, session.orgId, 'agents', async (tx) => {
+    const { rows } = await tx.query(`
+      INSERT INTO agents (org_id, team_id, name, description, api_key_hash, api_key_prefix, default_model, default_provider, delegates)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      RETURNING id
+    `, [session.orgId, teamId, name.slice(0, 255), body.description || null, key.hash, key.prefix,
+        fixedModel(body.defaultModel), fixedModelProvider(body.defaultProvider), delegates])
+    return rows
+  })
   await audit(db, { req, session, action: 'agent.create', targetType: 'agent', targetId: rows[0].id, details: { name, teamId, delegates } })
   const { rows: agent } = await db.query(
     `SELECT ${AGENT_COLUMNS} FROM agents a LEFT JOIN teams t ON t.id = a.team_id WHERE a.id = $1`, [rows[0].id])

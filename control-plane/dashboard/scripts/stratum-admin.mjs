@@ -11,6 +11,9 @@
  *   node scripts/stratum-admin.mjs org-list
  *   node scripts/stratum-admin.mjs org-suspend --org-id <uuid> --reason "..."
  *   node scripts/stratum-admin.mjs org-resume --org-id <uuid> --reason "..."
+ *   node scripts/stratum-admin.mjs org-limits --org-id <uuid> [--plan "Empresa"] [--people 25] [--agents 10]
+ *                                             [--teams 5] [--gateways 2] [--monthly-tokens 50000000]
+ *                                             [--monthly-budget-usd 1500] [--retention-days 90]
  *
  * create-owner makes (or promotes) the Owner of an organization: the first
  * account of a new installation, or a way back in when nobody can sign in.
@@ -33,6 +36,15 @@
  * within one sync interval. Nothing is deleted; org-resume undoes it. Both
  * need a reason, which the organization's audit log keeps.
  *
+ * org-limits shows and sets the limits of an organization's plan (ADR-0020,
+ * migration 046). Without a limit it shows each one with what the
+ * organization has; with any, it changes those and keeps the rest. "none"
+ * removes one (or the plan's name). People, agents, teams and gateways stop
+ * the organization from adding more; lowering one never removes anything.
+ * Monthly tokens and budget are for every team together, enforced by
+ * gateways from 1.0 within one sync interval. Retention (31 days or more)
+ * deletes older requests in the daily maintenance.
+ *
  * catalog-update applies the model catalog feed now (ADR-0012): from
  * STRATUM_MODEL_CATALOG_URL or the default feed, a URL, or a local file for
  * installations without internet access (the repository's
@@ -53,6 +65,7 @@ const { hashPassword, passwordProblem } = await import('../lib/password.js')
 const totp = await import('../lib/totp.js')
 const { encryptSecret } = await import('../lib/secrets.js')
 const feed = await import('../lib/model-feed.js')
+const orgLimits = await import('../lib/org-limits.js')
 
 const USAGE = 'usage: stratum-admin create-owner --email <email> [--name <name>] [--org-id <uuid> | --org-name <name>] [--password-stdin]\n' +
               '       stratum-admin reset-password --email <email> [--password-stdin]\n' +
@@ -61,7 +74,10 @@ const USAGE = 'usage: stratum-admin create-owner --email <email> [--name <name>]
               '       stratum-admin catalog-update [--file <models.json> | --url <https://...>]\n' +
               '       stratum-admin org-list\n' +
               '       stratum-admin org-suspend --org-id <uuid> --reason <text>\n' +
-              '       stratum-admin org-resume --org-id <uuid> --reason <text>'
+              '       stratum-admin org-resume --org-id <uuid> --reason <text>\n' +
+              '       stratum-admin org-limits --org-id <uuid> [--plan <name>] [--people <n>] [--agents <n>] [--teams <n>]\n' +
+              '                                [--gateways <n>] [--monthly-tokens <n>] [--monthly-budget-usd <n>] [--retention-days <n>]\n' +
+              '                                (any of them "none" to remove it)'
 
 const FLAGS = new Set(['password-stdin', 'secret-stdin'])
 
@@ -240,11 +256,62 @@ async function catalogUpdate(db, opts) {
 
 async function orgList(db) {
   const { rows } = await db.query(`
-    SELECT o.id, o.name, o.status,
-           (SELECT count(*) FROM users u WHERE u.org_id = o.id AND u.is_active) AS people
+    SELECT o.id, o.name, o.status, o.plan_name,
+           (SELECT count(*) FROM users u WHERE u.org_id = o.id AND COALESCE(u.is_active, true)) AS people
       FROM organizations o ORDER BY o.created_at`)
   if (!rows.length) return console.log('There are no organizations; create one with create-owner --org-name.')
-  for (const o of rows) console.log(`${o.id}  ${o.status.padEnd(9)}  ${String(o.people).padStart(4)} people  ${o.name}`)
+  for (const o of rows) {
+    console.log(`${o.id}  ${o.status.padEnd(9)}  ${String(o.people).padStart(4)} people  ${o.name}${o.plan_name ? `  (plan: ${o.plan_name})` : ''}`)
+  }
+}
+
+// Shows or changes an organization's plan limits (ADR-0020). The option
+// names are the limits' with dashes: --monthly-tokens is monthly_tokens.
+async function orgLimitsCommand(db, opts) {
+  if (!opts['org-id']) throw new Error('--org-id is required (org-list shows them).')
+  const changes = {}
+  for (const key of Object.keys(orgLimits.LIMITS)) {
+    const v = opts[key.replaceAll('_', '-')]
+    if (v !== undefined) changes[key] = v === 'none' ? null : v
+  }
+  for (const k of Object.keys(opts)) {
+    if (k !== 'org-id' && k !== 'plan' && !(k.replaceAll('-', '_') in orgLimits.LIMITS)) throw new Error(USAGE)
+  }
+  const plan = opts.plan === undefined ? undefined : (opts.plan === 'none' ? null : opts.plan.trim().slice(0, 100) || null)
+
+  await db.query('BEGIN')
+  let org
+  try {
+    const { rows } = await db.query('SELECT id, name, limits, plan_name FROM organizations WHERE id = $1 FOR UPDATE', [opts['org-id']])
+    if (!rows[0]) throw new Error(`No organization with id ${opts['org-id']}.`)
+    org = rows[0]
+    if (Object.keys(changes).length || plan !== undefined) {
+      const limits = orgLimits.mergeLimits(org.limits, changes)
+      const planName = plan === undefined ? org.plan_name : plan
+      await db.query('UPDATE organizations SET limits = $2, plan_name = $3 WHERE id = $1', [org.id, limits, planName])
+      // The organization sees in its audit log what changed in its plan.
+      await audit(db, org.id, 'org.limits', org.id,
+        { plan: { from: org.plan_name, to: planName }, limits: { from: org.limits, to: limits } }, 'organization')
+      org = { ...org, limits, plan_name: planName }
+    }
+    await db.query('COMMIT')
+  } catch (err) {
+    await db.query('ROLLBACK').catch(() => {})
+    throw err
+  }
+
+  const have = await orgLimits.countAll(db, org.id)
+  console.log(`${org.name}${org.plan_name ? ` — plan ${org.plan_name}` : ' — no plan name'}`)
+  for (const key of Object.keys(orgLimits.LIMITS)) {
+    const max = org.limits[key]
+    const now = have[key] !== undefined ? `${have[key]} of ` : ''
+    console.log(`  ${key.padEnd(19)} ${max == null ? `${have[key] ?? '-'} (no limit)` : `${now}${max}`}`)
+  }
+  for (const key of ['people', 'agents', 'teams', 'gateways']) {
+    if (org.limits[key] != null && have[key] > org.limits[key]) {
+      console.log(`Note: it has more ${key} than the plan allows. Nothing is removed; it cannot add more until it is under the limit.`)
+    }
+  }
 }
 
 // Suspends or resumes an organization (ADR-0020). Gateways read the state
@@ -275,7 +342,7 @@ async function orgStatus(db, opts, status) {
 
 async function main() {
   const { command, opts } = parseArgs(process.argv.slice(2))
-  if (!['create-owner', 'reset-password', 'reset-mfa', 'enroll-mfa', 'catalog-update', 'org-list', 'org-suspend', 'org-resume'].includes(command)) throw new Error(USAGE)
+  if (!['create-owner', 'reset-password', 'reset-mfa', 'enroll-mfa', 'catalog-update', 'org-list', 'org-suspend', 'org-resume', 'org-limits'].includes(command)) throw new Error(USAGE)
   if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is not set.')
   const db = new pg.Client({ connectionString: process.env.DATABASE_URL })
   await db.connect()
@@ -288,6 +355,7 @@ async function main() {
     else if (command === 'org-list') await orgList(db)
     else if (command === 'org-suspend') await orgStatus(db, opts, 'suspended')
     else if (command === 'org-resume') await orgStatus(db, opts, 'active')
+    else if (command === 'org-limits') await orgLimitsCommand(db, opts)
     else throw new Error(USAGE)
   } finally {
     await db.end()

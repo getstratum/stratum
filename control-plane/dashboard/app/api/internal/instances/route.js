@@ -13,6 +13,7 @@
 import { createHash, randomBytes } from 'crypto'
 import { route, readJson, json, badRequest, notFound } from '@/lib/route'
 import { audit } from '@/lib/audit'
+import { withRoom } from '@/lib/org-limits'
 import { RECENT_MINUTES } from '@/lib/gateway-version'
 import { syncIntervalS } from '@/lib/sync-interval'
 
@@ -27,9 +28,12 @@ export const POST = route('gateways.manage', async (req, { session, db }) => {
   const tokenHash  = createHash('sha256').update(rawToken).digest('hex')
   const instanceId = `dp_${randomBytes(16).toString('hex')}`
 
-  await db.query(
-    `INSERT INTO data_plane_instances (id, org_id, name, sync_token_hash) VALUES ($1, $2, $3, $4)`,
-    [instanceId, session.orgId, name.trim().slice(0, 255), tokenHash])
+  // The plan may cap the organization's gateways (ADR-0020).
+  await withRoom(db, session.orgId, 'gateways', async (tx) => {
+    await tx.query(
+      `INSERT INTO data_plane_instances (id, org_id, name, sync_token_hash) VALUES ($1, $2, $3, $4)`,
+      [instanceId, session.orgId, name.trim().slice(0, 255), tokenHash])
+  })
   await audit(db, { req, session, action: 'gateway.register', targetType: 'gateway', targetId: instanceId, details: { name: name.trim() } })
 
   return json({
