@@ -27,6 +27,12 @@ Back up the database before you upgrade.
   `stratum-admin org-limits`. The monthly ones travel with the sync and
   only gateways from 1.0 enforce them (`org_quota_exceeded`,
   `org_budget_exceeded`, 429); older gateways ignore them.
+- **Deleting an organization** (migration 047): `stratum-admin org-delete`
+  suspends it and the daily maintenance deletes all of it 30 days later;
+  `org-undelete` undoes it until then. Organizations are never deleted on
+  upgrade. A new table, `platform_audit`, keeps what is done to
+  organizations from outside them. `audit_log` stays append-only, except
+  for the rows of an organization whose deletion is due.
 - **Refusals for a spent budget count as policy refusals** in Consumo and
   in usage reports, like a spent token quota (`budget_exceeded` was missing
   from that list).

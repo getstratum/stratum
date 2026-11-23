@@ -14,6 +14,10 @@
  *   node scripts/stratum-admin.mjs org-limits --org-id <uuid> [--plan "Empresa"] [--people 25] [--agents 10]
  *                                             [--teams 5] [--gateways 2] [--monthly-tokens 50000000]
  *                                             [--monthly-budget-usd 1500] [--retention-days 90]
+ *   node scripts/stratum-admin.mjs org-delete --org-id <uuid> --confirm "<its name>" --reason "..."
+ *   node scripts/stratum-admin.mjs org-undelete --org-id <uuid> --reason "..."
+ *   node scripts/stratum-admin.mjs org-purge
+ *   node scripts/stratum-admin.mjs platform-audit [--org-id <uuid>] [--limit 50]
  *
  * create-owner makes (or promotes) the Owner of an organization: the first
  * account of a new installation, or a way back in when nobody can sign in.
@@ -45,6 +49,14 @@
  * gateways from 1.0 within one sync interval. Retention (31 days or more)
  * deletes older requests in the daily maintenance.
  *
+ * org-delete deletes an organization in two steps (ADR-0020): it is
+ * suspended at once and kept whole for 30 days, during which org-undelete
+ * puts it back as it was. Then the console's daily maintenance deletes all
+ * of it, its audit log included; org-purge does that now for those whose
+ * days are over. platform-audit lists what was done to organizations from
+ * here, which outlives them: every org-* command that changes something
+ * writes there and in the organization's own audit log.
+ *
  * catalog-update applies the model catalog feed now (ADR-0012): from
  * STRATUM_MODEL_CATALOG_URL or the default feed, a URL, or a local file for
  * installations without internet access (the repository's
@@ -66,6 +78,8 @@ const totp = await import('../lib/totp.js')
 const { encryptSecret } = await import('../lib/secrets.js')
 const feed = await import('../lib/model-feed.js')
 const orgLimits = await import('../lib/org-limits.js')
+const deletion = await import('../lib/org-deletion.js')
+const ACTOR = 'stratum-admin (CLI)'
 
 const USAGE = 'usage: stratum-admin create-owner --email <email> [--name <name>] [--org-id <uuid> | --org-name <name>] [--password-stdin]\n' +
               '       stratum-admin reset-password --email <email> [--password-stdin]\n' +
@@ -77,7 +91,11 @@ const USAGE = 'usage: stratum-admin create-owner --email <email> [--name <name>]
               '       stratum-admin org-resume --org-id <uuid> --reason <text>\n' +
               '       stratum-admin org-limits --org-id <uuid> [--plan <name>] [--people <n>] [--agents <n>] [--teams <n>]\n' +
               '                                [--gateways <n>] [--monthly-tokens <n>] [--monthly-budget-usd <n>] [--retention-days <n>]\n' +
-              '                                (any of them "none" to remove it)'
+              '                                (any of them "none" to remove it)\n' +
+              '       stratum-admin org-delete --org-id <uuid> --confirm <its name> --reason <text>\n' +
+              '       stratum-admin org-undelete --org-id <uuid> --reason <text>\n' +
+              '       stratum-admin org-purge\n' +
+              '       stratum-admin platform-audit [--org-id <uuid>] [--limit <n>]'
 
 const FLAGS = new Set(['password-stdin', 'secret-stdin'])
 
@@ -256,12 +274,13 @@ async function catalogUpdate(db, opts) {
 
 async function orgList(db) {
   const { rows } = await db.query(`
-    SELECT o.id, o.name, o.status, o.plan_name,
+    SELECT o.id, o.name, o.status, o.plan_name, o.delete_after,
            (SELECT count(*) FROM users u WHERE u.org_id = o.id AND COALESCE(u.is_active, true)) AS people
       FROM organizations o ORDER BY o.created_at`)
   if (!rows.length) return console.log('There are no organizations; create one with create-owner --org-name.')
   for (const o of rows) {
-    console.log(`${o.id}  ${o.status.padEnd(9)}  ${String(o.people).padStart(4)} people  ${o.name}${o.plan_name ? `  (plan: ${o.plan_name})` : ''}`)
+    const extra = [o.plan_name && `plan: ${o.plan_name}`, o.delete_after && `to be deleted on ${o.delete_after.toISOString().slice(0, 10)}`].filter(Boolean)
+    console.log(`${o.id}  ${o.status.padEnd(9)}  ${String(o.people).padStart(4)} people  ${o.name}${extra.length ? `  (${extra.join('; ')})` : ''}`)
   }
 }
 
@@ -290,8 +309,9 @@ async function orgLimitsCommand(db, opts) {
       const planName = plan === undefined ? org.plan_name : plan
       await db.query('UPDATE organizations SET limits = $2, plan_name = $3 WHERE id = $1', [org.id, limits, planName])
       // The organization sees in its audit log what changed in its plan.
-      await audit(db, org.id, 'org.limits', org.id,
-        { plan: { from: org.plan_name, to: planName }, limits: { from: org.limits, to: limits } }, 'organization')
+      const details = { plan: { from: org.plan_name, to: planName }, limits: { from: org.limits, to: limits } }
+      await audit(db, org.id, 'org.limits', org.id, details, 'organization')
+      await deletion.platformAudit(db, { actor: ACTOR, action: 'org.limits', orgId: org.id, orgName: org.name, details })
       org = { ...org, limits, plan_name: planName }
     }
     await db.query('COMMIT')
@@ -322,14 +342,17 @@ async function orgStatus(db, opts, status) {
   if (reason.length < 5) throw new Error('--reason is required: at least 5 characters, kept in the audit log.')
   await db.query('BEGIN')
   try {
-    const { rows } = await db.query('SELECT id, name, status FROM organizations WHERE id = $1 FOR UPDATE', [opts['org-id']])
+    const { rows } = await db.query('SELECT id, name, status, delete_after FROM organizations WHERE id = $1 FOR UPDATE', [opts['org-id']])
     if (!rows[0]) throw new Error(`No organization with id ${opts['org-id']}.`)
+    if (rows[0].delete_after) throw new Error(`${rows[0].name} is marked for deletion: org-undelete first.`)
     if (rows[0].status === status) {
       await db.query('ROLLBACK')
       return console.log(`${rows[0].name} is already ${status}; nothing done.`)
     }
     await db.query('UPDATE organizations SET status = $2 WHERE id = $1', [rows[0].id, status])
-    await audit(db, rows[0].id, status === 'suspended' ? 'org.suspend' : 'org.resume', rows[0].id, { reason }, 'organization')
+    const action = status === 'suspended' ? 'org.suspend' : 'org.resume'
+    await audit(db, rows[0].id, action, rows[0].id, { reason }, 'organization')
+    await deletion.platformAudit(db, { actor: ACTOR, action, orgId: rows[0].id, orgName: rows[0].name, details: { reason } })
     await db.query('COMMIT')
   } catch (err) {
     await db.query('ROLLBACK').catch(() => {})
@@ -340,9 +363,46 @@ async function orgStatus(db, opts, status) {
     : 'Active again. Gateways take its requests from their next sync.')
 }
 
+async function orgDelete(db, opts) {
+  if (!opts['org-id']) throw new Error('--org-id is required (org-list shows them).')
+  if (!opts.confirm) throw new Error('--confirm is required: the organization\'s name, as org-list shows it.')
+  const r = await deletion.markForDeletion(db, { orgId: opts['org-id'], confirmName: opts.confirm, reason: opts.reason, actor: ACTOR })
+  console.log(`${r.name} is suspended and will be deleted on ${r.deleteAfter.toISOString()}, with everything it has.`)
+  console.log('Until then, org-undelete puts it back as it was.')
+}
+
+async function orgUndelete(db, opts) {
+  if (!opts['org-id']) throw new Error('--org-id is required (org-list shows them).')
+  const r = await deletion.undoDeletion(db, { orgId: opts['org-id'], reason: opts.reason, actor: ACTOR })
+  console.log(`${r.name} is no longer marked for deletion; it is ${r.status} again.`)
+}
+
+async function orgPurge() {
+  const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 1 })
+  try {
+    const done = await deletion.purgeDue(pool)
+    if (!done.length) return console.log('No organization is due for deletion.')
+    for (const d of done) console.log(`Deleted ${d.name} (${d.orgId}): ${d.counts.people} people, ${d.counts.teams} teams, ${d.counts.agents} agents, ${d.counts.gateways} gateways.`)
+  } finally {
+    await pool.end()
+  }
+}
+
+async function platformAuditList(db, opts) {
+  const limit = Math.min(Math.max(Number(opts.limit ?? 50) || 50, 1), 1000)
+  const { rows } = await db.query(
+    `SELECT at, actor, action, org_id, org_name, details FROM platform_audit
+      WHERE $1::uuid IS NULL OR org_id = $1 ORDER BY id DESC LIMIT $2`, [opts['org-id'] ?? null, limit])
+  if (!rows.length) return console.log('Nothing yet.')
+  for (const e of rows) {
+    const why = e.details?.reason ? `  "${e.details.reason}"` : ''
+    console.log(`${e.at.toISOString()}  ${e.action.padEnd(13)}  ${e.org_name ?? '-'} (${e.org_id ?? '-'})  by ${e.actor}${why}`)
+  }
+}
+
 async function main() {
   const { command, opts } = parseArgs(process.argv.slice(2))
-  if (!['create-owner', 'reset-password', 'reset-mfa', 'enroll-mfa', 'catalog-update', 'org-list', 'org-suspend', 'org-resume', 'org-limits'].includes(command)) throw new Error(USAGE)
+  if (!['create-owner', 'reset-password', 'reset-mfa', 'enroll-mfa', 'catalog-update', 'org-list', 'org-suspend', 'org-resume', 'org-limits', 'org-delete', 'org-undelete', 'org-purge', 'platform-audit'].includes(command)) throw new Error(USAGE)
   if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is not set.')
   const db = new pg.Client({ connectionString: process.env.DATABASE_URL })
   await db.connect()
@@ -356,6 +416,10 @@ async function main() {
     else if (command === 'org-suspend') await orgStatus(db, opts, 'suspended')
     else if (command === 'org-resume') await orgStatus(db, opts, 'active')
     else if (command === 'org-limits') await orgLimitsCommand(db, opts)
+    else if (command === 'org-delete') await orgDelete(db, opts)
+    else if (command === 'org-undelete') await orgUndelete(db, opts)
+    else if (command === 'org-purge') await orgPurge()
+    else if (command === 'platform-audit') await platformAuditList(db, opts)
     else throw new Error(USAGE)
   } finally {
     await db.end()
