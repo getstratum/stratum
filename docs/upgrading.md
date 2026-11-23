@@ -40,6 +40,12 @@ Back up the database before you upgrade.
   until `stratum-admin platform-token-create` makes a token. If your
   console is public and the platform's clients are not, block
   `/api/platform/` at the proxy.
+- **Invitations** (migration 049): people can be invited by email from
+  Usuarios, and an organization's first Owner from the platform API or
+  `stratum-admin org-invite`. Set `STRATUM_CONSOLE_URL` to the console's
+  public address so links point there (without it, they point to the
+  address the request came to), and `STRATUM_SMTP_URL` for them to go by
+  email. Behind a proxy that only lets known paths through, add `/invite`.
 - **Refusals for a spent budget count as policy refusals** in Consumo and
   in usage reports, like a spent token quota (`budget_exceeded` was missing
   from that list).

@@ -640,6 +640,41 @@ test('users: the owner creates an auditor', async () => {
   await expect(page.locator('tr', { hasText: auditor.email })).toContainText('Auditor/a')
 })
 
+test('invitations: an auditor invited by email chooses their password through the link (ADR-0020)', async () => {
+  const invited = { email: `${RUN}-invited@example.com`, password: `${RUN}-chosen-password` }
+  created.userEmails.push(invited.email)
+  await page.goto('/users')
+  await page.getByRole('button', { name: 'Invitar por email' }).click()
+  const d = dialog('Invitar por email')
+  await d.getByLabel('Email').fill(invited.email)
+  await d.getByLabel('Rol', { exact: true }).selectOption({ label: 'Auditor/a' })
+  await d.getByRole('button', { name: 'Invitar' }).click()
+  const link = await page.getByTestId('invite-link').textContent()
+  expect(link).toMatch(/\/invite#stinv_/)
+  await dialog('Invitación creada').getByRole('button', { name: 'Listo' }).click()
+  await expect(page.getByTestId('invitations')).toContainText(invited.email)
+
+  // The invited person, in a browser of their own.
+  const theirs = await page.context().browser().newContext()
+  try {
+    const p = await theirs.newPage()
+    await p.goto(link)
+    await expect(p.getByRole('heading', { name: /Te invitaron a/ })).toBeVisible()
+    await p.getByLabel('Contraseña', { exact: true }).fill(invited.password)
+    await p.getByLabel('Repetila').fill(invited.password)
+    await p.getByRole('button', { name: 'Aceptar la invitación' }).click()
+    await expect(p.getByRole('navigation').getByRole('link', { name: 'Auditoría' })).toBeVisible()
+    // Once.
+    await p.goto(link)
+    await expect(p.getByRole('heading', { name: 'Este enlace no sirve' })).toBeVisible()
+  } finally {
+    await theirs.close()
+  }
+  await page.goto('/users')
+  await expect(page.locator('tr', { hasText: invited.email })).toContainText('Auditor/a')
+  await expect(page.getByTestId('invitations')).toHaveCount(0)
+})
+
 test('roles: an auditor reads but cannot change anything', async () => {
   await signOut()
   await signIn(auditor.email, auditor.password)

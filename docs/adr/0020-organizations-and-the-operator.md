@@ -126,8 +126,30 @@ organization kept using every model it had.
   never deletes, so a month is billed the same however long the
   organization keeps its requests. Portal seats come with the licence per
   organization (stage 5).
-- **No new organization gets people from the API yet.** Its first Owner
-  comes with `create-owner --org-id`; invitations are next.
+- **Its first Owner comes by invitation** (below), from the API or
+  `stratum-admin org-invite`; `create-owner --org-id` still works, and
+  prints a password.
+
+### Invitations
+
+- **One mechanism for the first Owner and for everyone else** (migration
+  049): a link that works once, for 72 hours, where its person chooses
+  their password; an Owner or Admin then sets up the second factor before
+  anything else, as on a first sign-in. Whoever invited never knows the
+  password.
+- **The token goes in the fragment** (`/invite#stinv_...`), which browsers
+  never send, so no access log or proxy holds it; the page posts it. Only
+  its SHA-256 is kept.
+- **The account is created on acceptance**, so an open invitation neither
+  takes the email nor counts against the plan; the plan is checked then,
+  under the people lock.
+- **Whoever runs the installation does not hold the link when it can be
+  helped**: with SMTP, the platform API sends it and leaves it out of the
+  answer. Without SMTP it has to hand it over, and says so. In the console
+  the link is always shown to whoever invited: they can set passwords for
+  their people anyway.
+- **Accepting needs no session and says one thing for every failure**
+  (410: used, expired, replaced, revoked or the organization suspended).
 
 ## Consequences
 
