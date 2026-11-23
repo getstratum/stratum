@@ -48,7 +48,6 @@ organization kept using every model it had.
   a reason kept in the organization's audit log; `org-list` lists the
   organizations. The console's sessions already check the state on every
   request, and gateways follow within one sync interval.
-- **Deletion in two steps** comes next, with its own section here.
 
 ### Plan limits
 
@@ -81,6 +80,34 @@ organization kept using every model it had.
   `task_outcomes` past it, in batches; `team_usage_monthly` stays.
 - **Enterprise functions by plan** come with the licence per organization
   (stage 5), not here.
+
+### Deletion in two steps
+
+- **Marking is suspending, with a date.** Deleting asks for the
+  organization's name as written and a reason. The organization is
+  suspended at once and keeps everything for 30 days
+  (`organizations.delete_after`, migration 047); undoing it puts back the
+  state it had before (`status_before_delete`), suspended or not. A
+  suspended organization that is marked can only be undeleted, not resumed.
+- **Then the daily maintenance deletes all of it**: requests first, in
+  batches, and the rest in one transaction per organization. Almost
+  everything cascades from `organizations`; what does not (requests,
+  alerts, its audit log, the sync tombstones its rows leave) is deleted
+  explicitly. Undoing is possible until that moment, not only during the 30
+  days.
+- **Its audit log goes too.** `audit_log` stays append-only except for the
+  rows of an organization whose deletion is due: the trigger checks
+  `delete_after` itself, so an application bug cannot use the exception
+  earlier. The customer's data includes who did what in it.
+- **`platform_audit` keeps that it existed** (migration 047): who marked,
+  undid and deleted it, with the reason, what it had and its usage per
+  month, for whoever bills it after it is gone. Every `stratum-admin org-*`
+  command that changes something writes there and in the organization's
+  own log. It has no foreign keys and is append-only with no exception.
+  The platform API and `stratum-operator` write the same table.
+- **The Enterprise portal's data is the portal's.** Its conversations live
+  in its own database; deleting them with the organization comes with the
+  licence per organization (stage 5).
 
 ## Consequences
 

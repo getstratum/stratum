@@ -4,8 +4,9 @@
  * (migration 019): now and every 24 hours. Failures are logged, never fatal:
  * the default partition still takes the rows. Also keeps the model catalog
  * current from its feed, sends alerts, also when a policy's default model
- * stops working as set, and deletes requests older than an organization's
- * plan keeps them.
+ * stops working as set, deletes requests older than an organization's plan
+ * keeps them, and deletes organizations whose 30 days to undo a deletion
+ * are over.
  */
 export async function register() {
   if (process.env.NEXT_RUNTIME !== 'nodejs' || !process.env.DATABASE_URL) return
@@ -21,10 +22,12 @@ export async function register() {
   ensure() // not awaited: a slow database must not hold up the server start
   setInterval(ensure, 24 * 60 * 60 * 1000).unref()
 
-  // Retention by plan (lib/org-limits.js, ADR-0020): ten minutes after the
-  // start, then every 24 hours. Two replicas doing it at once only delete
-  // the same rows; nothing to coordinate.
+  // Retention by plan (lib/org-limits.js) and organizations due for
+  // deletion (lib/org-deletion.js), ADR-0020: ten minutes after the start,
+  // then every 24 hours. Two replicas doing it at once only delete the same
+  // rows, or skip the organization the other one is deleting.
   const { applyRetention } = await import('./lib/org-limits.js')
+  const { purgeDue } = await import('./lib/org-deletion.js')
   const retain = async () => {
     try {
       for (const d of await applyRetention(getDb())) {
@@ -32,6 +35,13 @@ export async function register() {
       }
     } catch (err) {
       console.error(`[retention] failed: ${err.message}`)
+    }
+    try {
+      for (const d of await purgeDue(getDb())) {
+        console.log(`[deletion] organization ${d.name} (${d.orgId}) deleted, as marked 30 days ago`)
+      }
+    } catch (err) {
+      console.error(`[deletion] failed: ${err.message}`)
     }
   }
   setTimeout(retain, 10 * 60 * 1000).unref()

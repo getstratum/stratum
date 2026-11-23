@@ -219,12 +219,35 @@ node scripts/stratum-admin.mjs org-limits --org-id <uuid> --plan "Empresa" \
 node scripts/stratum-admin.mjs org-limits --org-id <uuid> --agents none   # removes one
 ```
 
+### Deleting an organization
+
+Deleting takes two steps, so a mistake can be undone. `org-delete` asks for
+the organization's name as written and a reason: the organization is
+suspended at once and deleted 30 days later by the console's daily
+maintenance, with everything it has (people, keys, policies, credentials,
+gateways, requests, usage and its audit log). Until then `org-undelete`
+puts it back as it was. `org-purge` runs the deletion of those whose days
+are over without waiting for the maintenance; nothing is deleted earlier.
+
+```
+node scripts/stratum-admin.mjs org-delete --org-id <uuid> --confirm "Acme" --reason "..."
+node scripts/stratum-admin.mjs org-undelete --org-id <uuid> --reason "..."
+node scripts/stratum-admin.mjs platform-audit [--org-id <uuid>]
+```
+
+What is done to an organization from outside it (suspend, resume, limits,
+delete, undo, and the deletion itself) is kept in `platform_audit`, which
+outlives the organizations: who did it, when, why, and for a deleted one
+what it had and its usage per month. The organization's own audit log
+shows it too while the organization exists.
+
 ## Audit log
 
 `audit_log` records sign-ins (failed ones too), every change made through the
 console, and every request refused by a permission check, with who, when, from
 which address and on what. It never holds passwords, keys or credentials.
-Rows cannot be updated or deleted (a trigger refuses it); retention is done by
+Rows cannot be updated or deleted (a trigger refuses it), except those of an
+organization whose deletion is due, which go with it; retention is done by
 an operator with `TRUNCATE` or partition drops. `GET /api/audit` reads an
 organization's log (Owner, Admin, Auditor); the console's **Audit log** page
 shows it, newest first, with a filter for refusals and failures.
