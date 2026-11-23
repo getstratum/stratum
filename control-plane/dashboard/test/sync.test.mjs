@@ -342,6 +342,21 @@ test('month_usage: each team\'s tokens and cost this month, with every sync', { 
   assert.deepEqual((await sync(other.org, 0)).month_usage.teams, [])
 })
 
+test('organization: its state with every sync, full or delta (ADR-0020)', { skip }, async () => {
+  const f = await fixture()
+  const full = await sync(f.org, 0)
+  assert.deepEqual(full.organization, { status: 'active' })
+
+  await sql(`UPDATE organizations SET status = 'suspended' WHERE id = $1`, [f.org])
+  // Not versioned: a delta with nothing else in it still says so.
+  const delta = await sync(f.org, full.current_version)
+  assert.deepEqual(delta.organization, { status: 'suspended' })
+  assert.equal(delta.policies.length, 0)
+
+  await sql(`UPDATE organizations SET status = 'active' WHERE id = $1`, [f.org])
+  assert.deepEqual((await sync(f.org, 0)).organization, { status: 'active' })
+})
+
 test('budgets: sent only when the policy cuts at them; the team\'s own budget wins', { skip }, async () => {
   const f = await fixture()
   await sql('UPDATE policies SET monthly_budget_usd = 100 WHERE id = $1', [f.p1])

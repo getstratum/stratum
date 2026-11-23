@@ -13,13 +13,14 @@ import (
 // delta cannot resurrect them out of order.
 type State struct {
 	Version   int64                         `json:"version"`
-	Policies  map[string]WirePolicy         `json:"policies"`  // by team_id
-	APIKeys   map[string]WireAPIKey         `json:"api_keys"`  // by id
-	Providers map[string]WireProviderConfig `json:"providers"` // by id
-	People    map[string]WirePerson         `json:"people"`    // by id (from 0.4)
-	Models    []WireModel                   `json:"models"`    // the last list received (from 0.4)
-	Aliases   []WireAlias                   `json:"aliases"`   // the last list received (from 0.5)
-	MCP       []WireMCPServer               `json:"mcp"`       // the last list received (from 0.7)
+	Policies  map[string]WirePolicy         `json:"policies"`      // by team_id
+	APIKeys   map[string]WireAPIKey         `json:"api_keys"`      // by id
+	Providers map[string]WireProviderConfig `json:"providers"`     // by id
+	People    map[string]WirePerson         `json:"people"`        // by id (from 0.4)
+	Models    []WireModel                   `json:"models"`        // the last list received (from 0.4)
+	Aliases   []WireAlias                   `json:"aliases"`       // the last list received (from 0.5)
+	MCP       []WireMCPServer               `json:"mcp"`           // the last list received (from 0.7)
+	Org       *WireOrganization             `json:"org,omitempty"` // the last state received (from 1.0)
 }
 
 // NewState returns an empty state.
@@ -42,6 +43,7 @@ func (s *State) clone() *State {
 		Models:    s.Models,
 		Aliases:   s.Aliases,
 		MCP:       s.MCP,
+		Org:       s.Org,
 	}
 	if c.People == nil { // a state saved by a gateway before 0.4
 		c.People = map[string]WirePerson{}
@@ -109,6 +111,10 @@ func (s *State) Apply(resp *SyncResponse, full bool) (*State, error) {
 	}
 	if resp.MCPServers != nil {
 		next.MCP = slices.Clone(resp.MCPServers)
+	}
+	if resp.Organization != nil {
+		o := *resp.Organization
+		next.Org = &o
 	}
 
 	next.Version = int64(resp.CurrentVersion)

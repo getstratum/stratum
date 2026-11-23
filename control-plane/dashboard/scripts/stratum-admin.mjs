@@ -8,6 +8,9 @@
  *   node scripts/stratum-admin.mjs reset-mfa --email ana@acme.com
  *   node scripts/stratum-admin.mjs enroll-mfa --email ana@acme.com [--secret-stdin]
  *   node scripts/stratum-admin.mjs catalog-update [--file models.json | --url https://...]
+ *   node scripts/stratum-admin.mjs org-list
+ *   node scripts/stratum-admin.mjs org-suspend --org-id <uuid> --reason "..."
+ *   node scripts/stratum-admin.mjs org-resume --org-id <uuid> --reason "..."
  *
  * create-owner makes (or promotes) the Owner of an organization: the first
  * account of a new installation, or a way back in when nobody can sign in.
@@ -24,6 +27,11 @@
  * automated installations: it prints the secret for the authenticator
  * (or takes one in base32 from stdin) and needs STRATUM_ENCRYPTION_KEY.
  * Recovery codes are created from the account page.
+ *
+ * org-suspend stops an organization (ADR-0020): nobody of it can sign in to
+ * the console, and every gateway refuses its requests (403 org_suspended)
+ * within one sync interval. Nothing is deleted; org-resume undoes it. Both
+ * need a reason, which the organization's audit log keeps.
  *
  * catalog-update applies the model catalog feed now (ADR-0012): from
  * STRATUM_MODEL_CATALOG_URL or the default feed, a URL, or a local file for
@@ -50,7 +58,10 @@ const USAGE = 'usage: stratum-admin create-owner --email <email> [--name <name>]
               '       stratum-admin reset-password --email <email> [--password-stdin]\n' +
               '       stratum-admin reset-mfa --email <email>\n' +
               '       stratum-admin enroll-mfa --email <email> [--secret-stdin]\n' +
-              '       stratum-admin catalog-update [--file <models.json> | --url <https://...>]'
+              '       stratum-admin catalog-update [--file <models.json> | --url <https://...>]\n' +
+              '       stratum-admin org-list\n' +
+              '       stratum-admin org-suspend --org-id <uuid> --reason <text>\n' +
+              '       stratum-admin org-resume --org-id <uuid> --reason <text>'
 
 const FLAGS = new Set(['password-stdin', 'secret-stdin'])
 
@@ -82,11 +93,11 @@ async function newPassword(opts) {
   return { password: randomBytes(18).toString('base64url'), generated: true }
 }
 
-async function audit(db, orgId, action, targetId, details) {
+async function audit(db, orgId, action, targetId, details, targetType = 'user') {
   await db.query(
     `INSERT INTO audit_log (org_id, actor_label, action, target_type, target_id, result, details)
-     VALUES ($1, 'stratum-admin (CLI)', $2, 'user', $3, 'ok', $4)`,
-    [orgId, action, targetId, JSON.stringify(details)])
+     VALUES ($1, 'stratum-admin (CLI)', $2, $5, $3, 'ok', $4)`,
+    [orgId, action, targetId, JSON.stringify(details), targetType])
 }
 
 async function resolveOrg(db, opts) {
@@ -227,9 +238,44 @@ async function catalogUpdate(db, opts) {
   console.log(r.applied ? `Catalog from ${url}: ${r.changed} of ${r.models} models changed.` : 'Another control plane is applying the catalog now; nothing done.')
 }
 
+async function orgList(db) {
+  const { rows } = await db.query(`
+    SELECT o.id, o.name, o.status,
+           (SELECT count(*) FROM users u WHERE u.org_id = o.id AND u.is_active) AS people
+      FROM organizations o ORDER BY o.created_at`)
+  if (!rows.length) return console.log('There are no organizations; create one with create-owner --org-name.')
+  for (const o of rows) console.log(`${o.id}  ${o.status.padEnd(9)}  ${String(o.people).padStart(4)} people  ${o.name}`)
+}
+
+// Suspends or resumes an organization (ADR-0020). Gateways read the state
+// with every sync; the console's sessions check it on every request.
+async function orgStatus(db, opts, status) {
+  if (!opts['org-id']) throw new Error('--org-id is required (org-list shows them).')
+  const reason = (opts.reason ?? '').trim()
+  if (reason.length < 5) throw new Error('--reason is required: at least 5 characters, kept in the audit log.')
+  await db.query('BEGIN')
+  try {
+    const { rows } = await db.query('SELECT id, name, status FROM organizations WHERE id = $1 FOR UPDATE', [opts['org-id']])
+    if (!rows[0]) throw new Error(`No organization with id ${opts['org-id']}.`)
+    if (rows[0].status === status) {
+      await db.query('ROLLBACK')
+      return console.log(`${rows[0].name} is already ${status}; nothing done.`)
+    }
+    await db.query('UPDATE organizations SET status = $2 WHERE id = $1', [rows[0].id, status])
+    await audit(db, rows[0].id, status === 'suspended' ? 'org.suspend' : 'org.resume', rows[0].id, { reason }, 'organization')
+    await db.query('COMMIT')
+  } catch (err) {
+    await db.query('ROLLBACK').catch(() => {})
+    throw err
+  }
+  console.log(status === 'suspended'
+    ? 'Suspended. Nobody of it can sign in to the console, and gateways refuse its requests from their next sync.'
+    : 'Active again. Gateways take its requests from their next sync.')
+}
+
 async function main() {
   const { command, opts } = parseArgs(process.argv.slice(2))
-  if (!['create-owner', 'reset-password', 'reset-mfa', 'enroll-mfa', 'catalog-update'].includes(command)) throw new Error(USAGE)
+  if (!['create-owner', 'reset-password', 'reset-mfa', 'enroll-mfa', 'catalog-update', 'org-list', 'org-suspend', 'org-resume'].includes(command)) throw new Error(USAGE)
   if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is not set.')
   const db = new pg.Client({ connectionString: process.env.DATABASE_URL })
   await db.connect()
@@ -239,6 +285,9 @@ async function main() {
     else if (command === 'reset-mfa') await resetMfa(db, opts)
     else if (command === 'enroll-mfa') await enrollMfa(db, opts)
     else if (command === 'catalog-update') await catalogUpdate(db, opts)
+    else if (command === 'org-list') await orgList(db)
+    else if (command === 'org-suspend') await orgStatus(db, opts, 'suspended')
+    else if (command === 'org-resume') await orgStatus(db, opts, 'active')
     else throw new Error(USAGE)
   } finally {
     await db.end()

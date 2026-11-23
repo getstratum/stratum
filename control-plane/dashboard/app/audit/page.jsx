@@ -20,6 +20,8 @@ const ACTIONS = {
   'mfa.recovery_codes':     'Generó códigos de recuperación nuevos',
   'user.mfa.reset':         'Reinició la verificación en dos pasos de una persona',
   'owner.bootstrap':        'Creó o restauró un Owner (CLI)',
+  'org.suspend':            'Suspendió la organización',
+  'org.resume':             'Reactivó la organización',
   'agent.create':           'Creó un agente',
   'agent.update':           'Modificó un agente',
   'agent.key.rotate':       'Rotó la key de un agente',

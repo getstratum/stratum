@@ -171,6 +171,23 @@ token answers 401 like an unknown one.
 - `test/authz.test.mjs` checks the rules above against PostgreSQL, with two
   organizations.
 
+## Organizations
+
+An installation holds one organization or many; every route checks the
+organization of the session, and a person belongs to one. A
+**suspended** organization ([ADR-0020](../adr/0020-organizations-and-the-operator.md))
+can use nothing: nobody of it can sign in (sessions end at their next
+request), and every gateway refuses its requests with 403 `org_suspended`
+within one sync interval. Nothing is deleted. `stratum-admin` lists,
+suspends and resumes organizations, with a reason the organization's audit
+log keeps:
+
+```
+node scripts/stratum-admin.mjs org-list
+node scripts/stratum-admin.mjs org-suspend --org-id <uuid> --reason "..."
+node scripts/stratum-admin.mjs org-resume --org-id <uuid> --reason "..."
+```
+
 ## Audit log
 
 `audit_log` records sign-ins (failed ones too), every change made through the

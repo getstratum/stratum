@@ -167,6 +167,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	key, teamID, userID, v := h.caller(r, snap)
 	rec.keyID = key.ID // empty when the key is not valid: the request is nobody's
 	if v != nil {
+		if v == orgSuspended {
+			rec.teamID = teamID
+		}
 		h.fail(w, rec, v)
 		return
 	}
@@ -539,6 +542,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // than ignored, so a misconfigured application cannot spend under its own
 // team without noticing. key.ID is set whenever the key is valid, refused
 // or not, so the refusal is reported under it.
+var orgSuspended = &policy.Violation{Status: http.StatusForbidden, Code: "org_suspended",
+	Message: "this organization is suspended: ask whoever runs Stratum for it"}
+
 func (h *Handler) caller(r *http.Request, snap *snapshot.Snapshot) (key snapshot.Key, teamID, userID string, v *policy.Violation) {
 	key, err := auth.Resolve(snap, auth.ExtractKey(r))
 	if err != nil {
@@ -547,6 +553,11 @@ func (h *Handler) caller(r *http.Request, snap *snapshot.Snapshot) (key snapshot
 			code = "missing_api_key"
 		}
 		return snapshot.Key{}, "", "", &policy.Violation{Status: http.StatusUnauthorized, Code: code, Message: err.Error()}
+	}
+	// A suspended organization uses nothing: its keys still say who asked,
+	// so the refusal is recorded as theirs (ADR-0020).
+	if snap.Suspended() {
+		return key, key.TeamID, "", orgSuspended
 	}
 	person := r.Header.Get("X-Stratum-User")
 	if person == "" {

@@ -87,6 +87,7 @@ type Snapshot struct {
 	aliasNames      []string // sorted
 	mcp             map[string]MCPServer
 	activeKeys      int
+	suspended       bool // the organization is suspended: every request is refused
 }
 
 // MCPServer is an MCP server agents reach at /mcp/<name> (ADR-0016).
@@ -119,6 +120,7 @@ func Build(st *State, syncedAt time.Time) *Snapshot {
 			Delegates: k.Delegates}
 	}
 	s.activeKeys = len(s.keysByHash)
+	s.suspended = st.Org != nil && strings.EqualFold(strings.TrimSpace(st.Org.Status), "suspended")
 
 	for _, m := range st.Models {
 		if m.Provider = strings.ToLower(strings.TrimSpace(m.Provider)); m.Provider != "" && strings.TrimSpace(m.ID) != "" {
@@ -262,6 +264,10 @@ func (s *Snapshot) MCP(name string) (MCPServer, bool) {
 	m, ok := s.mcp[strings.ToLower(name)]
 	return m, ok
 }
+
+// Suspended reports whether the organization is suspended: the gateway
+// then refuses every request with 403 org_suspended (ADR-0020).
+func (s *Snapshot) Suspended() bool { return s.suspended }
 
 // MCPServers is every MCP server, by name.
 func (s *Snapshot) MCPServers() []MCPServer {

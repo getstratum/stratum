@@ -15,8 +15,8 @@
  *     act for, and with which team;
  *   - provider configs;
  *   - with every sync, unversioned: the models the organization can use
- *     (GET /v1/models), its model aliases (ADR-0015, "Rutas") and each
- *     team's usage this month;
+ *     (GET /v1/models), its model aliases (ADR-0015, "Rutas"), each
+ *     team's usage this month and the organization's state (ADR-0020);
  *   - deletions, from stratum_sync_tombstones.
  *
  * All reads run in one REPEATABLE READ transaction, so current_version and
@@ -51,9 +51,13 @@ export async function buildSyncResponse(client, { orgId, sinceVersion, syncInter
   const q = async (sql, params) => (await client.query(sql, params)).rows
 
   await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY')
-  let version, policies, apiKeys, people, providerConfigs, tombstones, usage, usageMonth, models, aliases, mcpServers
+  let version, policies, apiKeys, people, providerConfigs, tombstones, usage, usageMonth, models, aliases, mcpServers, org
   try {
     ;[{ v: version }] = await q('SELECT stratum_sync_version($1)::bigint AS v', [orgId])
+
+    // The organization's state, with every sync (not versioned): gateways
+    // from 1.0 refuse everything of a suspended one (ADR-0020).
+    ;[org] = await q('SELECT status FROM organizations WHERE id = $1', [orgId])
 
     // One entry per team: what the gateway enforces is keyed by team. The
     // version is the newer of the policy's and the team's assignment, so a
@@ -300,6 +304,7 @@ export async function buildSyncResponse(client, { orgId, sinceVersion, syncInter
       }
       return [{ name: s.name, url: s.url, headers, ...(s.description ? { description: s.description } : {}) }]
     }),
+    organization: { status: org?.status === 'suspended' ? 'suspended' : 'active' },
     month_usage: {
       month: usageMonth,
       teams: usage.map(u => ({ team_id: u.team_id, tokens: num(u.tokens), cost_usd: num(u.cost_usd) })),
