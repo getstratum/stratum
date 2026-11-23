@@ -203,6 +203,7 @@ does not exist, so an organization without a plan works as always.
 | `monthly_tokens` | gateways from 1.0, every team together | 429 `org_quota_exceeded` |
 | `monthly_budget_usd` | gateways from 1.0, with the spend the console reports | 429 `org_budget_exceeded` |
 | `retention_days` (31 or more) | the console's daily maintenance | older requests and task results are deleted |
+| `portal_seats` | the Enterprise portal, from `GET /api/oidc/entitlements` | new people cannot use the portal that month |
 
 The organization's limits come on top of each team's: a request goes only
 if it fits both. Lowering a limit never removes anything; the organization
@@ -218,6 +219,15 @@ spend: this month, every team together) and how long requests are kept.
 Where a limit is reached, the button that would add one more (new person or
 invitation, agent, team, gateway) is disabled and says "Fijado por tu plan".
 An organization without a plan name or limits does not see the page.
+
+A plan can also say which paid functions it includes (`features`: names
+such as `portal`, `agent_guard`, `history_audit`; migration 050). The
+console keeps the names and hands them, with `portal_seats`, to the
+organization's applications at `GET /api/oidc/entitlements` (client id and
+secret); the Enterprise portal and guard turn their functions on by them.
+The installation's signed license stays the ceiling: plans only split it.
+Without `features` (null) an organization has whatever the license
+includes, as before.
 
 ```
 node scripts/stratum-admin.mjs org-limits --org-id <uuid>          # what it has, against each limit

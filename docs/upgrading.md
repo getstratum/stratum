@@ -50,6 +50,10 @@ Back up the database before you upgrade.
   organization with a plan, with each limit against what it has; buttons
   that would go past a limit say "Fijado por tu plan". Nothing changes for
   an organization without one.
+- **Paid functions by plan** (migration 050): a plan can list the paid
+  functions it includes and the portal's seats; the Enterprise portal reads
+  them at `GET /api/oidc/entitlements`. Organizations upgrade without a
+  list, which means "whatever the license includes": nothing changes.
 - **Refusals for a spent budget count as policy refusals** in Consumo and
   in usage reports, like a spent token quota (`budget_exceeded` was missing
   from that list).

@@ -10,6 +10,9 @@
  *     (org_quota_exceeded, org_budget_exceeded).
  *   - retention_days: the daily maintenance deletes older requests
  *     (applyRetention, from instrumentation.js).
+ *   - portal_seats: people who may use the Enterprise portal in a month;
+ *     the portal enforces it (GET /api/oidc/entitlements), the console only
+ *     keeps it.
  *
  * A limit that is not set does not exist: an organization with '{}' (every
  * one until someone sets a plan) works as before.
@@ -43,6 +46,20 @@ export const LIMITS = {
   monthly_tokens:     { label: () => 'tokens por mes' },
   monthly_budget_usd: { label: () => 'US$ por mes', decimal: true },
   retention_days:     { label: n => n === 1 ? 'día de retención' : 'días de retención', min: MIN_RETENTION_DAYS },
+  portal_seats:       { label: n => n === 1 ? 'asiento del portal' : 'asientos del portal' },
+}
+
+// What the organization's plan includes, by name (migration 050): checked
+// for shape only; the Enterprise portal and guard know what each one is.
+export const FEATURE_RE = /^[a-z_]{1,40}$/
+
+/** null (not managed: what the license includes) or a list of names; throws on anything else. */
+export function featuresOf(input) {
+  if (input === null) return null
+  if (!Array.isArray(input) || input.length > 20 || !input.every(f => typeof f === 'string' && FEATURE_RE.test(f))) {
+    throw new Error('features is null or a list of names (a-z and _, up to 20).')
+  }
+  return [...new Set(input)].sort()
 }
 
 /**
@@ -66,8 +83,8 @@ export function mergeLimits(current, changes) {
 }
 
 export async function loadLimits(db, orgId) {
-  const { rows } = await db.query('SELECT limits, plan_name FROM organizations WHERE id = $1', [orgId])
-  return { limits: rows[0]?.limits ?? {}, plan: rows[0]?.plan_name ?? null }
+  const { rows } = await db.query('SELECT limits, plan_name, features FROM organizations WHERE id = $1', [orgId])
+  return { limits: rows[0]?.limits ?? {}, plan: rows[0]?.plan_name ?? null, features: rows[0]?.features ?? null }
 }
 
 /** What the organization has now of each limit it can count. */
@@ -91,7 +108,7 @@ export function planHint(kind, max, plan) {
  * set a plan or a limit for: the console then shows none of this.
  */
 export async function planState(db, orgId) {
-  const { limits, plan } = await loadLimits(db, orgId)
+  const { limits, plan, features } = await loadLimits(db, orgId)
   const counts = await countAll(db, orgId)
   const { rows: [m] } = await db.query(
     `SELECT COALESCE(sum(tokens), 0)::bigint AS tokens, COALESCE(sum(cost_usd), 0)::float8 AS cost_usd
@@ -103,7 +120,7 @@ export async function planState(db, orgId) {
   for (const kind of ['people', 'agents', 'teams', 'gateways']) {
     if (limits[kind] != null && counts[kind] >= limits[kind]) reached[kind] = planHint(kind, limits[kind], plan)
   }
-  return { plan, limits, counts, reached, managed: plan != null || Object.keys(limits).length > 0 }
+  return { plan, limits, features, counts, reached, managed: plan != null || Object.keys(limits).length > 0 || features != null }
 }
 
 export function planLimitError(kind, max, plan) {

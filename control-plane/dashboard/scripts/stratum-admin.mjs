@@ -52,7 +52,11 @@
  * the organization from adding more; lowering one never removes anything.
  * Monthly tokens and budget are for every team together, enforced by
  * gateways from 1.0 within one sync interval. Retention (31 days or more)
- * deletes older requests in the daily maintenance.
+ * deletes older requests in the daily maintenance. --features lists the
+ * paid functions the plan includes (portal, agent_guard, history_audit;
+ * "none" for none, "license" for whatever the installation's license
+ * has), and --portal-seats the portal's people a month: the Enterprise
+ * portal enforces both.
  *
  * org-delete deletes an organization in two steps (ADR-0020): it is
  * suspended at once and kept whole for 30 days, during which org-undelete
@@ -112,6 +116,7 @@ const USAGE = 'usage: stratum-admin create-owner --email <email> [--name <name>]
               '       stratum-admin org-resume --org-id <uuid> --reason <text>\n' +
               '       stratum-admin org-limits --org-id <uuid> [--plan <name>] [--people <n>] [--agents <n>] [--teams <n>]\n' +
               '                                [--gateways <n>] [--monthly-tokens <n>] [--monthly-budget-usd <n>] [--retention-days <n>]\n' +
+              '                                [--portal-seats <n>] [--features <a,b> | none | license]\n' +
               '                                (any of them "none" to remove it)\n' +
               '       stratum-admin org-delete --org-id <uuid> --confirm <its name> --reason <text>\n' +
               '       stratum-admin org-undelete --org-id <uuid> --reason <text>\n' +
@@ -308,6 +313,14 @@ async function orgList(db) {
   }
 }
 
+// --features portal,agent_guard | none (no paid function) | license (not managed).
+function featuresOpt(v) {
+  if (v === undefined) return undefined
+  if (v === 'license') return null
+  if (v === 'none') return []
+  return v.split(',').map(f => f.trim()).filter(Boolean)
+}
+
 // Shows or changes an organization's plan limits (ADR-0020). The option
 // names are the limits' with dashes: --monthly-tokens is monthly_tokens.
 async function orgLimitsCommand(db, opts) {
@@ -318,22 +331,24 @@ async function orgLimitsCommand(db, opts) {
     if (v !== undefined) changes[key] = v === 'none' ? null : v
   }
   for (const k of Object.keys(opts)) {
-    if (k !== 'org-id' && k !== 'plan' && !(k.replaceAll('-', '_') in orgLimits.LIMITS)) throw new Error(USAGE)
+    if (k !== 'org-id' && k !== 'plan' && k !== 'features' && !(k.replaceAll('-', '_') in orgLimits.LIMITS)) throw new Error(USAGE)
   }
   const plan = opts.plan === undefined ? undefined : (opts.plan === 'none' ? null : opts.plan)
+  const features = featuresOpt(opts.features)
 
   let org
-  if (Object.keys(changes).length || plan !== undefined) {
-    const r = await orgAdmin.setPlan(db, { orgId: opts['org-id'], plan, limits: changes, actor: ACTOR })
-    org = { id: r.id, name: r.name, limits: r.limits, plan_name: r.plan }
+  if (Object.keys(changes).length || plan !== undefined || features !== undefined) {
+    const r = await orgAdmin.setPlan(db, { orgId: opts['org-id'], plan, limits: changes, features, actor: ACTOR })
+    org = { id: r.id, name: r.name, limits: r.limits, plan_name: r.plan, features: r.features }
   } else {
     const o = await orgAdmin.getOrg(db, opts['org-id'])
     if (!o) throw new Error(`No organization with id ${opts['org-id']}.`)
-    org = { id: o.id, name: o.name, limits: o.limits, plan_name: o.plan }
+    org = { id: o.id, name: o.name, limits: o.limits, plan_name: o.plan, features: o.features }
   }
 
   const have = await orgLimits.countAll(db, org.id)
   console.log(`${org.name}${org.plan_name ? ` — plan ${org.plan_name}` : ' — no plan name'}`)
+  console.log(`  features            ${org.features ? (org.features.join(', ') || '(none)') : 'what the license includes'}`)
   for (const key of Object.keys(orgLimits.LIMITS)) {
     const max = org.limits[key]
     const now = have[key] !== undefined ? `${have[key]} of ` : ''
@@ -366,9 +381,9 @@ async function orgCreate(db, opts) {
     if (v !== undefined) limits[key] = v
   }
   for (const k of Object.keys(opts)) {
-    if (k !== 'name' && k !== 'plan' && !(k.replaceAll('-', '_') in orgLimits.LIMITS)) throw new Error(USAGE)
+    if (k !== 'name' && k !== 'plan' && k !== 'features' && !(k.replaceAll('-', '_') in orgLimits.LIMITS)) throw new Error(USAGE)
   }
-  const r = await orgAdmin.createOrg(db, { name: opts.name, plan: opts.plan, limits, actor: ACTOR })
+  const r = await orgAdmin.createOrg(db, { name: opts.name, plan: opts.plan, limits, features: featuresOpt(opts.features), actor: ACTOR })
   console.log(`Created ${r.name} (${r.id}). Its first Owner: org-invite --org-id ${r.id} --email ...`)
 }
 

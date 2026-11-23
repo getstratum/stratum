@@ -22,6 +22,14 @@ const ROWS = [
   { key: 'monthly_budget_usd', label: 'Gasto este mes',     fmt: v => formatCost(v), hint: 'Costo estimado, todos los equipos juntos. Al llegar, los gateways rechazan los pedidos hasta el mes siguiente.' },
 ]
 
+// The paid functions a plan may include (Enterprise reads them; the console
+// only shows what the plan says).
+const FEATURES = {
+  portal: 'Portal de chat',
+  agent_guard: 'Guard de agentes',
+  history_audit: 'Auditoría de conversaciones',
+}
+
 function Meter({ have, max }) {
   const pct = max > 0 ? Math.min(100, (have / max) * 100) : 100
   const tone = have >= max ? 'bg-err' : pct >= 80 ? 'bg-warn' : 'bg-ok'
@@ -99,8 +107,30 @@ export default function OrganizationPage() {
                     : 'Los más viejos se borran una vez por día. El consumo por mes se conserva.'}
                 </p>
               </li>
+              {org.limits.portal_seats != null && (
+                <li className="px-5 py-3.5" data-testid="limit-portal_seats">
+                  <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                    <span className="text-sm font-medium text-strong">Asientos del portal</span>
+                    <span className="text-sm text-default">{nf(org.limits.portal_seats)} personas por mes</span>
+                  </div>
+                  <p className="text-xs text-subtle mt-1">Quienes usan el portal en un mes. El portal muestra cuántos van.</p>
+                </li>
+              )}
             </ul>
           </section>
+
+          {org.features && (
+            <section className="bg-card border border-border rounded-[10px] mt-6 px-5 py-4" data-testid="features">
+              <h2 className="text-base font-semibold text-strong mb-2">Funciones incluidas</h2>
+              {org.features.length === 0
+                ? <p className="text-sm text-muted">Tu plan no incluye funciones Enterprise.</p>
+                : (
+                  <ul className="text-sm text-default list-disc pl-5 space-y-0.5">
+                    {org.features.map(f => <li key={f}>{FEATURES[f] ?? f}</li>)}
+                  </ul>
+                )}
+            </section>
+          )}
         </>
       )}
     </div>
