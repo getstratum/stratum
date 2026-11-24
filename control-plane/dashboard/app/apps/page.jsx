@@ -51,6 +51,7 @@ function AppModal({ app, onSave, onClose }) {
   const [requireMfa, setRequireMfa] = useState(app?.require_mfa ?? true)
   const [usageReports, setUsageReports] = useState(app?.usage_reports ?? false)
   const [historyAudit, setHistoryAudit] = useState(app?.history_audit ?? false)
+  const [consoleLink, setConsoleLink] = useState(app?.console_link ?? false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -60,7 +61,7 @@ function AppModal({ app, onSave, onClose }) {
       const res = await fetch(isEdit ? `/api/apps/${app.id}` : '/api/apps', {
         method: isEdit ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, redirectUris: uris.split('\n').map(s => s.trim()).filter(Boolean), requireMfa, usageReports, historyAudit }),
+        body: JSON.stringify({ name, redirectUris: uris.split('\n').map(s => s.trim()).filter(Boolean), requireMfa, usageReports, historyAudit, consoleLink }),
       })
       const data = await res.json()
       if (!res.ok) { setError(data.message ?? 'No se pudo guardar.'); return }
@@ -104,9 +105,20 @@ function AppModal({ app, onSave, onClose }) {
           <span>
             Auditoría de conversaciones
             <span className="block text-xs text-muted mt-0.5">
-              Para una aplicación que guarda conversaciones, como el portal de chat: puede preguntar quién tiene el rol
+              Para una aplicación que guarda conversaciones o las audita: puede preguntar quién tiene el rol
               Auditor/a u Owner, buscar personas de la organización y registrar acá cada pedido, aprobación y lectura del
               historial de alguien. La consola decide quién puede qué; las conversaciones nunca llegan a la consola.
+            </span>
+          </span>
+        </label>
+        <label className="flex items-start gap-2.5 text-sm text-default">
+          <input type="checkbox" className="mt-0.5 h-4 w-4" checked={consoleLink} onChange={e => setConsoleLink(e.target.checked)}
+                 data-testid="app-console-link" />
+          <span>
+            Mostrar en el menú de la consola
+            <span className="block text-xs text-muted mt-0.5">
+              Un enlace a la aplicación (la dirección de su primera dirección de retorno) en el menú de todas las personas
+              que entran a la consola. Para una aplicación que usan quienes administran, no para el chat de todos.
             </span>
           </span>
         </label>
@@ -200,6 +212,7 @@ export default function AppsPage() {
                 {app.require_mfa && <span className="text-xs text-default border border-border rounded px-2 py-0.5">2 pasos</span>}
                 {app.usage_reports && <span className="text-xs text-default border border-border rounded px-2 py-0.5">reportes de consumo</span>}
                 {app.history_audit && <span className="text-xs text-default border border-border rounded px-2 py-0.5">auditoría de conversaciones</span>}
+                {app.console_link && <span className="text-xs text-default border border-border rounded px-2 py-0.5">en el menú</span>}
                 {app.revoked_at && <span className="text-xs text-warn">dada de baja</span>}
               </div>
               <div className="text-xs font-mono text-muted break-all">{app.id}</div>

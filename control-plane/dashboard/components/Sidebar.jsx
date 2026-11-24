@@ -116,6 +116,18 @@ export default function Sidebar() {
               })}
             </div>
           ))}
+          {me?.links?.length > 0 && groups.length > 0 && (
+            // Applications an Owner or Admin put here (Aplicaciones): they open apart.
+            <div className="flex flex-col gap-0.5" data-testid="console-links">
+              <div className="px-2.5 pt-3.5 pb-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-subtle">Aplicaciones</div>
+              {me.links.map(l => (
+                <a key={l.url} href={l.url} target="_blank" rel="noopener noreferrer"
+                   className="block px-2.5 py-2 rounded-md text-sm text-strong hover:bg-card/60 transition-colors">
+                  {l.name} <span aria-hidden="true" className="text-subtle">↗</span>
+                </a>
+              ))}
+            </div>
+          )}
         </nav>
 
         <div className="mt-auto flex flex-col gap-2 px-1.5 pt-4">
