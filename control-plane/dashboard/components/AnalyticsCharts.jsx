@@ -101,7 +101,7 @@ export function ProviderChart({ data }) {
 
       {/* Stats table */}
       <div className="bg-card border border-border rounded-[10px] overflow-x-auto relative lg:col-span-2">
-        <table className="w-full min-w-[640px] text-sm">
+        <table className="stack w-full min-w-[640px] text-sm">
           <thead>
             <tr className="text-xs text-muted uppercase tracking-widest bg-raised border-b border-border">
               <th className="px-5 py-3 text-left font-semibold">Proveedor</th>
@@ -188,7 +188,7 @@ export function ModelChart({ data }) {
       {/* Detail table */}
       <div className="bg-card border border-border rounded-[10px] overflow-x-auto relative">
         <div className="flex items-center justify-between px-5 pt-4 pb-0"><div className="text-xs font-semibold text-muted uppercase tracking-widest">Detalle por modelo</div><ExportBtn onClick={() => { const ts=new Date().toISOString().slice(0,10); downloadCSV(toCSV(data,MODEL_COLUMNS),`stratum-models-${ts}.csv`) }} /></div>
-        <table className="w-full min-w-[640px] text-sm">
+        <table className="stack w-full min-w-[640px] text-sm">
           <thead>
             <tr className="text-xs text-muted uppercase tracking-widest bg-raised border-b border-border">
               <th className="px-5 py-3 text-left font-semibold">Modelo</th>

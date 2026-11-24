@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { usePermissions } from '../../components/usePermissions'
+import { useNarrow } from '../../components/useNarrow'
 import Modal, { Field, Input, Btn } from '../../components/Modal'
 import { allowedBy } from '../../lib/catalog'
 import { ignoresAliases, ignoresModelSwitch, ALIASES_SINCE, MODEL_SWITCH_SINCE } from '../../lib/gateway-version'
@@ -239,6 +240,95 @@ function Models() {
     </button>
   )
 
+  const narrow = useNarrow()
+  // The cells of a model's row: in the table, or in its card on a phone.
+  const nameCell = (m) => (
+    <>
+      <div className="font-medium text-strong">{m.display_name}</div>
+      <div className="font-mono text-xs text-default">{m.model_id}</div>
+      {(m.aliases ?? []).length > 0 && (
+        <div className="text-xs text-muted">también <span className="font-mono">{m.aliases.join(', ')}</span></div>
+      )}
+      <div className="flex flex-wrap gap-1 mt-1">
+        {m.source === 'provider' && <Badge tone="info">Fuera del catálogo</Badge>}
+        {m.deprecated_on && <Badge tone="warn">Se retira el {fmtDate(m.deprecated_on)}</Badge>}
+      </div>
+    </>
+  )
+  const kindCell = (m) => (
+    <>
+      {can('models.manage') ? (
+        <>
+          <label htmlFor={`kind-${m.provider}-${m.model_id}`} className="sr-only">Tipo de {m.display_name}</label>
+          <select id={`kind-${m.provider}-${m.model_id}`} value={m.org_kind ?? ''}
+                  disabled={busy === `${m.provider}/${m.model_id}`}
+                  onChange={e => setKind(m, e.target.value || null)}
+                  title={m.org_kind ? 'Elegido por tu organización' : 'Según el catálogo, lo que dijo el proveedor o su ID'}
+                  className="h-8 px-2 rounded border border-border bg-card text-xs text-strong">
+            <option value="">{`Automático: ${KIND_LABELS[m.auto_kind ?? m.kind]}`}</option>
+            {KINDS.map(k => <option key={k} value={k}>{KIND_LABELS[k]}</option>)}
+          </select>
+        </>
+      ) : (
+        <span>{KIND_LABELS[m.kind] ?? m.kind}</span>
+      )}
+      {m.kind === 'chat' && (
+        <div className="flex flex-col gap-1 mt-1" data-testid="model-capabilities">
+          {CAPABILITIES.map(c => {
+            const own = m[`org_${c}`]
+            const auto = m.auto_capabilities?.[c]
+            return can('models.manage') ? (
+              <label key={c} className="flex items-center gap-1 text-xs text-muted">
+                {CAPABILITY_LABELS[c]}
+                <select value={own === true ? 'yes' : own === false ? 'no' : ''}
+                        aria-label={`${CAPABILITY_LABELS[c]}: ${m.display_name}`}
+                        disabled={busy === `${m.provider}/${m.model_id}`}
+                        onChange={e => setCapability(m, c, e.target.value === '' ? null : e.target.value === 'yes')}
+                        title={own === null || own === undefined ? 'Según el catálogo, lo que dijo el proveedor o su ID' : 'Elegido por tu organización'}
+                        className="h-7 px-1 rounded border border-border bg-card text-xs text-strong">
+                  <option value="">{`Automático: ${auto ? 'sí' : 'no'}`}</option>
+                  <option value="yes">Sí</option>
+                  <option value="no">No</option>
+                </select>
+              </label>
+            ) : m.capabilities?.[c] ? <Badge key={c} tone="info">{CAPABILITY_LABELS[c]}</Badge> : null
+          })}
+        </div>
+      )}
+    </>
+  )
+  const allowedCell = (m, allowing) => (
+    <>
+      {m.enabled === false
+        ? <span className="text-muted">Nadie: está apagado</span>
+        : allowing.length === 0
+          ? <span className="text-muted">Ninguna política</span>
+          : allowing.length === 1 ? allowing[0].name : `${allowing.length} políticas`}
+    </>
+  )
+  const orgCell = (m) => (
+    <>
+      {can('models.manage') ? (
+        <div className="flex flex-wrap items-center gap-1">
+          <button
+            type="button" role="switch" aria-checked={m.enabled !== false}
+            aria-label={`${m.display_name} en tu organización`}
+            onClick={() => toggle(m)} disabled={busy === `${m.provider}/${m.model_id}`}
+            className={`text-xs font-semibold px-2 py-1 rounded ${m.enabled !== false ? 'text-ok hover:bg-raised' : 'text-subtle hover:bg-raised'}`}
+          >
+            {m.enabled !== false ? '● Encendido' : '○ Apagado'}
+          </button>
+          <button type="button" onClick={() => setPricing(m)} className="text-xs text-accent hover:text-accent-hover px-2 py-1 rounded hover:bg-raised">
+            Precio
+          </button>
+        </div>
+      ) : (
+        <span className={`text-xs font-semibold ${m.enabled !== false ? 'text-ok' : 'text-subtle'}`}>
+          {m.enabled !== false ? '● Encendido' : '○ Apagado'}
+        </span>
+      )}
+    </>
+  )
   return (
     <div className="px-4 py-6 md:px-10 md:py-8 max-w-screen-xl space-y-5">
       <header className="space-y-1 max-w-3xl">
@@ -348,6 +438,29 @@ function Models() {
           <p className="p-6 text-sm text-muted">Cargando…</p>
         ) : rows.length === 0 ? (
           <p className="p-6 text-sm text-muted">Ningún modelo coincide.</p>
+        ) : narrow ? (
+          <ul className="divide-y divide-border text-sm">
+            {rows.map(m => {
+              const allowing = policies.filter(p => allowedBy(p, m))
+              return (
+                <li key={`${m.provider}/${m.model_id}`} className="px-4 py-3.5 flex flex-col gap-2">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 break-words">{nameCell(m)}</div>
+                    <span className="text-xs text-muted shrink-0">{m.provider}</span>
+                  </div>
+                  <div>{kindCell(m)}</div>
+                  <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+                    <div><dt className="text-muted">Entrada US$/M</dt><dd className="tabular"><Price list={m.cost_per_1k_input_tokens} own={m.org_cost_per_1k_input_tokens} /></dd></div>
+                    <div><dt className="text-muted">Salida US$/M</dt><dd className="tabular"><Price list={m.cost_per_1k_output_tokens} own={m.org_cost_per_1k_output_tokens} /></dd></div>
+                    <div><dt className="text-muted">CO2e / 1k tok.</dt><dd className="tabular"><Intensity impact={m.impact_per_1k} /></dd></div>
+                    <div><dt className="text-muted">Estado</dt><dd>{status(m)}</dd></div>
+                    <div className="col-span-2"><dt className="text-muted">Permitido en</dt><dd>{allowedCell(m, allowing)}</dd></div>
+                  </dl>
+                  <div>{orgCell(m)}</div>
+                </li>
+              )
+            })}
+          </ul>
         ) : (
           <table className="w-full min-w-[1180px] text-sm tabular">
             <thead>
@@ -370,90 +483,15 @@ function Models() {
                 const allowing = policies.filter(p => allowedBy(p, m))
                 return (
                   <tr key={`${m.provider}/${m.model_id}`} className="border-b border-border last:border-0 align-top">
-                    <td className="px-5 py-3">
-                      <div className="font-medium text-strong">{m.display_name}</div>
-                      <div className="font-mono text-xs text-default">{m.model_id}</div>
-                      {(m.aliases ?? []).length > 0 && (
-                        <div className="text-xs text-muted">también <span className="font-mono">{m.aliases.join(', ')}</span></div>
-                      )}
-                      <div className="flex flex-wrap gap-1 mt-1">
-                        {m.source === 'provider' && <Badge tone="info">Fuera del catálogo</Badge>}
-                        {m.deprecated_on && <Badge tone="warn">Se retira el {fmtDate(m.deprecated_on)}</Badge>}
-                      </div>
-                    </td>
+                    <td className="px-5 py-3">{nameCell(m)}</td>
                     <td className="px-3 py-3">{m.provider}</td>
-                    <td className="px-3 py-3 whitespace-nowrap">
-                      {can('models.manage') ? (
-                        <>
-                          <label htmlFor={`kind-${m.provider}-${m.model_id}`} className="sr-only">Tipo de {m.display_name}</label>
-                          <select id={`kind-${m.provider}-${m.model_id}`} value={m.org_kind ?? ''}
-                                  disabled={busy === `${m.provider}/${m.model_id}`}
-                                  onChange={e => setKind(m, e.target.value || null)}
-                                  title={m.org_kind ? 'Elegido por tu organización' : 'Según el catálogo, lo que dijo el proveedor o su ID'}
-                                  className="h-8 px-2 rounded border border-border bg-card text-xs text-strong">
-                            <option value="">{`Automático: ${KIND_LABELS[m.auto_kind ?? m.kind]}`}</option>
-                            {KINDS.map(k => <option key={k} value={k}>{KIND_LABELS[k]}</option>)}
-                          </select>
-                        </>
-                      ) : (
-                        <span>{KIND_LABELS[m.kind] ?? m.kind}</span>
-                      )}
-                      {m.kind === 'chat' && (
-                        <div className="flex flex-col gap-1 mt-1" data-testid="model-capabilities">
-                          {CAPABILITIES.map(c => {
-                            const own = m[`org_${c}`]
-                            const auto = m.auto_capabilities?.[c]
-                            return can('models.manage') ? (
-                              <label key={c} className="flex items-center gap-1 text-xs text-muted">
-                                {CAPABILITY_LABELS[c]}
-                                <select value={own === true ? 'yes' : own === false ? 'no' : ''}
-                                        aria-label={`${CAPABILITY_LABELS[c]}: ${m.display_name}`}
-                                        disabled={busy === `${m.provider}/${m.model_id}`}
-                                        onChange={e => setCapability(m, c, e.target.value === '' ? null : e.target.value === 'yes')}
-                                        title={own === null || own === undefined ? 'Según el catálogo, lo que dijo el proveedor o su ID' : 'Elegido por tu organización'}
-                                        className="h-7 px-1 rounded border border-border bg-card text-xs text-strong">
-                                  <option value="">{`Automático: ${auto ? 'sí' : 'no'}`}</option>
-                                  <option value="yes">Sí</option>
-                                  <option value="no">No</option>
-                                </select>
-                              </label>
-                            ) : m.capabilities?.[c] ? <Badge key={c} tone="info">{CAPABILITY_LABELS[c]}</Badge> : null
-                          })}
-                        </div>
-                      )}
-                    </td>
+                    <td className="px-3 py-3 whitespace-nowrap">{kindCell(m)}</td>
                     <td className="px-3 py-3 text-right"><Price list={m.cost_per_1k_input_tokens} own={m.org_cost_per_1k_input_tokens} /></td>
                     <td className="px-3 py-3 text-right"><Price list={m.cost_per_1k_output_tokens} own={m.org_cost_per_1k_output_tokens} /></td>
                     <td className="px-3 py-3 text-right tabular whitespace-nowrap"><Intensity impact={m.impact_per_1k} /></td>
                     <td className="px-3 py-3">{status(m)}</td>
-                    <td className="px-3 py-3" title={allowing.map(p => p.name).join(', ') || undefined}>
-                      {m.enabled === false
-                        ? <span className="text-muted">Nadie: está apagado</span>
-                        : allowing.length === 0
-                          ? <span className="text-muted">Ninguna política</span>
-                          : allowing.length === 1 ? allowing[0].name : `${allowing.length} políticas`}
-                    </td>
-                    <td className="px-5 py-3">
-                      {can('models.manage') ? (
-                        <div className="flex flex-wrap items-center gap-1">
-                          <button
-                            type="button" role="switch" aria-checked={m.enabled !== false}
-                            aria-label={`${m.display_name} en tu organización`}
-                            onClick={() => toggle(m)} disabled={busy === `${m.provider}/${m.model_id}`}
-                            className={`text-xs font-semibold px-2 py-1 rounded ${m.enabled !== false ? 'text-ok hover:bg-raised' : 'text-subtle hover:bg-raised'}`}
-                          >
-                            {m.enabled !== false ? '● Encendido' : '○ Apagado'}
-                          </button>
-                          <button type="button" onClick={() => setPricing(m)} className="text-xs text-accent hover:text-accent-hover px-2 py-1 rounded hover:bg-raised">
-                            Precio
-                          </button>
-                        </div>
-                      ) : (
-                        <span className={`text-xs font-semibold ${m.enabled !== false ? 'text-ok' : 'text-subtle'}`}>
-                          {m.enabled !== false ? '● Encendido' : '○ Apagado'}
-                        </span>
-                      )}
-                    </td>
+                    <td className="px-3 py-3" title={allowing.map(p => p.name).join(', ') || undefined}>{allowedCell(m, allowing)}</td>
+                    <td className="px-5 py-3">{orgCell(m)}</td>
                   </tr>
                 )
               })}

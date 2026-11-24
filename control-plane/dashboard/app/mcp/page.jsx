@@ -168,7 +168,7 @@ export default function McpPage() {
         ) : servers.length === 0 ? (
           <p className="p-6 text-sm text-muted">Todavía no hay servidores MCP.</p>
         ) : (
-          <table className="w-full min-w-[860px] text-sm">
+          <table className="stack w-full min-w-[860px] text-sm">
             <thead>
               <tr className="text-left text-xs uppercase tracking-wide text-muted border-b border-border">
                 <th className="px-5 py-3 font-semibold">Servidor</th>

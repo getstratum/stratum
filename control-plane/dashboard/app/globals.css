@@ -41,3 +41,30 @@ a:not([class]):hover { color: #16307f; }
   font-size: 12px !important;
   color: #2b313c !important;
 }
+
+/*
+ * Tables on a phone (class "stack", components/StackTables.jsx): each row
+ * becomes a block, each cell a line with its column's name before it. The
+ * same DOM as on a wide screen, so nothing is rendered twice.
+ */
+@media (max-width: 767.98px) {
+  table.stack { min-width: 0 !important; }
+  table.stack thead { display: none; }
+  table.stack, table.stack tbody, table.stack tr, table.stack td { display: block; width: 100%; }
+  table.stack tr { padding: 0.75rem 1rem; }
+  table.stack td {
+    display: flex; flex-wrap: wrap; align-items: baseline; justify-content: flex-end; gap: 0.25rem 0.5rem;
+    padding: 0.2rem 0 !important; text-align: right !important; white-space: normal !important;
+    max-width: none !important; overflow-wrap: anywhere;
+  }
+  table.stack td[data-label]::before {
+    content: attr(data-label); flex-shrink: 0; text-align: left; margin-right: auto; padding-right: 0.75rem;
+    font-size: 12px; color: #5b6472;
+  }
+  /* The first cell names the row: on its own line, as a title. */
+  table.stack td:first-child { display: block; text-align: left !important; padding-bottom: 0.35rem !important; }
+  table.stack td:first-child::before { content: none; }
+  table.stack td:empty { display: none; }
+  /* A cell that spans the row (an opened detail) keeps its own layout. */
+  table.stack td[colspan] { display: block; text-align: left !important; }
+}
