@@ -6,7 +6,7 @@
 # Base images are pinned by tag and digest (scripts/pin-images.sh);
 # Dependabot proposes new digests and versions.
 
-FROM --platform=$BUILDPLATFORM golang:1.26-alpine@sha256:30b1e546a9c7fa3b747c2bdba3a0c7bdf3a02ebb4c5b8405d2f948d7e8aac4ec AS build
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine@sha256:ecb67f987aa1a57794c91d19ade7ae0209f2f0f5496aaef9e6ae85ddf92d02ab AS build
 WORKDIR /src
 COPY go.mod ./
 # The image's Go must be at least go.mod's toolchain, the patch release with
