@@ -26,6 +26,12 @@ factor (on by default). The answer shows the `client_id` and the
 secreto** replaces it at once; **Dar de baja** stops new sign-ins and voids
 codes not yet redeemed.
 
+**Mostrar en el menú de la consola** puts a link to the application (the
+origin of its first redirect URI) in the menu of everyone who enters the
+console, under Aplicaciones; it opens apart. For an application the people
+who administer use, such as a governance tool, not the chat everyone uses.
+The console knows only its name and address (migration 051).
+
 ## What applications get
 
 | | |

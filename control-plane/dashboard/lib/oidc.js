@@ -99,7 +99,7 @@ export function redirectUriProblem(value) {
 }
 
 // What the console shows of an application (never the secret's hash).
-export const CLIENT_COLUMNS = `c.id, c.name, c.redirect_uris, c.require_mfa, c.usage_reports, c.history_audit, c.created_at, c.revoked_at`
+export const CLIENT_COLUMNS = `c.id, c.name, c.redirect_uris, c.require_mfa, c.usage_reports, c.history_audit, c.console_link, c.created_at, c.revoked_at`
 
 export function parseRedirectUris(value) {
   if (!Array.isArray(value) || value.length === 0 || value.length > 10) {
@@ -111,6 +111,16 @@ export function parseRedirectUris(value) {
     if (problem) throw badRequest(problem)
   }
   return uris
+}
+
+/** Where an application lives, for the console's menu: the origin of its redirect URI. */
+export function appHome(uri) {
+  try {
+    const u = new URL(uri)
+    return ['https:', 'http:'].includes(u.protocol) ? u.origin : null
+  } catch {
+    return null
+  }
 }
 
 export function parseAppName(value) {

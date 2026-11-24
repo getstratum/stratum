@@ -1,5 +1,5 @@
 /**
- * PATCH  /api/apps/:id  { name?, redirectUris?, requireMfa?, usageReports?, historyAudit? }
+ * PATCH  /api/apps/:id  { name?, redirectUris?, requireMfa?, usageReports?, historyAudit?, consoleLink? }
  * POST   /api/apps/:id  { action: 'rotate-secret' } → the new secret, this once
  * DELETE /api/apps/:id  → revoked: no new sign-ins, codes or tokens
  */
@@ -37,6 +37,10 @@ export const PATCH = route('apps.manage', async (req, { session, db, params }) =
   if (body.historyAudit !== undefined) {
     if (typeof body.historyAudit !== 'boolean') throw badRequest('historyAudit tiene que ser true o false.')
     set('history_audit', body.historyAudit)
+  }
+  if (body.consoleLink !== undefined) {
+    if (typeof body.consoleLink !== 'boolean') throw badRequest('consoleLink tiene que ser true o false.')
+    set('console_link', body.consoleLink)
   }
   if (!sets.length) throw badRequest('Nada para actualizar.')
   const { rows: [updated] } = await db.query(

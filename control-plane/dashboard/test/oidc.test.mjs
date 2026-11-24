@@ -19,7 +19,7 @@ const pg = (await import('pg')).default
 const { hashPassword } = await import('../lib/password.js')
 const { closeDb } = await import('../lib/db.js')
 const totp = await import('../lib/totp.js')
-const { redirectUriProblem, resetKeyCache } = await import('../lib/oidc.js')
+const { redirectUriProblem, resetKeyCache, appHome } = await import('../lib/oidc.js')
 
 const url = process.env.DATABASE_URL
 const skip = url ? false : 'DATABASE_URL not set'
@@ -148,6 +148,22 @@ test('oidc: only an Owner or Admin registers applications; the secret is shown o
   assert.equal(list.body.issuer, ISS)
   assert.ok(!JSON.stringify(list.body).includes(r.body.clientSecret))
   assert.ok(!JSON.stringify(list.body).includes('secret_hash'))
+})
+
+test('oidc: an application in the console\'s menu, for everyone who enters the console', { skip }, async () => {
+  assert.equal(appHome('https://gov.acme.com/api/auth/callback'), 'https://gov.acme.com')
+  assert.equal(appHome('http://localhost:3300/cb'), 'http://localhost:3300')
+  assert.equal(appHome('nope'), null)
+  const app = await register({ name: 'Gobierno', redirectUris: ['https://gov.acme.com/api/auth/callback'] })
+  const linked = async (cookie) => (await call('session', 'GET', { cookie })).body.links ?? []
+  assert.equal((await linked(O.manager)).some(l => l.name === 'Gobierno'), false, 'off by default')
+  const patched = await call('apps/[id]', 'PATCH', { cookie: O.owner, params: { id: app.id }, body: { consoleLink: true } })
+  assert.equal(patched.status, 200)
+  assert.equal(patched.body.console_link, true)
+  assert.equal((await call('apps/[id]', 'PATCH', { cookie: O.owner, params: { id: app.id }, body: { consoleLink: 'yes' } })).status, 400)
+  assert.deepEqual((await linked(O.manager)).find(l => l.name === 'Gobierno'), { name: 'Gobierno', url: 'https://gov.acme.com' })
+  await call('apps/[id]', 'DELETE', { cookie: O.owner, params: { id: app.id } })
+  assert.equal((await linked(O.owner)).some(l => l.name === 'Gobierno'), false, 'a revoked one leaves the menu')
 })
 
 test('oidc: discovery and keys', { skip }, async () => {

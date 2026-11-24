@@ -3,7 +3,7 @@
  * lib/oidc.js).
  *
  * GET  /api/apps → the organization's applications, and the issuer
- * POST /api/apps  { name, redirectUris: [...], requireMfa?, usageReports?, historyAudit? } → a new one;
+ * POST /api/apps  { name, redirectUris: [...], requireMfa?, usageReports?, historyAudit?, consoleLink? } → a new one;
  *      its client secret is in the answer, this once
  */
 export const dynamic = 'force-dynamic'
@@ -26,13 +26,14 @@ export const POST = route('apps.manage', async (req, { session, db }) => {
   if (body.requireMfa !== undefined && typeof body.requireMfa !== 'boolean') throw badRequest('requireMfa tiene que ser true o false.')
   if (body.usageReports !== undefined && typeof body.usageReports !== 'boolean') throw badRequest('usageReports tiene que ser true o false.')
   if (body.historyAudit !== undefined && typeof body.historyAudit !== 'boolean') throw badRequest('historyAudit tiene que ser true o false.')
+  if (body.consoleLink !== undefined && typeof body.consoleLink !== 'boolean') throw badRequest('consoleLink tiene que ser true o false.')
   const id = newClientId()
   const secret = newClientSecret()
   const { rows: [app] } = await db.query(
-    `INSERT INTO oidc_clients (id, org_id, name, secret_hash, redirect_uris, require_mfa, usage_reports, history_audit)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING ${COLUMNS.replaceAll('c.', '')}`,
-    [id, session.orgId, name, secret.hash, uris, body.requireMfa ?? true, body.usageReports ?? false, body.historyAudit ?? false])
+    `INSERT INTO oidc_clients (id, org_id, name, secret_hash, redirect_uris, require_mfa, usage_reports, history_audit, console_link)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING ${COLUMNS.replaceAll('c.', '')}`,
+    [id, session.orgId, name, secret.hash, uris, body.requireMfa ?? true, body.usageReports ?? false, body.historyAudit ?? false, body.consoleLink ?? false])
   await audit(db, { req, session, action: 'app.create', targetType: 'oidc_client', targetId: id,
-    details: { name, redirectUris: uris, requireMfa: app.require_mfa, usageReports: app.usage_reports, historyAudit: app.history_audit } })
+    details: { name, redirectUris: uris, requireMfa: app.require_mfa, usageReports: app.usage_reports, historyAudit: app.history_audit, consoleLink: app.console_link } })
   return json({ app, clientSecret: secret.raw }, 201)
 })

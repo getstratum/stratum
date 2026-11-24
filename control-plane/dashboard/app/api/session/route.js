@@ -11,6 +11,7 @@ import { mfaRequired, startChallenge, status as mfaStatus } from '../../../lib/m
 import { reserveAttempt, recordFailure, recordSuccess, INVALID } from '../../../lib/login.js'
 import { passwordRefused } from '../../../lib/sso.js'
 import { planState } from '../../../lib/org-limits.js'
+import { appHome } from '../../../lib/oidc.js'
 
 // POST /api/session  { email, password }  → sign in
 //
@@ -93,7 +94,7 @@ export const POST = publicRoute(async (req) => {
   return res
 })
 
-// GET /api/session → who is signed in, and what they may do
+// GET /api/session → who is signed in, and what they may do, and the applications in the menu
 export const GET = route('org.read', async (req, { session, db }) => {
   const permissions = {}
   if (!session.enrollmentOnly) {
@@ -105,10 +106,15 @@ export const GET = route('org.read', async (req, { session, db }) => {
   const mfa = await mfaStatus(db, session.userId)
   // The plan, so pages can show what it fixes before anyone tries (ADR-0020).
   const plan = await planState(db, session.orgId)
+  // Applications an Owner or Admin put in the menu (Aplicaciones): a name and an address.
+  const { rows: apps } = session.enrollmentOnly ? { rows: [] } : await db.query(
+    `SELECT name, redirect_uris[1] AS uri FROM oidc_clients
+      WHERE org_id = $1 AND console_link AND revoked_at IS NULL ORDER BY name LIMIT 10`, [session.orgId])
   return json({
     user: { id: session.userId, email: session.email, name: session.name, role: session.role, teamId: session.teamId },
     org:  { id: session.orgId, name: session.orgName, plan: plan.plan, managed: plan.managed, reached: plan.reached },
     permissions,
+    links: apps.map(a => ({ name: a.name, url: appHome(a.uri) })).filter(l => l.url),
     mfa: { enabled: mfa.enabled, required: mfaRequired(session.role), enrollmentRequired: !!session.enrollmentOnly },
   })
 }, { duringEnrollment: true })
