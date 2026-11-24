@@ -4,7 +4,7 @@
 # Job; each file is applied once, under an advisory lock (see migrate.sh).
 #
 #   docker run --rm -e DATABASE_URL=postgresql://... ghcr.io/getstratum/stratum-migrations
-FROM postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
+FROM postgres:16-alpine@sha256:f2f98726820d0342055351c6e9d36e705f5bfffb3dd53ff556325114b08afb6d
 # Plain COPY: with --chmod, BuildKit gave the directory it created the
 # files' mode too (0444, no search bit), and uid 70 could not open them.
 COPY *.sql migrate.sh /migrations/
