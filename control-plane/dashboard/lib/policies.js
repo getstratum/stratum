@@ -6,6 +6,7 @@ import { badRequest } from './route.js'
 import { describe } from './providers.js'
 import { defaultModelField } from './default-model.js'
 import { mcpToolsField } from './mcp.js'
+import { CONTENT_ACTIONS } from './sensitive.js'
 
 function optionalNumber(v, label, { integer = false } = {}) {
   if (v === undefined || v === null) return undefined
@@ -15,6 +16,19 @@ function optionalNumber(v, label, { integer = false } = {}) {
 }
 
 export const PEOPLE_INSTRUCTIONS_MAX = 2000
+
+/**
+ * What the gateway does with sensitive data in a request before it reaches
+ * the provider (migration 013): pii_action for personal data (emails,
+ * phones, cards, ID numbers, IP addresses), dlp_action for credentials
+ * (API keys and tokens). off: nothing; log: the request goes, and Requests
+ * says what it carried; redact: each one is replaced by [REDACTED:TYPE];
+ * block: refused, 403 sensitive_data_detected.
+ */
+function contentAction(v, label) {
+  if (!CONTENT_ACTIONS.includes(v)) throw badRequest(`${label}: off, log, redact o block.`)
+  return v
+}
 
 /** The editable fields present in `body`, validated. Absent fields are undefined. */
 export function policyFields(body) {
@@ -75,6 +89,8 @@ export function policyFields(body) {
   // Whether the policy can use it is checked against the organization
   // (lib/default-model.js) where the policy is saved.
   if (body.defaultModel !== undefined) out.defaultModel = defaultModelField(body.defaultModel)
+  if (body.piiAction !== undefined) out.piiAction = contentAction(body.piiAction, 'Datos personales')
+  if (body.dlpAction !== undefined) out.dlpAction = contentAction(body.dlpAction, 'Credenciales')
   // MCP tools its teams may call, "server/*" or "server/tool" (ADR-0016).
   if (body.mcpTools !== undefined) out.mcpTools = mcpToolsField(body.mcpTools)
   out.monthlyTokenQuota   = optionalNumber(body.monthlyTokenQuota, 'Cuota mensual de tokens', { integer: true })

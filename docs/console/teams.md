@@ -27,6 +27,7 @@ may use, and how many tokens per month.
 | Monthly budget (US$) | Policy, or the team's own | when the policy says so (*Cortar los pedidos al llegar al presupuesto*): past 100 % the team's requests are refused until the next month (`budget_exceeded`, 429). Otherwise a reference the console compares spending against |
 | Max tokens per request | Policy | yes: a request that asks for more output tokens is lowered to the limit, and one that asks for none gets it (`X-Stratum-Max-Tokens` in the response says so). Empty: no limit |
 | Instructions for people | Policy | yes, on the requests an application makes for a person (`X-Stratum-User`): they go first in the system instruction (`X-Stratum-Instructions` in the response names them). Never on an agent's or a key's own requests. Up to 2,000 characters; empty: none |
+| Sensitive data (*Datos sensibles*) | Policy | yes, on every request's body before it reaches the provider: personal data (emails, phones, cards, ID numbers, SSN, IP addresses) and credentials (API keys, tokens), each with its own action |
 
 **Instructions for people** are for the organization's own words to the
 model, for example *if context is missing, ask before answering*: they shape
@@ -35,6 +36,16 @@ not hidden. The gateway returns them to the application
 (`GET /v1/stratum/instructions`), so a chat portal can show them, and every
 change is a new version of the policy, in the audit log. They cost input
 tokens on every request they go into; keep them short.
+
+**Sensitive data.** Each policy says what its gateways do with personal
+data (`pii_action`) and with credentials (`dlp_action`): *No revisar*
+(`off`), *Solo registrar* (`log`: the request goes, and Requests says what
+it carried), *Ocultar antes de enviar* (`redact`: each one is replaced by
+`[REDACTED:TYPE]`) or *Bloquear el pedido* (`block`: refused, 403
+`sensitive_data_detected`). Requests, and its CSV (*Sensitive data*), name
+the kinds found, never the data. Detection is by pattern: it catches the
+usual shapes, not everything sensitive, and a request's attachments (an
+audio, an image) are not read.
 
 A team's own budget, when set, takes the place of its policy's. When the
 policy cuts at the budget, a team manager may lower the team's budget but

@@ -524,6 +524,53 @@ test('policies: a default model, which gateways mark and send model-less request
   expect((await api('DELETE', `/api/model-aliases/${route}`)).status).toBe(200)
 })
 
+test('policies: personal data and credentials, blocked or hidden by the gateway, and Requests says what it found', async () => {
+  test.skip(!GATEWAY, 'no STRATUM_E2E_GATEWAY_URL')
+  const team = ((await api('GET', '/api/teams')).body ?? []).find((t) => t.name === TEAM)
+  const name = `${RUN}-pii`
+  created.agentNames.push(name)
+  const key = (await api('POST', '/api/agents', { name, teamId: team.id })).body.apiKey
+  const ask = async (content) => {
+    const res = await fetch(`${GATEWAY}/v1/chat/completions`, {
+      method: 'POST', headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ model: MODEL, max_tokens: 8, messages: [{ role: 'user', content }] }),
+      signal: AbortSignal.timeout(30_000),
+    })
+    const body = await res.json().catch(() => ({}))
+    return res.status === 403 ? body.error?.code ?? body.code ?? 403 : res.status
+  }
+  try {
+    // In the policy dialog: block personal data, hide credentials.
+    await page.goto('/policy')
+    const card = page.locator('div.bg-card').filter({ has: page.getByText(team.policy_name, { exact: true }) }).first()
+    await card.getByRole('button', { name: 'Editar' }).click()
+    const d = dialog('Editar política')
+    await d.getByLabel('Datos personales').selectOption('block')
+    await d.getByLabel('Credenciales').selectOption('redact')
+    await d.getByRole('button', { name: 'Guardar cambios' }).click()
+    await expect(card.getByTestId('policy-sensitive-summary')).toContainText('Personales: Bloquear el pedido')
+    await expect(card.getByTestId('policy-sensitive-summary')).toContainText('Credenciales: Ocultar antes de enviar')
+
+    // The gateway refuses a request with an email once it syncs; one without goes.
+    await eventually(() => ask(`Escribile a ${RUN}@example.com`), 'sensitive_data_detected', SYNC_MS, 'a request with an email, blocked')
+    expect(await ask('Hola')).toBe(200)
+
+    // Hidden instead: it goes, and Requests says it carried an email.
+    expect((await api('PATCH', `/api/policies/${team.policy_id}`, { piiAction: 'redact' })).status).toBe(200)
+    await eventually(() => ask(`Mi mail es ${RUN}-b@example.com`), 200, SYNC_MS, 'a request with an email, redacted')
+    await eventually(async () => {
+      const rows = (await api('GET', '/api/logs?limit=20')).body ?? []
+      return rows.some((r) => r.agent_name === name && r.status_code === 200 && (r.pii_types ?? []).includes('email'))
+    }, true, SYNC_MS, 'the request logged with what it carried')
+    await page.goto('/logs')
+    const row = page.getByRole('row').filter({ hasText: name }).filter({ hasText: '200' }).first()
+    await row.click()
+    await expect(page.getByTestId('request-sensitive').first()).toContainText('email')
+  } finally {
+    expect((await api('PATCH', `/api/policies/${team.policy_id}`, { piiAction: 'off', dlpAction: 'off' })).status).toBe(200)
+  }
+})
+
 test('mcp: a server kept in the console, its tools as the policy allows, through the gateway (ADR-0016)', async () => {
   test.skip(!GATEWAY, 'no STRATUM_E2E_GATEWAY_URL')
   const MOCK = env('STRATUM_E2E_MOCK_URL', 'http://127.0.0.1:8080')
