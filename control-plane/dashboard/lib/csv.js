@@ -55,6 +55,8 @@ export const LOG_COLUMNS = [
   { key: 'images',       label: 'Images' },
   { key: 'audio_seconds', label: 'Audio seconds' },
   { key: 'labels',       label: 'Labels',        format: v => (Array.isArray(v) ? v.join(';') : '') },
+  // What the policy's PII and DLP found in the request (logged, redacted or blocked).
+  { key: 'pii_types',    label: 'Sensitive data', format: v => (Array.isArray(v) ? v.join(';') : '') },
 ]
 
 export const PROVIDER_COLUMNS = [

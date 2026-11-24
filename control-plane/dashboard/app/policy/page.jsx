@@ -6,6 +6,7 @@ import { formatCost, formatCostCompact, formatTokens, nf } from '../../lib/forma
 import { namesOf, allowedBy } from '../../lib/catalog'
 import { KINDS, KIND_LABELS } from '../../lib/model-kind'
 import { usePermissions } from '../../components/usePermissions'
+import { CONTENT_ACTIONS, ACTION_LABELS } from '../../lib/sensitive'
 
 // The same limit as lib/policies.js (not imported: that module is the server's).
 const PEOPLE_INSTRUCTIONS_MAX = 2000
@@ -57,6 +58,8 @@ function PolicyModal({ policy, allModels, aliases, mcpServers, configured, onSav
     peopleInstructions:  policy?.people_instructions     ?? '',
     defaultModel:        policy?.default_model           ?? '',
     mcpTools:            policy?.mcp_tools               ?? [],
+    piiAction:           policy?.pii_action              ?? 'off',
+    dlpAction:           policy?.dlp_action              ?? 'off',
   })
   const [saving, setSaving] = useState(false)
   const [error,  setError]  = useState('')
@@ -328,6 +331,27 @@ function PolicyModal({ policy, allModels, aliases, mcpServers, configured, onSav
           </span>
         </label>
 
+        <fieldset className="space-y-3" data-testid="policy-sensitive">
+          <legend className="block text-xs font-semibold text-muted uppercase tracking-wide">Datos sensibles</legend>
+          <p className="text-xs text-subtle">
+            El gateway revisa cada pedido antes de mandarlo al proveedor. Ocultar los cambia por [REDACTED:TIPO];
+            bloquear lo rechaza (403 <span className="font-mono">sensitive_data_detected</span>). En los dos casos y al registrar,
+            Requests dice qué encontró, nunca el dato.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Field label="Datos personales" hint="Emails, teléfonos, tarjetas, cédulas, SSN y direcciones IP.">
+              <Select value={form.piiAction} onChange={e => set('piiAction', e.target.value)}>
+                {CONTENT_ACTIONS.map(a => <option key={a} value={a}>{ACTION_LABELS[a]}</option>)}
+              </Select>
+            </Field>
+            <Field label="Credenciales" hint="Claves de API y tokens: lo que no tiene que salir de la red.">
+              <Select value={form.dlpAction} onChange={e => set('dlpAction', e.target.value)}>
+                {CONTENT_ACTIONS.map(a => <option key={a} value={a}>{ACTION_LABELS[a]}</option>)}
+              </Select>
+            </Field>
+          </div>
+        </fieldset>
+
         <Field label="Instrucciones para personas"
                hint={`El gateway se las da al modelo primero, solo en los pedidos que una aplicación hace por una persona (como el portal de chat); nunca a agentes ni a claves propias. La aplicación puede mostrarlas. Cuentan como tokens de entrada en cada pedido. Hasta ${PEOPLE_INSTRUCTIONS_MAX} caracteres; gateways 0.3 o posterior.`}>
           <textarea
@@ -529,6 +553,13 @@ export default function PolicyPage() {
                   )}
                 </div>
                 <DefaultModel policy={policy} />
+                <div data-testid="policy-sensitive-summary">
+                  <div className="text-xs text-muted mb-2">Datos sensibles</div>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+                    <span><span className="text-muted">Personales:</span> <span className={(policy.pii_action ?? 'off') === 'off' ? 'text-muted' : 'text-strong'}>{ACTION_LABELS[policy.pii_action ?? 'off']}</span></span>
+                    <span><span className="text-muted">Credenciales:</span> <span className={(policy.dlp_action ?? 'off') === 'off' ? 'text-muted' : 'text-strong'}>{ACTION_LABELS[policy.dlp_action ?? 'off']}</span></span>
+                  </div>
+                </div>
                 {(policy.mcp_tools ?? []).length > 0 && (
                   <div>
                     <div className="text-xs text-muted mb-2">Herramientas MCP</div>

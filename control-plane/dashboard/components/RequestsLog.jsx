@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { formatCost, formatDateTime, formatMs, nf } from '../lib/format'
 import { useNarrow } from './useNarrow'
+import { typeLabel } from '../lib/sensitive'
 
 function StatusBadge({ code }) {
   if (!code) return <span className="text-subtle text-xs">—</span>
@@ -47,7 +48,8 @@ const NOTED_LABELS = {
 function RequestFacts({ log }) {
   const labels = Array.isArray(log.labels) ? log.labels : []
   const secs = log.audio_seconds != null ? Math.round(parseFloat(log.audio_seconds)) : 0
-  if (!log.error_message && !labels.length && !log.images && !secs) return null
+  const sensitive = Array.isArray(log.pii_types) ? log.pii_types : []
+  if (!log.error_message && !labels.length && !log.images && !secs && !sensitive.length) return null
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs mb-3" data-testid="request-facts">
       {log.error_message && (
@@ -58,6 +60,13 @@ function RequestFacts({ log }) {
       {log.images > 0 && <span className="text-muted">Imágenes <span className="text-strong tabular">{log.images}</span></span>}
       {secs > 0 && (
         <span className="text-muted">Audio <span className="text-strong tabular">{Math.floor(secs / 60)}:{String(secs % 60).padStart(2, '0')}</span></span>
+      )}
+      {sensitive.length > 0 && (
+        <span className="flex flex-wrap items-center gap-1.5 text-muted" data-testid="request-sensitive"
+              title="Lo que la política de PII y DLP encontró en el pedido: según la política, quedó registrado, se ocultó o frenó el pedido.">
+          Datos sensibles
+          {sensitive.map(t => <span key={t} className="rounded px-1.5 py-0.5 bg-warn-light text-warn">{typeLabel(t)}</span>)}
+        </span>
       )}
       {labels.length > 0 && (
         <span className="flex flex-wrap items-center gap-1.5 text-muted">
