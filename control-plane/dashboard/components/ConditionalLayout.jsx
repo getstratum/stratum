@@ -2,6 +2,7 @@
 
 import { usePathname } from 'next/navigation'
 import Sidebar from './Sidebar'
+import StackTables from './StackTables'
 
 const NO_SIDEBAR_PATHS = ['/login', '/oidc', '/invite']
 
@@ -39,18 +40,19 @@ export default function ConditionalLayout({ children }) {
 
   if (noSidebar) {
     return (
-      <div className="h-screen bg-app text-default flex flex-col">
+      <div className="h-dvh bg-app text-default flex flex-col">
         {children}
       </div>
     )
   }
 
   return (
-    <div className="flex flex-col md:flex-row h-screen overflow-hidden bg-app text-default">
+    <div className="flex flex-col md:flex-row h-dvh overflow-hidden bg-app text-default">
       <Sidebar />
       <main className="flex-1 min-w-0 overflow-y-auto">
         {children}
       </main>
+      <StackTables />
     </div>
   )
 }

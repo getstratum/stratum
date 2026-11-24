@@ -287,7 +287,7 @@ export default function AlertsPage() {
         </div>
       ) : (
         <div className="bg-card border border-border rounded-[10px] overflow-x-auto">
-          <table className="w-full min-w-[900px]">
+          <table className="stack w-full min-w-[900px]">
             <thead>
               <tr className="text-xs text-muted uppercase tracking-wider bg-raised border-b border-border">
                 <th className="px-4 py-3 text-left font-semibold">Equipo</th>

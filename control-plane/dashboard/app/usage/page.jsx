@@ -299,7 +299,7 @@ export default function UsagePage() {
           {data.rows.length === 0 ? (
             <p className="px-5 pb-5 text-sm text-muted">Sin requests en este período.</p>
           ) : (
-            <table className="w-full min-w-[1000px] text-sm tabular">
+            <table className="stack w-full min-w-[1000px] text-sm tabular">
               <thead>
                 <tr className="text-left text-xs uppercase tracking-wide text-muted">
                   <th className="px-5 py-2.5 font-semibold">{dimOf(by).one}</th>

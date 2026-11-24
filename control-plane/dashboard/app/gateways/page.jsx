@@ -198,7 +198,7 @@ export default function GatewaysPage() {
         ) : data.instances.length === 0 ? (
           <p className="p-8 text-sm text-muted">Todavía no hay gateways registrados.</p>
         ) : (
-          <table className="w-full min-w-[900px] text-sm">
+          <table className="stack w-full min-w-[900px] text-sm">
             <thead>
               <tr className="text-left text-xs uppercase tracking-wide text-muted border-b border-border">
                 <th className="px-5 py-3 font-semibold">Gateway</th>

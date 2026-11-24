@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { formatCost, formatDateTime, formatMs, nf } from '../lib/format'
+import { useNarrow } from './useNarrow'
 
 function StatusBadge({ code }) {
   if (!code) return <span className="text-subtle text-xs">—</span>
@@ -73,7 +74,7 @@ function RequestFacts({ log }) {
   )
 }
 
-function TraceDetail({ log }) {
+function TraceBody({ log }) {
   const auth     = log.auth_ms     ?? 0
   const policy   = log.policy_ms   ?? 0
   const provider = log.provider_ms ?? 0
@@ -82,8 +83,7 @@ function TraceDetail({ log }) {
   const hasTrace = auth > 0 || policy > 0 || provider > 0
 
   return (
-    <tr className="bg-raised">
-      <td colSpan={11} className="px-6 py-4 border-t border-border">
+    <>
         <RequestFacts log={log} />
         {hasTrace ? (
           <div className="max-w-lg space-y-2.5">
@@ -101,13 +101,73 @@ function TraceDetail({ log }) {
             Este pedido no tiene los tiempos por etapa.
           </div>
         )}
+    </>
+  )
+}
+
+function TraceDetail({ log }) {
+  return (
+    <tr className="bg-raised">
+      <td colSpan={11} className="px-6 py-4 border-t border-border">
+        <TraceBody log={log} />
       </td>
     </tr>
   )
 }
 
+function Who({ log }) {
+  if (!log.agent_name) return <span className="text-muted" title="Persona">{log.user_email ?? 'persona'}</span>
+  if (!log.user_email) return <span className="text-default" title="Agente">{log.agent_name}</span>
+  return (
+    <span title={`El agente ${log.agent_name}, en nombre de ${log.user_email}`}>
+      <span className="text-default">{log.agent_name}</span>
+      <span className="text-muted"> · por {log.user_email}</span>
+    </span>
+  )
+}
+
+function Cost({ log }) {
+  return log.cost_usd == null
+    ? <span className="text-muted" title="El modelo no tiene precio: poné uno en Modelos para que cuente.">Sin precio</span>
+    : formatCost(log.cost_usd)
+}
+
+// On a phone: one card per request, the same facts; a tap opens its trace.
+function RequestCards({ logs, expanded, setExpanded }) {
+  return (
+    <ul className="bg-card border border-border rounded-[10px] divide-y divide-border">
+      {logs.map(log => {
+        const isOpen = expanded === log.id
+        return (
+          <li key={log.id}>
+            <button type="button" onClick={() => setExpanded(isOpen ? null : log.id)} aria-expanded={isOpen}
+                    className="w-full text-left px-4 py-3 flex flex-col gap-1.5 hover:bg-raised">
+              <span className="flex items-center justify-between gap-2">
+                <span className="text-xs text-muted tabular">{isOpen ? '▾' : '▸'} {formatDateTime(log.created_at, { seconds: true })}</span>
+                <StatusBadge code={log.status_code} />
+              </span>
+              <span className="flex items-center gap-2 min-w-0">
+                <ProviderBadge provider={log.provider} />
+                <span className="font-mono text-xs text-default truncate">{log.model_id}</span>
+              </span>
+              <span className="text-xs truncate"><Who log={log} />{log.team_name ? <span className="text-subtle"> · {log.team_name}</span> : null}</span>
+              <span className="flex flex-wrap gap-x-3 text-xs text-muted tabular">
+                <span>{nf(log.tokens_input)} ent. · {nf(log.tokens_output)} sal.</span>
+                <span className="text-strong"><Cost log={log} /></span>
+                {log.latency_ms ? <span className={log.latency_ms > 3000 ? 'text-warn font-semibold' : ''}>{formatMs(log.latency_ms)}</span> : null}
+              </span>
+            </button>
+            {isOpen && <div className="bg-raised px-4 py-3 border-t border-border"><TraceBody log={log} /></div>}
+          </li>
+        )
+      })}
+    </ul>
+  )
+}
+
 export default function RequestsLog({ logs }) {
   const [expanded, setExpanded] = useState(null)
+  const narrow = useNarrow()
 
   if (!logs?.length) {
     return (
@@ -116,6 +176,8 @@ export default function RequestsLog({ logs }) {
       </div>
     )
   }
+
+  if (narrow) return <RequestCards logs={logs} expanded={expanded} setExpanded={setExpanded} />
 
   return (
     <div className="relative bg-card border border-border rounded-[10px] overflow-x-auto">
@@ -156,21 +218,12 @@ export default function RequestsLog({ logs }) {
                 <td className="px-4 py-3.5 font-mono text-xs text-default whitespace-nowrap">{log.model_id}</td>
                 <td className="px-4 py-3.5 text-xs text-muted">{log.team_name ?? '—'}</td>
                 <td className="px-4 py-3.5 text-xs max-w-[220px] truncate">
-                  {log.agent_name
-                    ? (log.user_email
-                        ? <span title={`El agente ${log.agent_name}, en nombre de ${log.user_email}`}>
-                            <span className="text-default">{log.agent_name}</span>
-                            <span className="text-muted"> · por {log.user_email}</span>
-                          </span>
-                        : <span className="text-default" title="Agente">{log.agent_name}</span>)
-                    : <span className="text-muted" title="Persona">{log.user_email ?? 'persona'}</span>}
+                  <Who log={log} />
                 </td>
                 <td className="px-4 py-3.5 text-right text-xs text-muted tabular">{nf(log.tokens_input)}</td>
                 <td className="px-4 py-3.5 text-right text-xs text-muted tabular">{nf(log.tokens_output)}</td>
                 <td className="px-4 py-3.5 text-right text-xs text-strong tabular whitespace-nowrap">
-                  {log.cost_usd == null
-                    ? <span className="text-muted" title="El modelo no tiene precio: poné uno en Modelos para que cuente.">Sin precio</span>
-                    : formatCost(log.cost_usd)}
+                  <Cost log={log} />
                 </td>
                 <td className="px-4 py-3.5 text-right text-xs tabular whitespace-nowrap">
                   {log.latency_ms

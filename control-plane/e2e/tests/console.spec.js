@@ -920,6 +920,29 @@ test('audit log: everything above is recorded, refusals included', async () => {
   await expect(page.getByText('Registró un gateway')).toHaveCount(0)
 })
 
+// --- on a phone -----------------------------------------------------------------------
+
+test('on a phone: no page is wider than the screen; tables become one block per row', async () => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  try {
+    for (const path of ['/', '/providers', '/models', '/gateways', '/users', '/teams', '/policy', '/usage', '/logs', '/alerts', '/audit', '/account']) {
+      await page.goto(path)
+      await page.waitForLoadState('networkidle')
+      const widths = await page.evaluate(() => {
+        const main = document.querySelector('main')
+        return { page: document.documentElement.scrollWidth, main: main ? main.scrollWidth - main.clientWidth : 0, view: window.innerWidth }
+      })
+      expect(widths.page, path).toBeLessThanOrEqual(widths.view)
+      expect(widths.main, path).toBeLessThanOrEqual(1)
+    }
+    // The menu holds the sections.
+    await page.getByRole('button', { name: 'Menú' }).click()
+    await expect(page.getByRole('navigation', { name: 'Consola' }).getByRole('link', { name: 'Usuarios' })).toBeVisible()
+  } finally {
+    await page.setViewportSize({ width: 1280, height: 720 })
+  }
+})
+
 test('sign-out: the session ends on the server too', async () => {
   const cookies = await page.context().cookies()
   await signOut()

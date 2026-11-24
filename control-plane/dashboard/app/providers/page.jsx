@@ -345,7 +345,7 @@ export default function ProvidersPage() {
             Todavía no hay proveedores. {canManage ? 'Agregá uno para que los gateways puedan atender requests.' : ''}
           </div>
         ) : (
-          <table className="w-full min-w-[980px] text-sm">
+          <table className="stack w-full min-w-[980px] text-sm">
             <thead>
               <tr className="text-left text-xs uppercase tracking-wide text-muted border-b border-border">
                 <th className="px-5 py-3 font-semibold">Conexión</th>

@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import Modal, { Field, Input, Select, Btn } from '../../components/Modal'
 import { usePermissions } from '../../components/usePermissions'
+import { useNarrow } from '../../components/useNarrow'
 
 const ROLES = ['member', 'team_manager', 'auditor', 'admin', 'owner']
 const ROLE_LABEL = {
@@ -407,6 +408,58 @@ export default function UsersPage() {
     load()
   }
 
+  const narrow = useNarrow()
+  // A person's actions: in the table's last column, or under the card on a phone.
+  const actions = (user) => (
+    <>
+      {canManage && (
+        <button onClick={() => setModal({ user })}
+          className="text-xs text-muted hover:text-default px-2 py-1 rounded hover:bg-raised transition-colors whitespace-nowrap">
+          Editar
+        </button>
+      )}
+      {canManage && user.has_password && (
+        <button onClick={() => setModal({ reset: user })}
+          className="text-xs text-muted hover:text-default px-2 py-1 rounded hover:bg-raised transition-colors whitespace-nowrap">
+          Nueva contraseña
+        </button>
+      )}
+      {canManage && user.has_mfa && (
+        <button onClick={() => resetMfa(user)}
+          className="text-xs text-muted hover:text-default px-2 py-1 rounded hover:bg-raised transition-colors whitespace-nowrap">
+          Reiniciar 2 pasos
+        </button>
+      )}
+      {canKeys && user.has_api_key && (
+        <button onClick={() => rotateKey(user)}
+          disabled={rotating === user.id || !user.is_active}
+          className="text-xs text-accent hover:text-accent-hover px-2 py-1 rounded hover:bg-raised transition-colors whitespace-nowrap disabled:opacity-30">
+          {rotating === user.id ? '…' : 'Rotar key'}
+        </button>
+      )}
+      {canKeys && user.has_api_key && (
+        <button onClick={() => revokeKey(user)}
+          className="text-xs text-err hover:text-err px-2 py-1 rounded hover:bg-raised transition-colors whitespace-nowrap">
+          Revocar key
+        </button>
+      )}
+      {canManage && user.is_active && (
+        <button onClick={() => toggleApps(user)}
+          title="Aplicaciones que actúan en nombre de personas, como un portal de chat"
+          className="text-xs text-muted hover:text-default px-2 py-1 rounded hover:bg-raised transition-colors whitespace-nowrap">
+          {user.app_access === false ? 'Permitir aplicaciones' : 'Quitar aplicaciones'}
+        </button>
+      )}
+      {canManage && (
+        <button onClick={() => toggleActive(user)}
+          className={`text-xs px-2 py-1 rounded hover:bg-raised transition-colors whitespace-nowrap
+            ${user.is_active ? 'text-err hover:text-err' : 'text-ok hover:text-ok'}`}>
+          {user.is_active ? 'Desactivar' : 'Activar'}
+        </button>
+      )}
+    </>
+  )
+
   return (
     <div className="px-4 py-6 md:px-10 md:py-8 max-w-screen-xl">
       {/* Header */}
@@ -471,7 +524,7 @@ export default function UsersPage() {
         </select>
       </div>
 
-      {/* Table */}
+      {/* Table; on a phone, one card per person */}
       <div className="relative bg-card border border-border rounded-[10px] overflow-x-auto">
         {loading ? (
           <div className="p-10 text-center text-muted text-sm">Cargando…</div>
@@ -479,6 +532,24 @@ export default function UsersPage() {
           <div className="p-10 text-center text-subtle text-sm">
             {search ? 'No hay usuarios que coincidan con la búsqueda' : 'No hay usuarios todavía'}
           </div>
+        ) : narrow ? (
+          <ul className="divide-y divide-border">
+            {filtered.map(user => (
+              <li key={user.id} className={`px-4 py-3.5 flex flex-col gap-2 ${!user.is_active ? 'opacity-50' : ''}`}>
+                <div className="min-w-0">
+                  <div className="font-semibold text-strong truncate">{user.name}</div>
+                  <div className="text-xs text-muted truncate">{user.email}</div>
+                </div>
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs">
+                  <span className="text-muted">{user.team_name ?? 'Sin equipo'}</span>
+                  <span className="bg-raised text-muted border border-border rounded-full px-2 py-0.5">{ROLE_LABEL[user.role] ?? user.role}</span>
+                  <span className={`font-semibold ${user.is_active ? 'text-ok' : 'text-subtle'}`}>{user.is_active ? '● Activo' : '○ Inactivo'}</span>
+                </div>
+                <AccessBadges user={user} />
+                <div className="flex flex-wrap gap-1 -ml-2">{actions(user)}</div>
+              </li>
+            ))}
+          </ul>
         ) : (
           <table className="w-full min-w-[640px] text-sm">
             <thead>
@@ -515,51 +586,7 @@ export default function UsersPage() {
                   </td>
                   <td className="px-5 py-3.5">
                     <div className="flex justify-end gap-1">
-                      {canManage && (
-                        <button onClick={() => setModal({ user })}
-                          className="text-xs text-muted hover:text-default px-2 py-1 rounded hover:bg-raised transition-colors whitespace-nowrap">
-                          Editar
-                        </button>
-                      )}
-                      {canManage && user.has_password && (
-                        <button onClick={() => setModal({ reset: user })}
-                          className="text-xs text-muted hover:text-default px-2 py-1 rounded hover:bg-raised transition-colors whitespace-nowrap">
-                          Nueva contraseña
-                        </button>
-                      )}
-                      {canManage && user.has_mfa && (
-                        <button onClick={() => resetMfa(user)}
-                          className="text-xs text-muted hover:text-default px-2 py-1 rounded hover:bg-raised transition-colors whitespace-nowrap">
-                          Reiniciar 2 pasos
-                        </button>
-                      )}
-                      {canKeys && user.has_api_key && (
-                        <button onClick={() => rotateKey(user)}
-                          disabled={rotating === user.id || !user.is_active}
-                          className="text-xs text-accent hover:text-accent-hover px-2 py-1 rounded hover:bg-raised transition-colors whitespace-nowrap disabled:opacity-30">
-                          {rotating === user.id ? '…' : 'Rotar key'}
-                        </button>
-                      )}
-                      {canKeys && user.has_api_key && (
-                        <button onClick={() => revokeKey(user)}
-                          className="text-xs text-err hover:text-err px-2 py-1 rounded hover:bg-raised transition-colors whitespace-nowrap">
-                          Revocar key
-                        </button>
-                      )}
-                      {canManage && user.is_active && (
-                        <button onClick={() => toggleApps(user)}
-                          title="Aplicaciones que actúan en nombre de personas, como un portal de chat"
-                          className="text-xs text-muted hover:text-default px-2 py-1 rounded hover:bg-raised transition-colors whitespace-nowrap">
-                          {user.app_access === false ? 'Permitir aplicaciones' : 'Quitar aplicaciones'}
-                        </button>
-                      )}
-                      {canManage && (
-                        <button onClick={() => toggleActive(user)}
-                          className={`text-xs px-2 py-1 rounded hover:bg-raised transition-colors whitespace-nowrap
-                            ${user.is_active ? 'text-err hover:text-err' : 'text-ok hover:text-ok'}`}>
-                          {user.is_active ? 'Desactivar' : 'Activar'}
-                        </button>
-                      )}
+                      {actions(user)}
                     </div>
                   </td>
                 </tr>

@@ -36,7 +36,7 @@ export default function TeamsTable({ teams, policies }) {
           Consumo por equipo · este mes
         </span>
       </div>
-      <table className="w-full min-w-[640px] text-sm">
+      <table className="stack w-full min-w-[640px] text-sm">
         <thead>
           <tr className="text-xs text-muted uppercase tracking-wider bg-raised border-b border-border">
             <th className="px-5 py-3 text-left font-semibold">Equipo</th>
