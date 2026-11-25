@@ -38,7 +38,7 @@ The console knows only its name and address (migration 051).
 |---|---|
 | Flow | Authorization code with PKCE (`S256`, required). No implicit flow, no refresh tokens. |
 | Client authentication | `client_secret_basic` or `client_secret_post`. |
-| ID token | RS256, 5 minutes. `iss`, `sub` (the person's id), `aud` (the client_id), `iat`, `exp`, `auth_time`, `nonce`, `amr` (`pwd`, plus `otp` with a second factor; `fed` when they signed in with the organization's identity provider, [sso.md](sso.md)), `org_id`, `team_id`; `email` with scope `email`, `name` with scope `profile`. |
+| ID token | RS256, 5 minutes. `iss`, `sub` (the person's id), `aud` (the client_id), `iat`, `exp`, `auth_time`, `nonce`, `amr` (`pwd`, plus `otp` with a second factor; `fed` when they signed in with the organization's identity provider, [sso.md](sso.md)), `org_id`, `team_id` (`null` without a team); `email` with scope `email`, `name` with scope `profile`. |
 | Access token | A JWT for `userinfo` only, 5 minutes. |
 | Usage reports | With the client secret, when the application may ask for them (below). |
 | Keys | `/api/oidc/jwks`. Made on first use, the private key encrypted with `STRATUM_ENCRYPTION_KEY`. If that key changes, the signing key is replaced on the next sign-in. |
@@ -51,11 +51,18 @@ none for them: every sign-in asks for the password again.
 
 ## Who may sign in
 
-An active person of the application's organization, with a password, a team
-and access to applications (People → Quitar aplicaciones takes it away).
-Their console role does not matter: Members, who cannot use the console, sign
-in to applications. Anyone else gets the same refusal as a wrong password,
-and the reason goes to the audit log (`app.login`).
+An active person of the application's organization, with a password and
+access to applications (People → Quitar aplicaciones takes it away). Their
+console role does not matter: Members, who cannot use the console, sign in to
+applications. A team is not required either: Owners and Auditors usually have
+none, and `team_id` comes as `null`. Whether the application needs one is its
+own decision; Stratum's chat portal does, since it spends from a team's
+budget, and Stratum Enterprise does not.
+
+A person of another organization gets the same refusal as a wrong password.
+One with the right password but deactivated or without access to applications
+is told so (`403 no_app_access`), since they already proved who they are.
+Either way the reason goes to the audit log (`app.login`).
 
 When the application asks for a second factor and the person has none, they
 set it up during the sign-in (QR code, first code, recovery codes) and it

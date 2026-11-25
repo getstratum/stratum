@@ -8,7 +8,7 @@ import { publicRoute, readJson, json, notFound } from '../../../../../lib/route.
 import { reserveAttempt, recordFailure, recordSuccess } from '../../../../../lib/login.js'
 import { useChallenge, endChallenge, checkSecondFactor, completeSetup } from '../../../../../lib/mfa.js'
 import { audit } from '../../../../../lib/audit.js'
-import { loadInteraction, finishInteraction, appUser, EXPIRED, CODE_SECONDS, CODE_SECONDS_AFTER_SETUP } from '../../../../../lib/oidc.js'
+import { loadInteraction, finishInteraction, appUser, EXPIRED, NO_APPS, CODE_SECONDS, CODE_SECONDS_AFTER_SETUP } from '../../../../../lib/oidc.js'
 
 const INVALID_CODE = 'Código incorrecto o vencido. Si pasaron más de 5 minutos, volvé a ingresar la contraseña.'
 
@@ -24,6 +24,7 @@ export const POST = publicRoute(async (req) => {
       req, orgId: interaction.org_id, actor: u?.email ?? null, action: 'app.login', result: 'failed',
       targetType: 'oidc_client', targetId: interaction.client_id, details: { reason, step: 'second_factor' },
     })
+    if (reason === 'no_app_access') return json({ error: 'no_app_access', message: NO_APPS }, 403)
     return json({ error: 'invalid_code', message: INVALID_CODE }, 401)
   }
   // The challenge must be the one this interaction's password step made.

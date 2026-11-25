@@ -28,6 +28,6 @@ export const GET = publicRoute(async (req) => {
     ...(scope.includes('email') ? { email: user.email } : {}),
     ...(scope.includes('profile') ? { name: user.name || user.email } : {}),
     org_id: user.org_id,
-    team_id: user.team_id,
+    team_id: user.team_id ?? null,
   }, { headers: { 'Cache-Control': 'no-store' } })
 })
