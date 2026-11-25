@@ -18,7 +18,7 @@ import { reserveAttempt, recordFailure, recordSuccess, INVALID } from '../../../
 import { startChallenge, beginSetup } from '../../../../lib/mfa.js'
 import { qrSvg } from '../../../../lib/qr.js'
 import { audit } from '../../../../lib/audit.js'
-import { loadInteraction, finishInteraction, appUser, EXPIRED } from '../../../../lib/oidc.js'
+import { loadInteraction, finishInteraction, appUser, EXPIRED, NO_APPS } from '../../../../lib/oidc.js'
 import { passwordRefused } from '../../../../lib/sso.js'
 
 export const POST = publicRoute(async (req) => {
@@ -40,6 +40,8 @@ export const POST = publicRoute(async (req) => {
       action: 'app.login', result: 'failed', targetType: 'oidc_client', targetId: interaction.client_id,
       details: { reason },
     })
+    // With the right password the person learns why; before it, nobody does.
+    if (reason === 'no_app_access') return json({ error: 'no_app_access', message: NO_APPS }, 403)
     return json({ error: 'invalid_credentials', message: INVALID }, 401)
   }
   if (!u) return refuse('unknown_email')
@@ -48,8 +50,8 @@ export const POST = publicRoute(async (req) => {
     await recordFailure(db, u.id, reserved)
     return refuse('bad_password')
   }
-  // Another organization's person, deactivated, without a team or without
-  // access to applications: the same refusal.
+  // Another organization's person: the same refusal as a wrong password.
+  // Deactivated or without access to applications: they are told.
   if (u.org_id !== interaction.org_id) return refuse('other_organization')
   if (!await appUser(db, u.id, interaction.org_id)) return refuse('no_app_access')
   const { rows: [{ role }] } = await db.query('SELECT role FROM users WHERE id = $1', [u.id])

@@ -13,9 +13,12 @@
  * it the provider is off. Endpoints live under {issuer}/api/oidc/.
  *
  * Who may sign in to an application: an active person of the application's
- * organization, with a password, a team and access to applications
+ * organization, with a password and access to applications
  * (users.app_access, migration 028). Their console role does not matter:
- * Members, who cannot use the console, sign in to applications too.
+ * Members, who cannot use the console, sign in to applications too. A team
+ * is not required: Owners and Auditors usually have none. team_id goes in
+ * the claims, null without one, and each application decides whether it
+ * needs it (the chat spends from a team's budget; a governance app does not).
  */
 
 import { createHash, createPrivateKey, createPublicKey, generateKeyPairSync, randomBytes, sign, timingSafeEqual, verify } from 'node:crypto'
@@ -31,6 +34,8 @@ export const CODE_SECONDS_AFTER_SETUP = 600
 export const TOKEN_SECONDS = 300
 export const SCOPES = ['openid', 'profile', 'email']
 export const EXPIRED = 'El ingreso venció o no existe. Volvé a la aplicación y empezá de nuevo.'
+// After the right password, so it tells the person nothing a stranger could use.
+export const NO_APPS = 'Tu cuenta no tiene acceso a las aplicaciones de la organización. Pedíselo a un Owner o Admin.'
 
 const sha256 = (v) => createHash('sha256').update(v).digest('hex')
 const b64url = (buf) => Buffer.from(buf).toString('base64url')
@@ -276,7 +281,7 @@ export async function appUser(db, userId, orgId) {
     `SELECT u.id, u.email, u.name, u.team_id::text AS team_id, u.org_id::text AS org_id
        FROM users u JOIN organizations o ON o.id = u.org_id
       WHERE u.id = $1 AND u.org_id = $2 AND o.status = 'active'
-        AND COALESCE(u.is_active, true) AND COALESCE(u.app_access, true) AND u.team_id IS NOT NULL`,
+        AND COALESCE(u.is_active, true) AND COALESCE(u.app_access, true)`,
     [userId, orgId])
   return u ?? null
 }
@@ -390,7 +395,7 @@ export async function issueTokens(db, { client, user, code }) {
     ...(scope.includes('email') ? { email: user.email } : {}),
     ...(scope.includes('profile') ? { name: user.name || user.email } : {}),
     org_id: user.org_id,
-    team_id: user.team_id,
+    team_id: user.team_id ?? null,
   }
   const idToken = signJwt(key, {
     iss, sub: user.id, aud: client.id, iat: now, exp: now + TOKEN_SECONDS,

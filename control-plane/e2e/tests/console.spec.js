@@ -279,7 +279,13 @@ test('gateways: register (token shown once), rotate the token, disable', async (
   const name = `${RUN}-gw`
   await page.goto('/gateways')
   await page.getByRole('button', { name: 'Registrar gateway' }).click()
+  // The focus starts in the form; a click outside or Escape, with something
+  // typed, loses nothing: only Cancelar or the action closes it.
+  await expect(dialog('Registrar gateway').getByLabel('Nombre')).toBeFocused()
   await dialog('Registrar gateway').getByLabel('Nombre').fill(name)
+  await page.mouse.click(5, 5)
+  await page.keyboard.press('Escape')
+  await expect(dialog('Registrar gateway').getByLabel('Nombre')).toHaveValue(name)
   await dialog('Registrar gateway').getByRole('button', { name: 'Registrar', exact: true }).click()
 
   const tokens = dialog(`Credenciales de ${name}`)

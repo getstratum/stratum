@@ -85,7 +85,7 @@ before(async () => {
     manager: await consoleSession(manager.email),
     ana: await person(a.id, a.team, 'member'),
     noApps: await person(a.id, a.team, 'member', { appAccess: false }),
-    noTeam: await person(a.id, null, 'member'),
+    noTeam: await person(a.id, null, 'auditor'),
     stranger: await person(b.id, b.team, 'member'),
   }
 })
@@ -260,13 +260,25 @@ test('oidc: bad requests never reach a foreign redirect', { skip }, async () => 
 
 test('oidc: who may sign in', { skip }, async () => {
   const app = await register({ name: 'Portal', redirectUris: ['https://chat.acme.com/cb'], requireMfa: false })
-  for (const [who, email] of [['another organization', O.stranger.email], ['without access to applications', O.noApps.email],
-    ['without a team', O.noTeam.email], ['a wrong password', null]]) {
+  for (const [who, email] of [['another organization', O.stranger.email], ['a wrong password', null]]) {
     const a = await authorize(app)
     const r = await call('oidc/login', 'POST', { body: { i: interactionOf(a.location), email: email ?? O.ana.email, password: email ? PASSWORD : 'nope' } })
     assert.equal(r.status, 401, who)
     assert.equal(r.body.error, 'invalid_credentials', who)
   }
+  // With the right password, the person learns why.
+  const noApps = await call('oidc/login', 'POST', { body: { i: interactionOf((await authorize(app)).location), email: O.noApps.email, password: PASSWORD } })
+  assert.equal(noApps.status, 403)
+  assert.equal(noApps.body.error, 'no_app_access')
+  assert.match(noApps.body.message, /Owner o Admin/)
+  // Owners and Auditors usually have no team: they sign in, team_id null.
+  const a = await authorize(app)
+  const r = await call('oidc/login', 'POST', { body: { i: interactionOf(a.location), email: O.noTeam.email, password: PASSWORD } })
+  assert.equal(r.status, 200, JSON.stringify(r.body))
+  const t = await token(app, { code: new URL(r.body.redirect).searchParams.get('code'), code_verifier: a.verifier })
+  const claims = JSON.parse(Buffer.from(t.body.id_token.split('.')[1], 'base64url'))
+  assert.equal(claims.sub, O.noTeam.id)
+  assert.equal(claims.team_id, null)
   // A Member signs in to applications though they cannot use the console.
   const consoleTry = await call('session', 'POST', { body: { email: O.ana.email, password: PASSWORD } })
   assert.equal(consoleTry.status, 401)

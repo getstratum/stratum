@@ -1,24 +1,62 @@
 'use client'
 
-import { Children, cloneElement, isValidElement, useEffect, useId } from 'react'
+import { Children, cloneElement, isValidElement, useEffect, useId, useRef } from 'react'
 import PasswordInput from './PasswordInput'
 
+const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+
+/**
+ * A dialog that only closes when the person says so: Cancelar, ✕ or the
+ * action that finishes it. A click outside does nothing, so a half-filled
+ * form is never lost by accident. Escape closes it only while nothing has
+ * been typed. The focus starts inside, stays inside (Tab and Shift+Tab go
+ * around) and goes back, on closing, to what opened it.
+ */
 export default function Modal({ title, onClose, children, width = 'max-w-lg' }) {
+  const box = useRef(null)
+  const typed = useRef(false)
+  const titleId = useId()
+
   useEffect(() => {
-    const h = e => { if (e.key === 'Escape') onClose() }
+    const opener = document.activeElement
+    const el = box.current
+    if (el && !el.contains(document.activeElement)) {
+      const first = [...el.querySelectorAll('input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled])')][0]
+      ;(first ?? el).focus()
+    }
+    return () => { if (opener instanceof HTMLElement && opener.isConnected) opener.focus() }
+  }, [])
+
+  useEffect(() => {
+    const h = e => {
+      const el = box.current
+      if (!el) return
+      if (e.key === 'Escape' && !typed.current) { onClose(); return }
+      if (e.key !== 'Tab') return
+      const items = [...el.querySelectorAll(FOCUSABLE)].filter(x => x.getClientRects().length)
+      if (!items.length) { e.preventDefault(); el.focus(); return }
+      const first = items[0]
+      const last = items[items.length - 1]
+      const at = document.activeElement
+      if (e.shiftKey && (at === first || at === el || !el.contains(at))) { e.preventDefault(); last.focus() }
+      else if (!e.shiftKey && (at === last || !el.contains(at))) { e.preventDefault(); first.focus() }
+    }
     window.addEventListener('keydown', h)
     return () => window.removeEventListener('keydown', h)
   }, [onClose])
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/30" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/30" aria-hidden="true" data-testid="modal-backdrop" />
       {/* At most the window's height: a long form (a policy with every
           model of several providers) scrolls inside, under its title. */}
-      <div role="dialog" aria-modal="true" aria-label={title} className={`relative w-full ${width} max-h-[calc(100dvh-2rem)] flex flex-col bg-card border border-border rounded-xl shadow-dropdown`}>
+      <div ref={box} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}
+           onInput={() => { typed.current = true }}
+           className={`relative w-full ${width} max-h-[calc(100dvh-2rem)] flex flex-col bg-card border border-border rounded-xl shadow-dropdown focus:outline-none`}>
         <div className="flex shrink-0 items-center justify-between px-6 py-4 border-b border-border">
-          <h2 className="text-base font-semibold text-strong">{title}</h2>
+          <h2 id={titleId} className="text-base font-semibold text-strong">{title}</h2>
           <button
+            type="button"
             onClick={onClose}
             aria-label="Cerrar"
             className="text-muted hover:text-default transition-colors text-lg leading-none"
