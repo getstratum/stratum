@@ -1,9 +1,12 @@
 name: ci
 
+# A change to the model catalog alone is checked by catalog.yml, in seconds.
 on:
   pull_request:
+    paths-ignore: ['catalog/models.json']
   push:
     branches: [main]
+    paths-ignore: ['catalog/models.json']
 
 permissions:
   contents: read

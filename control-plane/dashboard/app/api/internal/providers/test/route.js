@@ -11,6 +11,7 @@ import { route, readJson, json, badRequest, notFound } from '@/lib/route'
 import { audit } from '@/lib/audit'
 import { decryptSecret } from '@/lib/secrets'
 import { providerName, testConnection, testable } from '@/lib/providers'
+import { storeListed } from '@/lib/provider-models'
 
 export const dynamic = 'force-dynamic'
 
@@ -43,17 +44,7 @@ export const POST = route('providers.manage', async (req, { session, db }) => {
   // the catalog does not have (migration 024: they have no price).
   // With the kind the provider said, when it said one (lib/model-kind.js),
   // and whether they read images and call tools (lib/model-capabilities.js).
-  if (result.ok && result.ids?.length) {
-    await db.query(
-      `INSERT INTO provider_models (org_id, provider, model_id, kind, vision, tools, seen_at)
-       SELECT $1, $2, l.id, l.kind, l.vision, l.tools, now()
-         FROM unnest($3::text[], $4::text[], $5::boolean[], $6::boolean[]) AS l(id, kind, vision, tools)
-        WHERE l.id ~ '^[A-Za-z0-9][A-Za-z0-9._:@/+-]{0,199}$'
-       ON CONFLICT (org_id, provider, model_id) DO UPDATE
-         SET kind = EXCLUDED.kind, vision = EXCLUDED.vision, tools = EXCLUDED.tools, seen_at = now()`,
-      [session.orgId, provider, result.ids, result.ids.map(id => result.kinds?.[id] ?? null),
-       result.ids.map(id => result.capabilities?.[id]?.vision ?? null), result.ids.map(id => result.capabilities?.[id]?.tools ?? null)])
-  }
+  await storeListed(db, session.orgId, provider, result)
   await audit(db, {
     req, session, action: 'provider.test', targetType: 'provider_config', targetId: id,
     result: result.ok ? 'ok' : 'failed', details: { provider, status: result.status ?? null },

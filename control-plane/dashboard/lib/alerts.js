@@ -6,8 +6,9 @@ import { badRequest } from './route.js'
 import { webhookProblem } from './alert-delivery.js'
 
 // default_model: when the team's default model stops working as set
-// (lib/default-model-notices.js); its threshold is not used.
-const TYPES = new Set(['budget', 'quota', 'policy_violation', 'default_model'])
+// (lib/default-model-notices.js); model_retiring: when a model the team
+// uses retires (lib/retiring-models.js). Their threshold is not used.
+const TYPES = new Set(['budget', 'quota', 'policy_violation', 'default_model', 'model_retiring'])
 const CHANNELS = new Set(['email', 'slack'])
 const EMAIL_RE = /^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/
 

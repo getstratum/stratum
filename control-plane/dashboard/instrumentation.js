@@ -5,8 +5,9 @@
  * the default partition still takes the rows. Also keeps the model catalog
  * current from its feed, sends alerts, also when a policy's default model
  * stops working as set, deletes requests older than an organization's plan
- * keeps them, and deletes organizations whose 30 days to undo a deletion
- * are over.
+ * keeps them, deletes organizations whose 30 days to undo a deletion
+ * are over, lists every day the models of each organization's providers,
+ * and tells organizations when a model they use retires.
  */
 export async function register() {
   if (process.env.NEXT_RUNTIME !== 'nodejs' || !process.env.DATABASE_URL) return
@@ -61,11 +62,29 @@ export async function register() {
     setInterval(refresh, 24 * 60 * 60 * 1000).unref()
   }
 
+  // The models each organization's providers offer (lib/provider-models.js):
+  // fifteen minutes after the start, then every 24 hours.
+  const { refreshProviderModels } = await import('./lib/provider-models.js')
+  const listModels = async () => {
+    try {
+      const r = await refreshProviderModels(getDb())
+      const failed = r.filter(x => !x.ok)
+      if (r.length) console.log(`[provider-models] ${r.length - failed.length} of ${r.length} providers listed`)
+      for (const f of failed) console.warn(`[provider-models] org ${f.orgId} ${f.provider}: ${f.message}`)
+    } catch (err) {
+      console.error(`[provider-models] failed: ${err.message}`)
+    }
+  }
+  setTimeout(listModels, 15 * 60 * 1000).unref()
+  setInterval(listModels, 24 * 60 * 60 * 1000).unref()
+
   // Alerts (lib/alert-delivery.js): every STRATUM_ALERTS_INTERVAL_S (300 s),
   // the first round up to two minutes after the start. Replicas coordinate
   // per alert.
   const { evaluateAlerts, alertConfig } = await import('./lib/alert-delivery.js')
   const { evaluateDefaults } = await import('./lib/default-model-notices.js')
+  const { evaluateRetiring } = await import('./lib/retiring-models.js')
+  let retiringAt = 0 // models that retire: at most once an hour
   const { intervalS } = alertConfig()
   if (intervalS > 0) {
     let running = false
@@ -79,6 +98,10 @@ export async function register() {
         // Policies whose default model stopped working as set (H-09).
         const notices = await evaluateDefaults(getDb())
         if (notices.length) console.log(`[default-model] ${notices.length} notices`)
+        if (Date.now() - retiringAt >= 60 * 60 * 1000) {
+          retiringAt = Date.now()
+          for (const r of await evaluateRetiring(getDb())) console.log(`[retiring] org ${r.orgId}: ${r.models.join(', ')} (${r.sent} sent)`)
+        }
       } catch (err) {
         console.error(`[alerts] round failed: ${err.message}`)
       } finally {

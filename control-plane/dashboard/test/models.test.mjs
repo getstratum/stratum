@@ -111,6 +111,7 @@ test('feed: anything malformed rejects the whole feed', () => {
     [feed([model('a'), model('b', { aliases: ['a'] })]), 'alias of another model'],
     [feed([model('a', { deprecated_on: '18/10/2026' })]), 'deprecation date'],
     [feed([model('a', { retired: 'yes' })]), 'retired flag'],
+    [feed([model('a', { cache_read_per_mtok: -0.1 })]), 'negative cache price'],
   ]
   for (const [f, why] of bad) assert.throws(() => parseFeed(f), /./, why)
 })
@@ -144,6 +145,12 @@ test('feed: adds and updates, never deletes; IDs reach policies, prices do not',
   // The same feed again changes nothing.
   r = await applyFeed(db, parseFeed(feed([model('two', { retired: true, deprecated_on: '2026-12-31' })])), { source: 'test' })
   assert.equal(r.changed, 0)
+
+  // The prompt cache's prices (migration 052), per million in the feed.
+  r = await applyFeed(db, parseFeed(feed([model('one', { input_per_mtok: 3, aliases: ['one-2026'], cache_write_per_mtok: 3.75, cache_read_per_mtok: 0.3 })])), { source: 'test' })
+  assert.equal(r.changed, 1)
+  const [c] = await sql('SELECT cost_per_1k_cache_write_tokens AS w, cost_per_1k_cache_read_tokens AS r FROM ai_models WHERE provider = $1 AND model_id = $2', [P, 'one'])
+  assert.deepEqual([c.w, c.r], ['0.003750', '0.000300'])
   await sql('DELETE FROM policies WHERE id = $1', [pol.id])
 })
 
