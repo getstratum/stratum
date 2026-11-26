@@ -46,6 +46,13 @@ function PriceModal({ model, onClose, onSaved }) {
     : model.kind === 'transcription' ? { field: 'per_audio_minute', own: 'org_cost_per_audio_minute', list: 'cost_per_audio_minute', label: 'Por minuto de audio (US$)' }
     : null
   const [perUnit, setPerUnit] = useState(unit && model[unit.own] != null ? String(parseFloat(model[unit.own])) : '')
+  // The prompt cache (migration 052): only for models that chat.
+  const cache = !unit
+  const [cacheWrite, setCacheWrite] = useState(toM(model.org_cost_per_1k_cache_write_tokens))
+  const [cacheRead, setCacheRead] = useState(toM(model.org_cost_per_1k_cache_read_tokens))
+  const anthropic = model.provider === 'anthropic'
+  const cacheHint = (list, factor) => list != null ? `Lista: ${perMillion(list)}`
+    : anthropic ? `Vacío: ${factor} × la entrada, como cobra Anthropic` : 'Vacío: el precio de entrada'
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
 
@@ -76,6 +83,16 @@ function PriceModal({ model, onClose, onSaved }) {
           <Field label="Salida (US$ por millón)" hint={model.cost_per_1k_output_tokens != null ? `Lista: ${perMillion(model.cost_per_1k_output_tokens)}` : 'Sin precio de lista'}>
             <Input inputMode="decimal" value={output} onChange={e => setOutput(e.target.value)} />
           </Field>
+          {cache && (
+            <>
+              <Field label="Caché escrito (US$ por millón)" hint={cacheHint(model.cost_per_1k_cache_write_tokens, '1,25')}>
+                <Input inputMode="decimal" value={cacheWrite} onChange={e => setCacheWrite(e.target.value)} />
+              </Field>
+              <Field label="Caché leído (US$ por millón)" hint={cacheHint(model.cost_per_1k_cache_read_tokens, '0,1')}>
+                <Input inputMode="decimal" value={cacheRead} onChange={e => setCacheRead(e.target.value)} />
+              </Field>
+            </>
+          )}
           {unit && (
             <Field label={unit.label} hint={model[unit.list] != null ? `Lista: US$ ${parseFloat(model[unit.list])}` : 'Sin precio de lista. Se suma al de los tokens, si el proveedor los informa.'}>
               <Input inputMode="decimal" value={perUnit} onChange={e => setPerUnit(e.target.value)} />
@@ -84,11 +101,14 @@ function PriceModal({ model, onClose, onSaved }) {
         </div>
         {error && <p className="text-xs text-err bg-err-light rounded-lg px-3 py-2">{error}</p>}
         <div className="flex flex-wrap justify-end gap-2 pt-1">
-          {(model.org_cost_per_1k_input_tokens != null || model.org_cost_per_1k_output_tokens != null || (unit && model[unit.own] != null)) && (
-            <Btn variant="secondary" disabled={saving} onClick={() => save({ input_per_mtok: null, output_per_mtok: null, ...(unit ? { [unit.field]: null } : {}) })}>Volver al de lista</Btn>
+          {(model.org_cost_per_1k_input_tokens != null || model.org_cost_per_1k_output_tokens != null || (unit && model[unit.own] != null)
+            || model.org_cost_per_1k_cache_write_tokens != null || model.org_cost_per_1k_cache_read_tokens != null) && (
+            <Btn variant="secondary" disabled={saving} onClick={() => save({ input_per_mtok: null, output_per_mtok: null,
+              ...(unit ? { [unit.field]: null } : { cache_write_per_mtok: null, cache_read_per_mtok: null }) })}>Volver al de lista</Btn>
           )}
           <Btn variant="secondary" onClick={onClose}>Cancelar</Btn>
-          <Btn disabled={saving} onClick={() => save({ input_per_mtok: num(input), output_per_mtok: num(output), ...(unit ? { [unit.field]: num(perUnit) } : {}) })}>{saving ? 'Guardando…' : 'Guardar'}</Btn>
+          <Btn disabled={saving} onClick={() => save({ input_per_mtok: num(input), output_per_mtok: num(output),
+            ...(unit ? { [unit.field]: num(perUnit) } : { cache_write_per_mtok: num(cacheWrite), cache_read_per_mtok: num(cacheRead) }) })}>{saving ? 'Guardando…' : 'Guardar'}</Btn>
         </div>
       </div>
     </Modal>

@@ -14,8 +14,18 @@ import (
 
 // Usage is the token count reported by the provider.
 type Usage struct {
+	// Input is every input token, those of the prompt cache included, as
+	// providers count them on their usage pages: OpenAI's prompt_tokens
+	// already include the cached ones; Anthropic's input_tokens do not, and
+	// its cache_creation_input_tokens and cache_read_input_tokens are added.
 	Input  int64
 	Output int64
+	// The part of Input written to or read from the prompt cache, priced
+	// apart (a write costs more than an input token, a read much less).
+	CacheWrite int64
+	CacheRead  int64
+	// Anthropic's input_tokens: the part of the prompt not in its cache.
+	anthropicIn int64
 	// What images and transcriptions are priced by (ADR-0018).
 	Images       int64
 	AudioSeconds float64
@@ -143,9 +153,12 @@ func parseBodyUsage(body []byte, kind provider.Kind, u *Usage) {
 // usageEvent covers the usage fields of both wire protocols:
 //
 //	OpenAI-compatible: {"usage": {"prompt_tokens", "completion_tokens"}}
-//	Anthropic:         {"type": "message_start", "message": {"usage": {"input_tokens"}}}
-//	                   {"type": "message_delta", "usage": {"output_tokens"}}
-//	                   non-stream: {"usage": {"input_tokens", "output_tokens"}}
+//	                   prompt_tokens_details.cached_tokens: the part read from the cache
+//	Anthropic:         {"type": "message_start", "message": {"usage": {"input_tokens",
+//	                   "cache_creation_input_tokens", "cache_read_input_tokens"}}}
+//	                   {"type": "message_delta", "usage": {"output_tokens"}} (and,
+//	                   from 2025, the input fields again, cumulative)
+//	                   non-stream: {"usage": {"input_tokens", "output_tokens", "cache_…"}}
 type usageEvent struct {
 	Type  string      `json:"type"`
 	Usage *usageField `json:"usage"`
@@ -163,6 +176,13 @@ type usageField struct {
 	CompletionTokens int64 `json:"completion_tokens"`
 	InputTokens      int64 `json:"input_tokens"`
 	OutputTokens     int64 `json:"output_tokens"`
+	// Anthropic's prompt cache.
+	CacheCreationInputTokens int64 `json:"cache_creation_input_tokens"`
+	CacheReadInputTokens     int64 `json:"cache_read_input_tokens"`
+	// OpenAI's (and OpenAI-compatible) prompt cache: part of prompt_tokens.
+	PromptTokensDetails *struct {
+		CachedTokens int64 `json:"cached_tokens"`
+	} `json:"prompt_tokens_details"`
 	// A transcription billed by duration: {"type":"duration","seconds":N}.
 	Kind    string  `json:"type"`
 	Seconds float64 `json:"seconds"`
@@ -172,6 +192,9 @@ func (e *usageEvent) apply(kind provider.Kind, u *Usage) {
 	if kind != provider.KindAnthropic {
 		if e.Usage != nil {
 			u.Input, u.Output = e.Usage.PromptTokens, e.Usage.CompletionTokens
+			if d := e.Usage.PromptTokensDetails; d != nil && d.CachedTokens > 0 && d.CachedTokens <= u.Input {
+				u.CacheRead = d.CachedTokens
+			}
 			// Images and transcriptions name them as Anthropic does
 			// (gpt-image-1, gpt-4o-transcribe).
 			if u.Input == 0 && u.Output == 0 {
@@ -189,15 +212,29 @@ func (e *usageEvent) apply(kind provider.Kind, u *Usage) {
 		}
 		return
 	}
-	if e.Message != nil && e.Message.Usage != nil {
-		u.Input = e.Message.Usage.InputTokens
-	}
-	if e.Usage != nil {
-		if e.Usage.InputTokens > 0 {
-			u.Input = e.Usage.InputTokens
+	for _, f := range []*usageField{e.messageUsage(), e.Usage} {
+		if f == nil {
+			continue
 		}
-		if e.Usage.OutputTokens > 0 {
-			u.Output = e.Usage.OutputTokens
+		if f.InputTokens > 0 {
+			u.anthropicIn = f.InputTokens
+		}
+		if f.CacheCreationInputTokens > 0 {
+			u.CacheWrite = f.CacheCreationInputTokens
+		}
+		if f.CacheReadInputTokens > 0 {
+			u.CacheRead = f.CacheReadInputTokens
+		}
+		if f.OutputTokens > 0 {
+			u.Output = f.OutputTokens
 		}
 	}
+	u.Input = u.anthropicIn + u.CacheWrite + u.CacheRead
+}
+
+func (e *usageEvent) messageUsage() *usageField {
+	if e.Message == nil {
+		return nil
+	}
+	return e.Message.Usage
 }

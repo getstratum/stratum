@@ -49,7 +49,8 @@
       "duration_ms": 1830,
       "upstream_ms": 240,
       "tokens_in": 812,
-      "tokens_out": 230
+      "tokens_out": 230,
+      "tokens_cache_read": 768
     }
   ]
 }

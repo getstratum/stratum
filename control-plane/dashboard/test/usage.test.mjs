@@ -166,6 +166,45 @@ test('usage: images and audio are priced per image and per minute (ADR-0018), be
   assert.equal((await row(unpriced)).cost_usd, null)
 })
 
+test('usage: the prompt cache is input, priced apart: Anthropic\'s multipliers, or the organization\'s price (migration 052)', { skip }, async () => {
+  await sql(`INSERT INTO ai_models (provider, model_id, display_name, cost_per_1k_input_tokens, cost_per_1k_output_tokens)
+             VALUES ('anthropic', 'claude-cache-test', 'Cache test', 0.003, 0.015)
+             ON CONFLICT (provider, model_id) DO UPDATE SET cost_per_1k_input_tokens = 0.003, cost_per_1k_output_tokens = 0.015`)
+  try {
+    // 87,000 written and 12 not cached: what Stratum counted as 12 before.
+    const write = record(A, { provider: 'anthropic', model: 'claude-cache-test', tokens_in: 87012, tokens_out: 300, tokens_cache_write: 87000 })
+    const read = record(A, { provider: 'anthropic', model: 'claude-cache-test', tokens_in: 40005, tokens_out: 9, tokens_cache_read: 40000 })
+    // OpenAI: the cached part of prompt_tokens, at the input price unless the organization set one.
+    const oai = record(A, { tokens_in: 2048, tokens_out: 7, tokens_cache_read: 1920 })
+    // More cache than input: bounded, not trusted.
+    const odd = record(A, { provider: 'anthropic', model: 'claude-cache-test', tokens_in: 100, tokens_out: 0, tokens_cache_write: 80, tokens_cache_read: 500 })
+    assert.equal((await post(A.token, { records: [write, read, oai, odd] })).body.accepted, 4)
+    const row = async r => (await sql('SELECT tokens_input, cost_usd, tokens_cache_write, tokens_cache_read FROM request_logs WHERE id = $1', [r.id]))[0]
+    const w = await row(write)
+    assert.equal(w.tokens_input, 87012)
+    assert.equal(w.tokens_cache_write, 87000)
+    assert.equal(w.tokens_cache_read, null)
+    assert.equal(Number(w.cost_usd), 0.330786) // 12 × 0.003 + 87000 × 0.00375 + 300 × 0.015, per 1k
+    const r = await row(read)
+    assert.equal(r.tokens_cache_read, 40000)
+    assert.equal(Number(r.cost_usd), 0.01215) // 5 × 0.003 + 40000 × 0.0003 + 9 × 0.015, per 1k
+    assert.equal(Number((await row(oai)).cost_usd), 0.004152) // 2048 × 0.002 + 7 × 0.008, per 1k: as before
+    const o = await row(odd)
+    assert.deepEqual([o.tokens_cache_write, o.tokens_cache_read], [80, 20])
+
+    // The organization's own cache price wins.
+    await sql(`INSERT INTO org_model_settings (org_id, provider, model_id, cost_per_1k_cache_read_tokens) VALUES ($1, 'openai', 'usage-test-model', 0.001)
+               ON CONFLICT (org_id, provider, model_id) DO UPDATE SET cost_per_1k_cache_read_tokens = 0.001`, [A.id])
+    const own = record(A, { tokens_in: 2048, tokens_out: 7, tokens_cache_read: 1920 })
+    await post(A.token, { records: [own] })
+    assert.equal(Number((await row(own)).cost_usd), 0.002232) // 128 × 0.002 + 1920 × 0.001 + 7 × 0.008, per 1k
+  } finally {
+    await sql(`DELETE FROM org_model_settings WHERE org_id = $1 AND model_id = 'usage-test-model'`, [A.id])
+    await sql(`DELETE FROM request_logs WHERE model_id = 'claude-cache-test'`)
+    await sql(`DELETE FROM ai_models WHERE model_id = 'claude-cache-test'`)
+  }
+})
+
 test('usage: each request gets its estimated impact; an unknown model or no output gets none', { skip }, async () => {
   const known = record(A, { provider: 'openai', model: 'gpt-4o-mini', tokens_out: 400, duration_ms: 6000 })
   const unknown = record(A, { provider: 'ollama', model: 'mock-fast', tokens_out: 400 })

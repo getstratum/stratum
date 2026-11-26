@@ -61,6 +61,11 @@ export function normalizeRecord(r, now = Date.now()) {
   const task = typeof r.task === 'string' && TASK_RE.test(r.task) ? r.task : null
   const end = outcomeOf(r)
   if (end && (!end.outcome || !task)) return null // an outcome of nothing cannot be stored
+  // The part of the input written to or read from the prompt cache (from
+  // 1.0): never more than the input it is part of.
+  const tokensIn = clampInt(r.tokens_in)
+  const cacheWrite = Math.min(isInt(r.tokens_cache_write, 0, Number.MAX_SAFE_INTEGER) ? clampInt(r.tokens_cache_write) : 0, tokensIn)
+  const cacheRead = Math.min(isInt(r.tokens_cache_read, 0, Number.MAX_SAFE_INTEGER) ? clampInt(r.tokens_cache_read) : 0, tokensIn - cacheWrite)
 
   return {
     id: r.id.toLowerCase(),
@@ -76,8 +81,10 @@ export function normalizeRecord(r, now = Date.now()) {
     stream: r.stream,
     duration_ms: clampInt(r.duration_ms),
     upstream_ms: clampInt(r.upstream_ms),
-    tokens_in: clampInt(r.tokens_in),
+    tokens_in: tokensIn,
     tokens_out: clampInt(r.tokens_out),
+    tokens_cache_write: cacheWrite,
+    tokens_cache_read: cacheRead,
     flags: [...new Set(flags)].join(','),
     labels: [...new Set(labels)].sort().join(','),
     // The route the request asked for (from 0.6); anything else is dropped.
@@ -142,11 +149,11 @@ export async function ingest(db, instance, records) {
          $18::text[], $19::text[],
          $20::float8[], $21::float8[], $22::float8[], $23::float8[], $24::float8[],
          $25::float8[], $26::float8[], $27::float8[], $28::float8[], $29::float8[], $30::text[], $31::text[],
-         $32::text[], $33::int[], $34::float8[], $35::text[], $36::text[]
+         $32::text[], $33::int[], $34::float8[], $35::text[], $36::text[], $37::int[], $38::int[]
        ) AS t(id, ts, request_id, key_id, team_id, provider, model,
               status, reason, stream, duration_ms, upstream_ms, tokens_in, tokens_out, flags, user_id, labels,
               e_min, e_max, g_min, g_max, w_min, w_max, pe_min, pe_max, ad_min, ad_max, zone, method, alias,
-              images, audio_seconds, task, agent_version)
+              images, audio_seconds, task, agent_version, cache_write, cache_read)
      )
      INSERT INTO request_logs (
        id, created_at, org_id, team_id, user_id, agent_id, provider, model_id,
@@ -154,7 +161,8 @@ export async function ingest(db, instance, records) {
        is_stream, error_message, pii_flagged, pii_types, instance_id, request_id, labels,
        impact_energy_wh_min, impact_energy_wh_max, impact_gwp_g_min, impact_gwp_g_max,
        impact_water_ml_min, impact_water_ml_max, impact_pe_kj_min, impact_pe_kj_max,
-       impact_adpe_mg_min, impact_adpe_mg_max, impact_zone, impact_method, alias, images, audio_seconds, task, agent_version)
+       impact_adpe_mg_min, impact_adpe_mg_max, impact_zone, impact_method, alias, images, audio_seconds, task, agent_version,
+       tokens_cache_write, tokens_cache_read)
      SELECT r.id, r.ts, $1::uuid, tm.id, u.id, a.id, r.provider, r.model,
             r.tokens_in, r.tokens_out,
             -- No price for a request that used tokens: NULL, "sin precio",
@@ -171,8 +179,15 @@ export async function ingest(db, instance, records) {
                   AND (COALESCE(r.images, 0) = 0 OR m.cost_per_image IS NULL)
                   AND (COALESCE(r.audio_seconds, 0) = 0 OR m.cost_per_audio_minute IS NULL) THEN NULL
                  ELSE LEAST(round(
+                        -- The prompt cache at its own price (migration 052): unset,
+                        -- Anthropic's multipliers on the input price, else the
+                        -- input price.
                         CASE WHEN m.cost_per_1k_input_tokens IS NULL OR m.cost_per_1k_output_tokens IS NULL THEN 0
-                             ELSE (COALESCE(r.tokens_in, 0) * m.cost_per_1k_input_tokens
+                             ELSE ((COALESCE(r.tokens_in, 0) - COALESCE(r.cache_write, 0) - COALESCE(r.cache_read, 0)) * m.cost_per_1k_input_tokens
+                                 + COALESCE(r.cache_write, 0) * COALESCE(m.cost_per_1k_cache_write_tokens,
+                                     m.cost_per_1k_input_tokens * CASE WHEN r.provider = 'anthropic' OR r.model ILIKE 'claude%' THEN 1.25 ELSE 1 END)
+                                 + COALESCE(r.cache_read, 0) * COALESCE(m.cost_per_1k_cache_read_tokens,
+                                     m.cost_per_1k_input_tokens * CASE WHEN r.provider = 'anthropic' OR r.model ILIKE 'claude%' THEN 0.1 ELSE 1 END)
                                  + COALESCE(r.tokens_out, 0) * m.cost_per_1k_output_tokens) / 1000.0 END
                       + COALESCE(r.images, 0) * COALESCE(m.cost_per_image, 0)
                       + COALESCE(r.audio_seconds, 0)::numeric / 60.0 * COALESCE(m.cost_per_audio_minute, 0), 6), 9999.999999)
@@ -183,7 +198,8 @@ export async function ingest(db, instance, records) {
             COALESCE(string_to_array(NULLIF(r.labels, ''), ','), '{}'),
             r.e_min, r.e_max, r.g_min, r.g_max, r.w_min, r.w_max, r.pe_min, r.pe_max,
             r.ad_min, r.ad_max, r.zone, r.method, r.alias,
-            NULLIF(r.images, 0), NULLIF(r.audio_seconds, 0), r.task, r.agent_version
+            NULLIF(r.images, 0), NULLIF(r.audio_seconds, 0), r.task, r.agent_version,
+            NULLIF(r.cache_write, 0), NULLIF(r.cache_read, 0)
        FROM r
        LEFT JOIN teams tm  ON tm.id::text = r.team_id AND tm.org_id = $1::uuid
        -- The person: the one a delegating key acted for, else the key's owner.
@@ -199,13 +215,16 @@ export async function ingest(db, instance, records) {
                   COALESCE(s.cost_per_1k_output_tokens, c.cost_per_1k_output_tokens) AS cost_per_1k_output_tokens,
                   COALESCE(s.cost_per_image, c.cost_per_image)                       AS cost_per_image,
                   COALESCE(s.cost_per_audio_minute, c.cost_per_audio_minute)         AS cost_per_audio_minute,
+                  COALESCE(s.cost_per_1k_cache_write_tokens, c.cost_per_1k_cache_write_tokens) AS cost_per_1k_cache_write_tokens,
+                  COALESCE(s.cost_per_1k_cache_read_tokens, c.cost_per_1k_cache_read_tokens)   AS cost_per_1k_cache_read_tokens,
                   CASE WHEN c.model_id = r.model THEN 0 ELSE 1 END AS rank
              FROM ai_models c
              LEFT JOIN org_model_settings s
                ON s.org_id = $1::uuid AND s.provider = c.provider AND s.model_id = c.model_id
             WHERE c.provider = r.provider AND (c.model_id = r.model OR r.model = ANY(c.aliases))
            UNION ALL
-           SELECT s.cost_per_1k_input_tokens, s.cost_per_1k_output_tokens, s.cost_per_image, s.cost_per_audio_minute, 2
+           SELECT s.cost_per_1k_input_tokens, s.cost_per_1k_output_tokens, s.cost_per_image, s.cost_per_audio_minute,
+                  s.cost_per_1k_cache_write_tokens, s.cost_per_1k_cache_read_tokens, 2
              FROM org_model_settings s
             WHERE s.org_id = $1::uuid AND s.provider = r.provider AND s.model_id = r.model
               AND ((s.cost_per_1k_input_tokens IS NOT NULL AND s.cost_per_1k_output_tokens IS NOT NULL)
@@ -218,7 +237,8 @@ export async function ingest(db, instance, records) {
      col(records, 'reason'), col(records, 'stream'), col(records, 'duration_ms'), col(records, 'upstream_ms'),
      col(records, 'tokens_in'), col(records, 'tokens_out'), col(records, 'flags'), col(records, 'user_id'),
      col(records, 'labels'), ...impactColumns(records), col(records, 'alias'),
-     col(records, 'images'), col(records, 'audio_seconds'), col(records, 'task'), col(records, 'agent_version')])
+     col(records, 'images'), col(records, 'audio_seconds'), col(records, 'task'), col(records, 'agent_version'),
+     col(records, 'tokens_cache_write'), col(records, 'tokens_cache_read')])
   await db.query('UPDATE data_plane_instances SET last_usage_at = now() WHERE id = $1', [instance.id])
   return rowCount
 }

@@ -39,11 +39,14 @@ export const GET = route('models.read', async (req, { db, session }) => {
     SELECT m.provider, m.model_id, m.display_name, m.aliases,
            m.cost_per_1k_input_tokens, m.cost_per_1k_output_tokens,
            m.cost_per_image, m.cost_per_audio_minute,
+           m.cost_per_1k_cache_write_tokens, m.cost_per_1k_cache_read_tokens,
            m.deprecated_on, m.updated_at, 'catalog' AS source,
            COALESCE(s.enabled, true) AS enabled,
            s.cost_per_1k_input_tokens AS org_cost_per_1k_input_tokens,
            s.cost_per_1k_output_tokens AS org_cost_per_1k_output_tokens,
            s.cost_per_image AS org_cost_per_image, s.cost_per_audio_minute AS org_cost_per_audio_minute,
+           s.cost_per_1k_cache_write_tokens AS org_cost_per_1k_cache_write_tokens,
+           s.cost_per_1k_cache_read_tokens AS org_cost_per_1k_cache_read_tokens,
            s.kind AS org_kind, m.kind AS catalog_kind, NULL AS listed_kind,
            s.vision AS org_vision, s.tools AS org_tools, m.vision AS catalog_vision, m.tools AS catalog_tools,
            NULL::boolean AS listed_vision, NULL::boolean AS listed_tools
@@ -53,9 +56,10 @@ export const GET = route('models.read', async (req, { db, session }) => {
      WHERE m.is_active = true
     UNION ALL
     SELECT pm.provider, pm.model_id, pm.model_id, '{}'::text[],
-           NULL, NULL, NULL, NULL, NULL, pm.seen_at, 'provider',
+           NULL, NULL, NULL, NULL, NULL, NULL, NULL, pm.seen_at, 'provider',
            COALESCE(s.enabled, true),
            s.cost_per_1k_input_tokens, s.cost_per_1k_output_tokens, s.cost_per_image, s.cost_per_audio_minute,
+           s.cost_per_1k_cache_write_tokens, s.cost_per_1k_cache_read_tokens,
            s.kind, NULL, pm.kind,
            s.vision, s.tools, NULL, NULL, pm.vision, pm.tools
       FROM provider_models pm
@@ -121,7 +125,10 @@ export const PATCH = route('models.manage', async (req, { db, session }) => {
     if (typeof body.enabled !== 'boolean') throw badRequest('enabled tiene que ser true o false.')
     values.push(body.enabled); sets.push(['enabled', `$${values.length}`]); changed.enabled = body.enabled
   }
-  for (const [field, col] of [['input_per_mtok', 'cost_per_1k_input_tokens'], ['output_per_mtok', 'cost_per_1k_output_tokens']]) {
+  // The prompt cache (migration 052): null for the default, Anthropic's
+  // multipliers on the input price or, for anyone else, the input price.
+  for (const [field, col] of [['input_per_mtok', 'cost_per_1k_input_tokens'], ['output_per_mtok', 'cost_per_1k_output_tokens'],
+    ['cache_write_per_mtok', 'cost_per_1k_cache_write_tokens'], ['cache_read_per_mtok', 'cost_per_1k_cache_read_tokens']]) {
     if (body[field] !== undefined) {
       values.push(perMillion(body[field], field)); sets.push([col, `$${values.length}`]); changed[field] = body[field]
     }
@@ -151,7 +158,8 @@ export const PATCH = route('models.manage', async (req, { db, session }) => {
        SET updated_by = EXCLUDED.updated_by, updated_at = now(),
            ${cols.map(c => `${c} = EXCLUDED.${c}`).join(', ')}
     RETURNING provider, model_id, enabled, cost_per_1k_input_tokens, cost_per_1k_output_tokens,
-              cost_per_image, cost_per_audio_minute, kind, vision, tools`, values)
+              cost_per_image, cost_per_audio_minute, cost_per_1k_cache_write_tokens, cost_per_1k_cache_read_tokens,
+              kind, vision, tools`, values)
   await audit(db, {
     req, session, action: 'model.update', targetType: 'model', targetId: `${provider}/${modelId}`, details: changed,
   })
