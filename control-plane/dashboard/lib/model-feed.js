@@ -9,7 +9,10 @@
  *     kind: lib/model-kind.js, absent for a chat model or one its ID says);
  *   - a model missing from the feed is left as it is: a feed never deletes,
  *     so a truncated or wrong feed cannot empty the catalog;
- *   - "retired": true stops offering a model (is_active = false).
+ *   - "retired": true stops offering a model (is_active = false);
+ *   - cache_write_per_mtok and cache_read_per_mtok, optional: the prompt
+ *     cache's prices (migration 052); without them, Anthropic's multipliers
+ *     on the input price, or the input price.
  *
  * New or changed IDs give the policies that name the model a new version
  * (triggers of migrations 023 and 024); a price change does not.
@@ -37,6 +40,12 @@ function price(v, where) {
     throw new FeedError(`${where}: price must be a number from 0 to ${MAX_PRICE_PER_MTOK} (US$ per million tokens)`)
   }
   return Math.round(v * 1e6) / 1e6
+}
+
+// The prompt cache's price per million tokens (migration 052), optional.
+function cachePrice(v, name, where) {
+  if (v === undefined || v === null) return null
+  return price(v, `${where}: ${name}`)
 }
 
 // A price per image or per minute of audio (ADR-0018), optional.
@@ -101,6 +110,8 @@ export function parseFeed(feed) {
       tools: m.tools ?? null,
       perImage: unitPrice(m.per_image, 'per_image', at),
       perAudioMinute: unitPrice(m.per_audio_minute, 'per_audio_minute', at),
+      cacheWrite: cachePrice(m.cache_write_per_mtok, 'cache_write_per_mtok', at),
+      cacheRead: cachePrice(m.cache_read_per_mtok, 'cache_read_per_mtok', at),
     }
   })
   return { updated: feed.updated, models }
@@ -130,13 +141,15 @@ export async function applyFeed(db, parsed, { source }) {
       INSERT INTO ai_models AS a (provider, model_id, display_name, aliases,
                                   cost_per_1k_input_tokens, cost_per_1k_output_tokens,
                                   deprecated_on, is_active, kind, vision, tools, cost_per_image, cost_per_audio_minute,
+                                  cost_per_1k_cache_write_tokens, cost_per_1k_cache_read_tokens,
                                   source, updated_at)
       SELECT f.provider, f.id, f.name, ARRAY(SELECT jsonb_array_elements_text(f.aliases)),
              f.input / 1000.0, f.output / 1000.0, f.deprecated_on::date, f.active, f.kind, f.vision, f.tools,
-             f.per_image, f.per_audio_minute, 'feed', now()
+             f.per_image, f.per_audio_minute, f.cache_write / 1000.0, f.cache_read / 1000.0, 'feed', now()
         FROM unnest($1::text[], $2::text[], $3::text[], $4::jsonb[], $5::numeric[], $6::numeric[], $7::text[], $8::boolean[], $9::text[],
-                    $10::boolean[], $11::boolean[], $12::numeric[], $13::numeric[])
-             AS f(provider, id, name, aliases, input, output, deprecated_on, active, kind, vision, tools, per_image, per_audio_minute)
+                    $10::boolean[], $11::boolean[], $12::numeric[], $13::numeric[], $14::numeric[], $15::numeric[])
+             AS f(provider, id, name, aliases, input, output, deprecated_on, active, kind, vision, tools, per_image, per_audio_minute,
+                  cache_write, cache_read)
       ON CONFLICT (provider, model_id) DO UPDATE
          SET display_name = EXCLUDED.display_name, aliases = EXCLUDED.aliases,
              cost_per_1k_input_tokens = EXCLUDED.cost_per_1k_input_tokens,
@@ -144,16 +157,20 @@ export async function applyFeed(db, parsed, { source }) {
              deprecated_on = EXCLUDED.deprecated_on, is_active = EXCLUDED.is_active,
              kind = EXCLUDED.kind, vision = EXCLUDED.vision, tools = EXCLUDED.tools,
              cost_per_image = EXCLUDED.cost_per_image, cost_per_audio_minute = EXCLUDED.cost_per_audio_minute,
+             cost_per_1k_cache_write_tokens = EXCLUDED.cost_per_1k_cache_write_tokens,
+             cost_per_1k_cache_read_tokens = EXCLUDED.cost_per_1k_cache_read_tokens,
              source = 'feed', updated_at = now()
        WHERE (a.display_name, a.aliases, a.cost_per_1k_input_tokens, a.cost_per_1k_output_tokens,
-              a.deprecated_on, a.is_active, a.kind, a.vision, a.tools, a.cost_per_image, a.cost_per_audio_minute)
+              a.deprecated_on, a.is_active, a.kind, a.vision, a.tools, a.cost_per_image, a.cost_per_audio_minute,
+              a.cost_per_1k_cache_write_tokens, a.cost_per_1k_cache_read_tokens)
              IS DISTINCT FROM
              (EXCLUDED.display_name, EXCLUDED.aliases, EXCLUDED.cost_per_1k_input_tokens,
               EXCLUDED.cost_per_1k_output_tokens, EXCLUDED.deprecated_on, EXCLUDED.is_active, EXCLUDED.kind,
-              EXCLUDED.vision, EXCLUDED.tools, EXCLUDED.cost_per_image, EXCLUDED.cost_per_audio_minute)`,
+              EXCLUDED.vision, EXCLUDED.tools, EXCLUDED.cost_per_image, EXCLUDED.cost_per_audio_minute,
+              EXCLUDED.cost_per_1k_cache_write_tokens, EXCLUDED.cost_per_1k_cache_read_tokens)`,
       [col('provider'), col('id'), col('name'), parsed.models.map(m => JSON.stringify(m.aliases)),
        col('input'), col('output'), col('deprecatedOn'), col('active'), col('kind'), col('vision'), col('tools'),
-       col('perImage'), col('perAudioMinute')])
+       col('perImage'), col('perAudioMinute'), col('cacheWrite'), col('cacheRead')])
     await client.query(`
       UPDATE model_catalog_state
          SET source = $1, feed_updated = $2, models = $3, changed = $4,

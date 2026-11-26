@@ -53,6 +53,7 @@ what is trusted; the header only names.
 | `POST /api/platform/organizations/:id` | `{ action, reason, confirm? }`: `suspend`, `resume`, `delete` (with `confirm`, the name as written) or `undelete` |
 | `GET /api/platform/usage?month=YYYY-MM` | Each organization's tokens, estimated cost and requests that month, and what it has now. `&format=csv` for a spreadsheet |
 | `GET /api/platform/audit` | The platform audit log, newest first. `org_id`, `limit` (up to 500), `before=<id>` to page |
+| `GET /api/platform/models` | Models the organizations' providers listed in the last 14 days that the catalog does not have: `provider`, `model_id`, `kind`, `vision`, `tools`, how many `organizations` (never which) and `last_seen`. For whoever keeps the catalog feed |
 
 Limits are those of [Plan limits](access-control.md#plan-limits). A reason
 (5 or more characters) is required to suspend, resume, delete and undelete,

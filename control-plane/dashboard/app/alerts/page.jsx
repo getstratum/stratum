@@ -9,9 +9,12 @@ const ALERT_TYPES = [
   { value: 'quota',  label: 'Cuota de tokens del mes' },
   { value: 'budget', label: 'Presupuesto del mes (US$)' },
   { value: 'default_model', label: 'El modelo predeterminado no funciona como está configurado' },
+  { value: 'model_retiring', label: 'Un modelo que usa el equipo se retira' },
 ]
+// Alerts without a threshold: they tell about an event, not a share of the month.
+const NO_THRESHOLD = new Set(['default_model', 'model_retiring'])
 const TYPE_LABEL = { quota: 'Cuota de tokens', budget: 'Presupuesto', policy_violation: 'Pedido rechazado por la política',
-  default_model: 'Modelo predeterminado' }
+  default_model: 'Modelo predeterminado', model_retiring: 'Modelo que se retira' }
 
 const CHANNELS = [
   { value: 'email', label: 'Email' },
@@ -70,7 +73,7 @@ function AlertModal({ teams, delivery, onSave, onClose }) {
               {ALERT_TYPES.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
             </Select>
           </Field>
-          {form.alertType !== 'default_model' && (
+          {!NO_THRESHOLD.has(form.alertType) && (
             <Field label="Umbral">
               <Select value={form.thresholdPct} onChange={e => set('thresholdPct', parseInt(e.target.value))}>
                 {THRESHOLDS.map(t => <option key={t} value={t}>{t} %</option>)}
@@ -104,6 +107,15 @@ function AlertModal({ teams, delivery, onSave, onClose }) {
         </Field>
 
         {/* Preview */}
+        {form.teamId && form.destination && form.alertType === 'model_retiring' && (
+          <div className="bg-raised border border-border rounded-md p-3 text-sm text-muted">
+            Cuando un modelo que la política de{' '}
+            <span className="text-strong">{teams.find(t => t.id === form.teamId)?.name ?? '—'}</span> nombra, o que el equipo usó
+            en los últimos 30 días, se retire en un mes y otra vez en una semana, avisar por {CHANNEL_LABEL[form.channel]} a{' '}
+            <span className="text-strong font-mono break-all">{form.destination.length > 40 ? form.destination.slice(0, 40) + '…' : form.destination}</span>.
+            Owners, Admins y el responsable del equipo ya reciben estos avisos por email.
+          </div>
+        )}
         {form.teamId && form.destination && form.alertType === 'default_model' && (
           <div className="bg-raised border border-border rounded-md p-3 text-sm text-muted">
             Cuando el modelo predeterminado de la política de{' '}
@@ -113,7 +125,7 @@ function AlertModal({ teams, delivery, onSave, onClose }) {
             Owners, Admins y el responsable del equipo ya reciben estos avisos por email.
           </div>
         )}
-        {form.teamId && form.destination && form.alertType !== 'default_model' && (
+        {form.teamId && form.destination && !NO_THRESHOLD.has(form.alertType) && (
           <div className="bg-raised border border-border rounded-md p-3 text-sm text-muted">
             Cuando <span className="text-strong">{teams.find(t => t.id === form.teamId)?.name ?? '—'}</span> llegue
             al <span className="text-strong tabular">{form.thresholdPct} %</span> de su{' '}
@@ -147,7 +159,7 @@ function AlertRow({ alert, canManage, onToggle, onDelete, onReset, onTest, testi
     <tr className={!alert.is_active ? 'bg-raised' : ''}>
       <td className="px-4 py-3 text-sm text-strong font-medium">{alert.team_name ?? 'Toda la organización'}</td>
       <td className="px-4 py-3 text-sm text-default">{TYPE_LABEL[alert.alert_type] ?? alert.alert_type}</td>
-      <td className="px-4 py-3 text-sm text-strong tabular text-right">{alert.alert_type === 'default_model' ? '—' : `${alert.threshold_pct} %`}</td>
+      <td className="px-4 py-3 text-sm text-strong tabular text-right">{NO_THRESHOLD.has(alert.alert_type) ? '—' : `${alert.threshold_pct} %`}</td>
       <td className="px-4 py-3 text-sm text-default">{CHANNEL_LABEL[alert.channel] ?? alert.channel}</td>
       <td className="px-4 py-3 text-xs text-muted font-mono max-w-[240px] truncate" title={alert.destination}>
         {alert.destination}
@@ -177,7 +189,7 @@ function AlertRow({ alert, canManage, onToggle, onDelete, onReset, onTest, testi
                     title="Envía un mensaje de prueba ahora">
               {testing ? 'Enviando…' : 'Probar'}
             </button>
-            {firedThisMonth && alert.alert_type !== 'default_model' && (
+            {firedThisMonth && !NO_THRESHOLD.has(alert.alert_type) && (
               <button type="button" onClick={() => onReset(alert)} className={action}
                       title="Permite que vuelva a avisar este mes">
                 Reiniciar

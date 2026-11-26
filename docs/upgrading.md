@@ -64,6 +64,19 @@ Back up the database before you upgrade.
   own price in Modelos; without one, Anthropic's (1.25 and 0.1 times the
   input price) and, for other providers, the input price, as before.
   Upgrade the gateways for it: older ones keep reporting without the cache.
+- **Models that retire are told** (migration 053). When the catalog says a
+  model retires and an organization names it in a policy or a route, or
+  used it in the last 30 days, its Owners and Admins, and the team managers
+  of the teams it touches, get an email a month before and again a week
+  before (`STRATUM_SMTP_URL`), and Modelos shows it at the top. Alertas has
+  a new type, «Un modelo que usa el equipo se retira», for Slack or another
+  address. The catalog feed also takes the prompt cache's prices
+  (`cache_write_per_mtok`, `cache_read_per_mtok`).
+- **The models of each provider are listed every day**, not only when
+  someone presses «Probar» in Proveedores: the control plane calls each
+  enabled provider it can test, with its saved key, once a day. A model a
+  provider stops listing keeps its row. `GET /api/platform/models` says,
+  for the platform, which listed models the catalog lacks.
 - **Refusals for a spent budget count as policy refusals** in Consumo and
   in usage reports, like a spent token quota (`budget_exceeded` was missing
   from that list).

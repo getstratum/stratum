@@ -144,16 +144,19 @@ function Models() {
   const [outdated, setOutdated]     = useState([])
   const [aliases, setAliases]       = useState([])
   const [noAliases, setNoAliases]   = useState([]) // gateways that do not know routes
+  const [retiring, setRetiring]     = useState([]) // models the organization uses that retire soon
 
   const load = useCallback(async () => {
-    const [m, pol, prov, cat, gws, al] = await Promise.all([
+    const [m, pol, prov, cat, gws, al, ret] = await Promise.all([
       fetch('/api/models').then(r => (r.ok ? r.json() : [])).catch(() => []),
       fetch('/api/policies').then(r => (r.ok ? r.json() : [])).catch(() => []),
       fetch('/api/internal/providers').then(r => (r.ok ? r.json() : null)).catch(() => null),
       fetch('/api/models/catalog').then(r => (r.ok ? r.json() : null)).catch(() => null),
       fetch('/api/internal/instances').then(r => (r.ok ? r.json() : null)).catch(() => null),
       fetch('/api/model-aliases').then(r => (r.ok ? r.json() : null)).catch(() => null),
+      fetch('/api/models/retiring').then(r => (r.ok ? r.json() : null)).catch(() => null),
     ])
+    setRetiring(ret?.models ?? [])
     setAliases(al?.aliases ?? [])
     setNoAliases((gws?.instances ?? []).filter(g => !g.disabled && g.versions?.some(ignoresAliases)))
     setCatalog(Array.isArray(m) ? m : [])
@@ -373,6 +376,25 @@ function Models() {
                 {refreshing ? 'Revisando…' : 'Revisar ahora'}
               </button>
             )}
+          </div>
+        )}
+        {retiring.length > 0 && (
+          <div role="status" className="text-sm text-warn bg-warn-light rounded-lg px-3 py-2 mt-2 space-y-1" data-testid="models-retiring">
+            <p className="font-semibold">
+              {retiring.length === 1 ? 'Un modelo que usa tu organización se retira' : `${retiring.length} modelos que usa tu organización se retiran`}:
+              después de esa fecha el proveedor rechaza sus pedidos.
+            </p>
+            <ul className="list-disc pl-5">
+              {retiring.map(m => (
+                <li key={`${m.provider}/${m.model_id}`}>
+                  <span className="font-mono">{m.model_id}</span>{' '}
+                  {m.days < 0 ? `se retiró el ${fmtDate(`${m.deprecated_on}T12:00:00`)}` : `se retira el ${fmtDate(`${m.deprecated_on}T12:00:00`)} (en ${m.days} ${m.days === 1 ? 'día' : 'días'})`}
+                  {m.policies.length > 0 && <> · políticas: {m.policies.join(', ')}</>}
+                  {m.routes.length > 0 && <> · rutas: {m.routes.map(r => `stratum/${r}`).join(', ')}</>}
+                  {m.used > 0 && <> · {m.used} pedidos en 30 días</>}
+                </li>
+              ))}
+            </ul>
           </div>
         )}
         {outdated.length > 0 && (
