@@ -1,12 +1,13 @@
 name: ci
 
-# A change to the model catalog alone is checked by catalog.yml, in seconds.
+# A change to the model catalog alone is checked by catalog.yml, in seconds:
+# here every job but the PR title is skipped then. Skipped, not left out
+# (paths-ignore): branch protection takes a skipped required check as passed,
+# and one that never reports as pending forever.
 on:
   pull_request:
-    paths-ignore: ['catalog/models.json']
   push:
     branches: [main]
-    paths-ignore: ['catalog/models.json']
 
 permissions:
   contents: read
@@ -16,8 +17,35 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: what changed
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.diff.outputs.code }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      # code=false only when every changed file is catalog/models.json; any
+      # doubt (a first push, a base it cannot find) runs everything.
+      - id: diff
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          HEAD: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        run: |
+          code=true
+          if [ -n "$BASE" ] && git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            files=$(git diff --name-only "$BASE...$HEAD")
+            if [ -n "$files" ] && ! printf '%s\n' "$files" | grep -qvx 'catalog/models.json'; then code=false; fi
+          fi
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "Only the model catalog changed: $([ "$code" = false ] && echo yes || echo no)"
+
   gateway:
     name: gateway (Go)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     services:
       # Real Valkey for the shared quota tests (the Lua script runs server-side).
@@ -69,6 +97,8 @@ jobs:
 
   contract:
     name: sync contract
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -85,6 +115,8 @@ jobs:
 
   control-plane:
     name: control plane (Next.js)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     services:
       # Real PostgreSQL for the migrations and the sync endpoint's queries.
@@ -139,6 +171,8 @@ jobs:
 
   console-e2e:
     name: console functional test (browser)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
@@ -186,6 +220,8 @@ jobs:
 
   images:
     name: container images
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -245,6 +281,8 @@ jobs:
 
   helm:
     name: helm chart
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -306,6 +344,8 @@ jobs:
 
   charts-kind:
     name: charts on kind
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     # Both charts installed on kind, a certified-conformant Kubernetes with no
     # cloud features (no zones, no metrics API, no load balancer), the way
@@ -384,6 +424,8 @@ jobs:
 
   gcp-kit:
     name: GCP reference deployment
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
