@@ -46,6 +46,9 @@ export const LOG_COLUMNS = [
   { key: 'user_email',   label: 'User' },
   { key: 'tokens_input', label: 'Tokens In' },
   { key: 'tokens_output',label: 'Tokens Out' },
+  // The part of Tokens In written to or read from the prompt cache.
+  { key: 'tokens_cache_write', label: 'Cache write tokens' },
+  { key: 'tokens_cache_read',  label: 'Cache read tokens' },
   // Empty: the model has no price (not a cost of 0).
   { key: 'cost_usd',     label: 'Cost USD',      format: v => (v == null ? '' : parseFloat(v).toFixed(8)) },
   { key: 'latency_ms',   label: 'Latency ms' },

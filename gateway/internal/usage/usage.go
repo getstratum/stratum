@@ -33,22 +33,26 @@ import (
 // Record is one request, as the control plane stores it. It holds metadata
 // only: never prompts, completions or credentials.
 type Record struct {
-	ID           string    `json:"id"` // UUID v4, the idempotency key
-	Time         time.Time `json:"ts"`
-	RequestID    string    `json:"request_id,omitempty"`
-	KeyID        string    `json:"key_id"`
-	UserID       string    `json:"user_id,omitempty"` // the person a delegating key acted for
-	TeamID       string    `json:"team_id,omitempty"`
-	Provider     string    `json:"provider,omitempty"`
-	Model        string    `json:"model,omitempty"`
-	Status       int       `json:"status"`
-	Reason       string    `json:"reason,omitempty"`
-	Stream       bool      `json:"stream"`
-	DurationMs   int64     `json:"duration_ms"`
-	UpstreamMs   int64     `json:"upstream_ms"`
-	TokensIn     int64     `json:"tokens_in"`
-	TokensOut    int64     `json:"tokens_out"`
-	ContentFlags []string  `json:"content_flags,omitempty"`
+	ID         string    `json:"id"` // UUID v4, the idempotency key
+	Time       time.Time `json:"ts"`
+	RequestID  string    `json:"request_id,omitempty"`
+	KeyID      string    `json:"key_id"`
+	UserID     string    `json:"user_id,omitempty"` // the person a delegating key acted for
+	TeamID     string    `json:"team_id,omitempty"`
+	Provider   string    `json:"provider,omitempty"`
+	Model      string    `json:"model,omitempty"`
+	Status     int       `json:"status"`
+	Reason     string    `json:"reason,omitempty"`
+	Stream     bool      `json:"stream"`
+	DurationMs int64     `json:"duration_ms"`
+	UpstreamMs int64     `json:"upstream_ms"`
+	TokensIn   int64     `json:"tokens_in"`
+	TokensOut  int64     `json:"tokens_out"`
+	// The part of TokensIn written to or read from the provider's prompt
+	// cache (from 1.0), priced apart by the control plane.
+	TokensCacheWrite int64    `json:"tokens_cache_write,omitempty"`
+	TokensCacheRead  int64    `json:"tokens_cache_read,omitempty"`
+	ContentFlags     []string `json:"content_flags,omitempty"`
 	// Labels the application put on the request (X-Stratum-Labels).
 	Labels []string `json:"labels,omitempty"`
 	// Alias is the route the request asked for (ADR-0015), so the control

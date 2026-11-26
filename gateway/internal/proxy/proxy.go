@@ -736,6 +736,7 @@ func (h *Handler) finish(r *http.Request, rec *record) {
 			Status: rec.status, Reason: rec.reason, Stream: rec.stream,
 			DurationMs: duration, UpstreamMs: rec.upstreamMs,
 			TokensIn: rec.usage.Input, TokensOut: rec.usage.Output, ContentFlags: rec.piiTypes, Labels: rec.labels,
+			TokensCacheWrite: rec.usage.CacheWrite, TokensCacheRead: rec.usage.CacheRead,
 			Alias: rec.alias, Images: rec.usage.Images, AudioSeconds: rec.usage.AudioSeconds, Task: rec.task,
 			AgentVersion: rec.version,
 		})
@@ -746,6 +747,9 @@ func (h *Handler) finish(r *http.Request, rec *record) {
 		"provider", usage.Clip(rec.provider, 50), "model", usage.Clip(rec.model, 100), "stream", rec.stream,
 		"duration_ms", duration, "upstream_ms", rec.upstreamMs,
 		"tokens_in", rec.usage.Input, "tokens_out", rec.usage.Output,
+	}
+	if rec.usage.CacheWrite > 0 || rec.usage.CacheRead > 0 {
+		attrs = append(attrs, "tokens_cache_write", rec.usage.CacheWrite, "tokens_cache_read", rec.usage.CacheRead)
 	}
 	if requestID != "" {
 		attrs = append(attrs, "request_id", requestID)

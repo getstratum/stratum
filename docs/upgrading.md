@@ -54,6 +54,16 @@ Back up the database before you upgrade.
   functions it includes and the portal's seats; the Enterprise portal reads
   them at `GET /api/oidc/entitlements`. Organizations upgrade without a
   list, which means "whatever the license includes": nothing changes.
+- **The prompt cache is counted and priced** (migration 052). Gateways
+  before 1.0 did not read Anthropic's `cache_creation_input_tokens` and
+  `cache_read_input_tokens`: a request that wrote 87,000 tokens to the
+  cache was counted as a dozen, its cost was short by the same, and token
+  quotas and budgets did not see it. From 1.0 `tokens_in` counts every
+  input token, as the providers' usage pages do, and Requests and its CSV
+  say which part was written to or read from the cache. Each part has its
+  own price in Modelos; without one, Anthropic's (1.25 and 0.1 times the
+  input price) and, for other providers, the input price, as before.
+  Upgrade the gateways for it: older ones keep reporting without the cache.
 - **Refusals for a spent budget count as policy refusals** in Consumo and
   in usage reports, like a spent token quota (`budget_exceeded` was missing
   from that list).

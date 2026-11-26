@@ -49,12 +49,20 @@ function RequestFacts({ log }) {
   const labels = Array.isArray(log.labels) ? log.labels : []
   const secs = log.audio_seconds != null ? Math.round(parseFloat(log.audio_seconds)) : 0
   const sensitive = Array.isArray(log.pii_types) ? log.pii_types : []
-  if (!log.error_message && !labels.length && !log.images && !secs && !sensitive.length) return null
+  const cacheW = Number(log.tokens_cache_write ?? 0)
+  const cacheR = Number(log.tokens_cache_read ?? 0)
+  if (!log.error_message && !labels.length && !log.images && !secs && !sensitive.length && !cacheW && !cacheR) return null
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs mb-3" data-testid="request-facts">
       {log.error_message && (
         <span className="text-muted">
           Motivo <code className="font-mono text-strong">{log.error_message}</code>
+        </span>
+      )}
+      {(cacheW > 0 || cacheR > 0) && (
+        <span className="text-muted" data-testid="request-cache"
+              title="Parte de la entrada que el proveedor guardó o leyó de su caché de prompts; cada parte se cobra a su precio (Modelos).">
+          De la entrada, caché: <span className="text-strong tabular">{nf(cacheW)}</span> escritos · <span className="text-strong tabular">{nf(cacheR)}</span> leídos
         </span>
       )}
       {log.images > 0 && <span className="text-muted">Imágenes <span className="text-strong tabular">{log.images}</span></span>}

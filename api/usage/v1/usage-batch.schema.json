@@ -42,8 +42,16 @@
         "stream": { "type": "boolean" },
         "duration_ms": { "type": "integer", "minimum": 0 },
         "upstream_ms": { "description": "Time until the provider's response headers.", "type": "integer", "minimum": 0 },
-        "tokens_in": { "type": "integer", "minimum": 0 },
+        "tokens_in": { "description": "Every input token, the prompt cache's included, as providers count them on their usage pages.", "type": "integer", "minimum": 0 },
         "tokens_out": { "type": "integer", "minimum": 0 },
+        "tokens_cache_write": {
+          "description": "Optional, from 1.0. The part of tokens_in written to the provider's prompt cache (Anthropic's cache_creation_input_tokens), priced apart.",
+          "type": "integer", "minimum": 0
+        },
+        "tokens_cache_read": {
+          "description": "Optional, from 1.0. The part of tokens_in read from the provider's prompt cache (Anthropic's cache_read_input_tokens, OpenAI's prompt_tokens_details.cached_tokens), priced apart.",
+          "type": "integer", "minimum": 0
+        },
         "content_flags": {
           "description": "Kinds of sensitive data the policy's PII/DLP rules found (never the data).",
           "type": "array",

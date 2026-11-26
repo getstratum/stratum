@@ -415,6 +415,49 @@ func TestAnthropicStreamUsage(t *testing.T) {
 	}
 }
 
+// The prompt cache counts as input, as providers count it, and is reported
+// apart so the control plane can price it: Anthropic's input_tokens leave
+// it out; OpenAI's prompt_tokens include it.
+func TestPromptCacheTokens(t *testing.T) {
+	e := newEnv(t, allowAll, time.Minute)
+	e.up.handler = func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		io.WriteString(w, "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":12,\"cache_creation_input_tokens\":87000,\"cache_read_input_tokens\":0,\"output_tokens\":1}}}\n\n")
+		io.WriteString(w, "event: message_delta\ndata: {\"type\":\"message_delta\",\"usage\":{\"input_tokens\":12,\"cache_creation_input_tokens\":87000,\"cache_read_input_tokens\":0,\"output_tokens\":300}}\n\n")
+	}
+	res := e.post("/proxy/anthropic/v1/messages", devKey, `{"model":"claude-sonnet-4","stream":true}`)
+	io.ReadAll(res.Body)
+	got := e.usage.wait(t, 1)
+	if r := got[0]; r.TokensIn != 87012 || r.TokensOut != 300 || r.TokensCacheWrite != 87000 || r.TokensCacheRead != 0 {
+		t.Fatalf("anthropic record = in %d out %d write %d read %d", r.TokensIn, r.TokensOut, r.TokensCacheWrite, r.TokensCacheRead)
+	}
+	if e.quota.Used("t1") != 87312 {
+		t.Fatalf("quota counted %d, want every token", e.quota.Used("t1"))
+	}
+
+	e.up.handler = func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, `{"id":"x","usage":{"input_tokens":5,"cache_read_input_tokens":40000,"output_tokens":9}}`)
+	}
+	res = e.post("/proxy/anthropic/v1/messages", devKey, `{"model":"claude-sonnet-4"}`)
+	io.ReadAll(res.Body)
+	got = e.usage.wait(t, 2)
+	if r := got[1]; r.TokensIn != 40005 || r.TokensOut != 9 || r.TokensCacheRead != 40000 || r.TokensCacheWrite != 0 {
+		t.Fatalf("anthropic read record = %+v", r)
+	}
+
+	e.up.handler = func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, `{"id":"x","choices":[],"usage":{"prompt_tokens":2048,"completion_tokens":7,"prompt_tokens_details":{"cached_tokens":1920}}}`)
+	}
+	res = e.post("/v1/chat/completions", devKey, `{"model":"openai/gpt-4o","messages":[]}`)
+	io.ReadAll(res.Body)
+	got = e.usage.wait(t, 3)
+	if r := got[2]; r.TokensIn != 2048 || r.TokensOut != 7 || r.TokensCacheRead != 1920 || r.TokensCacheWrite != 0 {
+		t.Fatalf("openai record = %+v", r)
+	}
+}
+
 func TestStreamIdleWatchdog(t *testing.T) {
 	e := newEnv(t, allowAll, 150*time.Millisecond)
 	release := make(chan struct{})
