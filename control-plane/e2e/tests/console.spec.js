@@ -9,6 +9,7 @@
 // optionally STRATUM_E2E_GATEWAY_URL, STRATUM_E2E_MODEL, STRATUM_E2E_TEAM,
 // STRATUM_E2E_SYNC_TIMEOUT_S.
 
+import AxeBuilder from '@axe-core/playwright'
 import { createHmac } from 'node:crypto'
 import { test, expect } from '@playwright/test'
 
@@ -35,7 +36,8 @@ let page
 const alerts = []
 
 test.beforeAll(async ({ browser }) => {
-  page = await browser.newPage()
+  // A context of its own: axe-core opens a page in it to finish its run.
+  page = await (await browser.newContext()).newPage()
   // Confirmations are accepted; alerts (the console's error popups) are
   // recorded and fail the step that raised them.
   page.on('dialog', async (d) => {
@@ -994,6 +996,31 @@ test('on a phone: no page is wider than the screen; tables become one block per 
   } finally {
     await page.setViewportSize({ width: 1280, height: 720 })
   }
+})
+
+// Accessibility: axe-core with WCAG 2.2 A and AA on every section, and on a
+// form in a modal.
+test('accessible: axe finds nothing in the sections and in a modal', async () => {
+  const tags = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa']
+  const found = []
+  const check = async (where) => {
+    const { violations } = await new AxeBuilder({ page }).withTags(tags).analyze()
+    found.push(...violations.flatMap(v => v.nodes.map(n =>
+      `${where}: ${v.id} (${v.impact}) ${n.target.join(' ')} ${JSON.stringify(n.any?.[0]?.data ?? '')} ${n.html.slice(0, 140)}`)))
+  }
+  for (const path of ['/', '/providers', '/models', '/mcp', '/gateways', '/apps', '/users', '/agents', '/teams', '/policy',
+    '/usage', '/logs', '/alerts', '/sso', '/service-tokens', '/audit', '/account']) {
+    await page.goto(path)
+    await page.waitForLoadState('networkidle')
+    await check(path)
+  }
+  await page.goto('/gateways')
+  await page.getByRole('button', { name: 'Registrar gateway' }).click()
+  await expect(dialog('Registrar gateway')).toBeVisible()
+  await check('modal')
+  await dialog('Registrar gateway').getByRole('button', { name: 'Cancelar' }).click()
+  console.log(found.join('\n') || 'axe: nada')
+  expect(found).toEqual([])
 })
 
 test('sign-out: the session ends on the server too', async () => {

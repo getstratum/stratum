@@ -131,7 +131,7 @@ export default function LogsPage() {
           {/* Team */}
           <div className="flex-1 min-w-36">
             <label className="block text-xs text-muted mb-1.5 font-medium">Equipo</label>
-            <select
+            <select aria-label="Equipo"
               value={filters.team}
               onChange={e => setFilter('team', e.target.value)}
               className="w-full text-sm border border-border rounded-lg px-3 py-2 bg-raised text-default focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/20"
@@ -144,7 +144,7 @@ export default function LogsPage() {
           {/* Provider */}
           <div className="flex-1 min-w-36">
             <label className="block text-xs text-muted mb-1.5 font-medium">Proveedor</label>
-            <select
+            <select aria-label="Proveedor"
               value={filters.provider}
               onChange={e => setFilter('provider', e.target.value)}
               className="w-full text-sm border border-border rounded-lg px-3 py-2 bg-raised text-default focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/20"
@@ -159,6 +159,7 @@ export default function LogsPage() {
             <label className="block text-xs text-muted mb-1.5 font-medium">Modelo</label>
             <input
               type="text"
+              aria-label="Modelo"
               placeholder="Buscar modelo…"
               value={modelInput}
               onChange={e => handleModelInput(e.target.value)}
@@ -169,7 +170,7 @@ export default function LogsPage() {
           {/* Status */}
           <div className="flex-1 min-w-36">
             <label className="block text-xs text-muted mb-1.5 font-medium">Estado</label>
-            <select
+            <select aria-label="Estado"
               value={filters.status}
               onChange={e => setFilter('status', e.target.value)}
               className="w-full text-sm border border-border rounded-lg px-3 py-2 bg-raised text-default focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/20"
@@ -181,7 +182,7 @@ export default function LogsPage() {
           {/* Limit */}
           <div className="w-28">
             <label className="block text-xs text-muted mb-1.5 font-medium">Mostrar</label>
-            <select
+            <select aria-label="Mostrar"
               value={filters.limit}
               onChange={e => setFilter('limit', parseInt(e.target.value))}
               className="w-full text-sm border border-border rounded-lg px-3 py-2 bg-raised text-default focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/20"

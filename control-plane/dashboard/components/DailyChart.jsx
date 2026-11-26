@@ -31,8 +31,8 @@ export default function DailyChart({ data }) {
       <ResponsiveContainer width="100%" height={180}>
         <BarChart data={data} barCategoryGap="38%">
           <CartesianGrid vertical={false} stroke="#eef0f3" />
-          <XAxis dataKey="day" tick={{ fill: '#6b7380', fontSize: 11 }} axisLine={{ stroke: '#c9ced6' }} tickLine={false} />
-          <YAxis tick={{ fill: '#6b7380', fontSize: 11 }} axisLine={false} tickLine={false} width={36} allowDecimals={false} />
+          <XAxis dataKey="day" tick={{ fill: '#626a77', fontSize: 11 }} axisLine={{ stroke: '#c9ced6' }} tickLine={false} />
+          <YAxis tick={{ fill: '#626a77', fontSize: 11 }} axisLine={false} tickLine={false} width={36} allowDecimals={false} />
           <Tooltip content={<CustomTooltip />} cursor={{ fill: '#eef0f3' }} />
           <Bar dataKey="requests" fill="#2a78d6" radius={[4, 4, 0, 0]} isAnimationActive={false} />
         </BarChart>

@@ -192,7 +192,7 @@ export default function GatewaysPage() {
         </p>
       )}
 
-      <div className="relative bg-card border border-border rounded-[10px] overflow-x-auto">
+      <div className="relative bg-card border border-border rounded-[10px] overflow-x-auto" tabIndex={0} role="region" aria-label="Gateways">
         {loading ? (
           <p className="p-6 text-sm text-muted">Cargando…</p>
         ) : data.instances.length === 0 ? (
@@ -215,7 +215,7 @@ export default function GatewaysPage() {
                 const st = STATUS[gw.status] ?? STATUS.offline
                 const current = gw.last_version != null && data.current_version != null && Number(gw.last_version) >= data.current_version
                 return (
-                  <tr key={gw.id} className={`border-b border-border last:border-0 ${gw.disabled ? 'opacity-60' : ''}`}>
+                  <tr key={gw.id} className={`border-b border-border last:border-0 ${gw.disabled ? 'bg-raised' : ''}`}>
                     <td className="px-5 py-3.5">
                       <div className="font-semibold text-strong">{gw.name}</div>
                       <code className="text-xs text-muted">{gw.id}</code>

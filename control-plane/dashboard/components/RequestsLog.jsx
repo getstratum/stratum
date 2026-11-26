@@ -189,7 +189,7 @@ export default function RequestsLog({ logs }) {
   if (narrow) return <RequestCards logs={logs} expanded={expanded} setExpanded={setExpanded} />
 
   return (
-    <div className="relative bg-card border border-border rounded-[10px] overflow-x-auto">
+    <div className="relative bg-card border border-border rounded-[10px] overflow-x-auto" tabIndex={0} role="region" aria-label="Requests">
       <table className="w-full min-w-[640px] text-sm">
         <thead>
           <tr className="text-xs text-muted uppercase tracking-wider bg-raised border-b border-border">

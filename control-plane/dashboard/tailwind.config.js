@@ -23,11 +23,12 @@ module.exports = {
         border:          '#e3e6eb',
         'border-strong': '#c9ced6',
 
-        // Text, darkest to lightest (all ≥ 4.5:1 on white)
+        // Text, darkest to lightest: all ≥ 4.5:1 on white and on the page,
+        // sidebar and raised backgrounds (WCAG 2.2 AA; axe in the e2e).
         strong:  '#161a22',
         default: '#2b313c',
         muted:   '#5b6472',
-        subtle:  '#6b7380',
+        subtle:  '#626a77',
 
         // Primary actions
         ink: { DEFAULT: '#161a22', hover: '#2b313c' },

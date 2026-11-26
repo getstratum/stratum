@@ -30,7 +30,7 @@ export default function TeamsTable({ teams, policies }) {
   }
 
   return (
-    <div className="relative bg-card border border-border rounded-[10px] overflow-x-auto">
+    <div className="relative bg-card border border-border rounded-[10px] overflow-x-auto" tabIndex={0} role="region" aria-label="Equipos">
       <div className="px-5 py-3.5 border-b border-border">
         <span className="text-xs font-semibold text-muted uppercase tracking-widest">
           Consumo por equipo · este mes
