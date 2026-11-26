@@ -144,7 +144,7 @@ export default function AuditPage() {
 
       {error && <p className="text-sm text-err bg-err-light rounded-lg px-4 py-3 mb-4">{error}</p>}
 
-      <div className="bg-card border border-border rounded-xl overflow-x-auto">
+      <div className="bg-card border border-border rounded-xl overflow-x-auto" tabIndex={0} role="region" aria-label="Auditoría">
         <table className="stack w-full min-w-[900px] text-sm">
           <thead>
             <tr className="text-left text-xs uppercase tracking-wide text-muted border-b border-border">

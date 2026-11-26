@@ -335,7 +335,7 @@ function Models() {
         <h1 className="text-[26px] font-semibold text-strong tracking-tight">Modelos</h1>
         <p className="text-sm text-muted">
           El catálogo, con precios de lista para estimar costos. Un pedido puede usar el ID de un modelo o cualquiera de
-          sus alias, o una ruta de tu organización (<code className="font-mono">stratum/nombre</code>). Qué modelos puede usar cada equipo lo decide su <Link href="/policy" className="text-accent hover:text-accent-hover">política</Link>;
+          sus alias, o una ruta de tu organización (<code className="font-mono">stratum/nombre</code>). Qué modelos puede usar cada equipo lo decide su <Link href="/policy" className="text-accent hover:text-accent-hover underline underline-offset-2">política</Link>;
           un modelo apagado acá no lo puede usar nadie de la organización.
         </p>
         {feed && (
@@ -433,7 +433,7 @@ function Models() {
         )}
       </div>
 
-      <section className="bg-card border border-border rounded-[10px] overflow-x-auto">
+      <section className="bg-card border border-border rounded-[10px] overflow-x-auto" tabIndex={0} aria-label="Modelos">
         {loading ? (
           <p className="p-6 text-sm text-muted">Cargando…</p>
         ) : rows.length === 0 ? (

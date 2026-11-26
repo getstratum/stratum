@@ -337,7 +337,7 @@ export default function ProvidersPage() {
 
       {error && <p className="text-sm text-err bg-err-light rounded-lg px-4 py-3 mb-4">{error}</p>}
 
-      <div className="relative bg-card border border-border rounded-[10px] overflow-x-auto">
+      <div className="relative bg-card border border-border rounded-[10px] overflow-x-auto" tabIndex={0} role="region" aria-label="Proveedores">
         {loading ? (
           <p className="p-6 text-sm text-muted">Cargando…</p>
         ) : providers.length === 0 ? (

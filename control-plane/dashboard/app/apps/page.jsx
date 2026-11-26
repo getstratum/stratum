@@ -205,7 +205,7 @@ export default function AppsPage() {
         ) : data.apps.length === 0 ? (
           <p className="px-5 py-8 text-sm text-muted">Todavía no hay aplicaciones registradas.</p>
         ) : data.apps.map(app => (
-          <div key={app.id} className={`px-5 py-4 flex flex-wrap items-start justify-between gap-3 ${app.revoked_at ? 'opacity-50' : ''}`}>
+          <div key={app.id} className={`px-5 py-4 flex flex-wrap items-start justify-between gap-3 ${app.revoked_at ? 'bg-raised' : ''}`}>
             <div className="min-w-0 space-y-1">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-sm font-semibold text-strong">{app.name}</span>

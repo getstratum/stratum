@@ -162,7 +162,7 @@ export default function ServiceTokensPage() {
           const expired = new Date(t.expires_at).getTime() <= now
           const off = t.revoked_at || expired
           return (
-            <div key={t.id} data-testid="service-token" className={`px-5 py-4 flex flex-wrap items-start justify-between gap-3 ${off ? 'opacity-60' : ''}`}>
+            <div key={t.id} data-testid="service-token" className={`px-5 py-4 flex flex-wrap items-start justify-between gap-3 ${off ? 'bg-raised' : ''}`}>
               <div className="min-w-0 space-y-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-sm font-semibold text-strong">{t.name}</span>

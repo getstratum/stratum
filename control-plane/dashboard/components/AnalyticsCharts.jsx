@@ -62,8 +62,8 @@ export function ProviderChart({ data }) {
         <ResponsiveContainer width="100%" height={200}>
           <BarChart data={data} barGap={6}>
             <CartesianGrid vertical={false} stroke="#eef0f3" />
-            <XAxis dataKey="provider" tick={{ fill: '#6b7380', fontSize: 11 }} axisLine={false} tickLine={false} />
-            <YAxis tick={{ fill: '#6b7380', fontSize: 11 }} axisLine={false} tickLine={false}
+            <XAxis dataKey="provider" tick={{ fill: '#626a77', fontSize: 11 }} axisLine={false} tickLine={false} />
+            <YAxis tick={{ fill: '#626a77', fontSize: 11 }} axisLine={false} tickLine={false}
               tickFormatter={v => formatCost(v)} width={72} />
             <Tooltip content={<ProviderTooltip />} cursor={{ fill: '#eef0f3' }} />
             <Bar dataKey="cost" radius={[4,4,0,0]}>
@@ -100,7 +100,7 @@ export function ProviderChart({ data }) {
       </div>
 
       {/* Stats table */}
-      <div className="bg-card border border-border rounded-[10px] overflow-x-auto relative lg:col-span-2">
+      <div className="bg-card border border-border rounded-[10px] overflow-x-auto relative lg:col-span-2" tabIndex={0} role="region" aria-label="Resumen por proveedor">
         <table className="stack w-full min-w-[640px] text-sm">
           <thead>
             <tr className="text-xs text-muted uppercase tracking-widest bg-raised border-b border-border">
@@ -173,7 +173,7 @@ export function ModelChart({ data }) {
         <ResponsiveContainer width="100%" height={Math.max(180, chartData.length * 36)}>
           <BarChart data={chartData} layout="vertical" barCategoryGap="30%">
             <CartesianGrid horizontal={false} stroke="#eef0f3" />
-            <XAxis type="number" tick={{ fill: '#6b7380', fontSize: 11 }} axisLine={false}
+            <XAxis type="number" tick={{ fill: '#626a77', fontSize: 11 }} axisLine={false}
               tickLine={false} tickFormatter={v => formatCost(v)} />
             <YAxis type="category" dataKey="model" tick={{ fill: '#2b313c', fontSize: 11 }}
               axisLine={false} tickLine={false} width={160} />
@@ -186,7 +186,7 @@ export function ModelChart({ data }) {
       </div>
 
       {/* Detail table */}
-      <div className="bg-card border border-border rounded-[10px] overflow-x-auto relative">
+      <div className="bg-card border border-border rounded-[10px] overflow-x-auto relative" tabIndex={0} role="region" aria-label="Detalle por modelo">
         <div className="flex items-center justify-between px-5 pt-4 pb-0"><div className="text-xs font-semibold text-muted uppercase tracking-widest">Detalle por modelo</div><ExportBtn onClick={() => { const ts=new Date().toISOString().slice(0,10); downloadCSV(toCSV(data,MODEL_COLUMNS),`stratum-models-${ts}.csv`) }} /></div>
         <table className="stack w-full min-w-[640px] text-sm">
           <thead>

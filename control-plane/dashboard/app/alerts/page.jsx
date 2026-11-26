@@ -144,7 +144,7 @@ function AlertRow({ alert, canManage, onToggle, onDelete, onReset, onTest, testi
   const action = 'min-h-[36px] px-2.5 rounded-md text-[13px] text-accent hover:bg-accent-light whitespace-nowrap'
 
   return (
-    <tr className={!alert.is_active ? 'opacity-60' : ''}>
+    <tr className={!alert.is_active ? 'bg-raised' : ''}>
       <td className="px-4 py-3 text-sm text-strong font-medium">{alert.team_name ?? 'Toda la organización'}</td>
       <td className="px-4 py-3 text-sm text-default">{TYPE_LABEL[alert.alert_type] ?? alert.alert_type}</td>
       <td className="px-4 py-3 text-sm text-strong tabular text-right">{alert.alert_type === 'default_model' ? '—' : `${alert.threshold_pct} %`}</td>
@@ -286,7 +286,7 @@ export default function AlertsPage() {
           </div>
         </div>
       ) : (
-        <div className="bg-card border border-border rounded-[10px] overflow-x-auto">
+        <div className="bg-card border border-border rounded-[10px] overflow-x-auto" tabIndex={0} role="region" aria-label="Alertas">
           <table className="stack w-full min-w-[900px]">
             <thead>
               <tr className="text-xs text-muted uppercase tracking-wider bg-raised border-b border-border">

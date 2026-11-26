@@ -154,7 +154,7 @@ export default function McpPage() {
           <p className="text-sm text-muted">
             Los servidores MCP que los agentes usan a través del gateway, en <code className="font-mono text-default">/mcp/nombre</code>,
             con su propia key de Stratum. La credencial de cada servidor queda acá: los agentes no la ven. Qué herramientas puede
-            llamar cada equipo lo dice su <Link href="/policy" className="text-accent hover:text-accent-hover">política</Link>; sin
+            llamar cada equipo lo dice su <Link href="/policy" className="text-accent hover:text-accent-hover underline underline-offset-2">política</Link>; sin
             herramientas en la política, ninguna. Cada llamada queda en Requests, también las rechazadas y los intentos de un equipo que no puede usar el servidor.
           </p>
         </div>
@@ -162,7 +162,7 @@ export default function McpPage() {
       </header>
       {error && <p role="alert" className="text-sm text-err bg-err-light rounded-lg px-3 py-2">{error}</p>}
 
-      <section className="bg-card border border-border rounded-[10px] overflow-x-auto" data-testid="mcp-servers">
+      <section className="bg-card border border-border rounded-[10px] overflow-x-auto" tabIndex={0} aria-label="Servidores MCP" data-testid="mcp-servers">
         {servers === null ? (
           <p className="p-6 text-sm text-muted">Cargando…</p>
         ) : servers.length === 0 ? (

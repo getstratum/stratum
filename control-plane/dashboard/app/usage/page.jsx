@@ -276,9 +276,9 @@ export default function UsagePage() {
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={chart.days} margin={{ top: 4, right: 4, left: 0, bottom: 0 }} barCategoryGap="20%">
                   <CartesianGrid vertical={false} stroke="#eef0f3" />
-                  <XAxis dataKey="day" tickLine={false} axisLine={{ stroke: '#c9ced6' }} tick={{ fontSize: 11, fill: '#6b7380' }}
+                  <XAxis dataKey="day" tickLine={false} axisLine={{ stroke: '#c9ced6' }} tick={{ fontSize: 11, fill: '#626a77' }}
                     tickFormatter={d => String(Number(d.slice(8, 10)))} interval="preserveStartEnd" minTickGap={8} />
-                  <YAxis tickLine={false} axisLine={false} width={64} tick={{ fontSize: 11, fill: '#6b7380' }}
+                  <YAxis tickLine={false} axisLine={false} width={64} tick={{ fontSize: 11, fill: '#626a77' }}
                     tickFormatter={v => metricText(shown, v)} allowDecimals={shown === 'cost' || shown === 'co2'} />
                   <Tooltip cursor={{ fill: '#eef0f3' }} content={<ChartTooltip metric={shown} names={chart.names} />} />
                   {chart.series.map((k, i) => (
@@ -294,7 +294,7 @@ export default function UsagePage() {
       )}
 
       {data && (
-        <section aria-labelledby="table" className="bg-card border border-border rounded-[10px] overflow-x-auto">
+        <section aria-labelledby="table" tabIndex={0} className="bg-card border border-border rounded-[10px] overflow-x-auto">
           <h2 id="table" className="px-5 pt-[18px] pb-1.5 text-base font-semibold text-strong">Por {dimOf(by).one.toLowerCase()}</h2>
           {data.rows.length === 0 ? (
             <p className="px-5 pb-5 text-sm text-muted">Sin requests en este período.</p>

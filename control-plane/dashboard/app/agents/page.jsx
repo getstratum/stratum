@@ -78,7 +78,7 @@ function Results({ agent }) {
           {detail && (
             <>
               {detail.versions.some(v => v.version) && (
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto" tabIndex={0} role="region" aria-label="Resultados por versión">
                   <div className="text-xs text-muted mb-1">Por versión de sus instrucciones (<code className="font-mono">X-Stratum-Agent-Version</code>)</div>
                   <table className="text-xs min-w-[30rem] w-full" data-testid="agent-versions">
                     <thead className="text-muted text-left">
@@ -110,7 +110,7 @@ function Results({ agent }) {
                 </div>
               )}
               {detail.recent.length > 0 && (
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto" tabIndex={0} role="region" aria-label="Tareas recientes">
                   <table className="text-xs min-w-[34rem] w-full">
                     <thead className="text-muted text-left">
                       <tr><th className="font-normal py-1 pr-3">Tarea</th><th className="font-normal pr-3">Cómo terminó</th><th className="font-normal pr-3">Cuándo</th><th className="font-normal pr-3 text-right">Pedidos</th><th className="font-normal pr-3 text-right">Costo</th><th className="font-normal text-right">Duración</th></tr>
@@ -481,7 +481,7 @@ export default function AgentsPage() {
             <div
               key={agent.id}
               data-testid="agent-row"
-              className={`bg-card border border-border rounded-[10px] ${!agent.is_active ? 'opacity-60' : ''}`}
+              className={`bg-card border border-border rounded-[10px] ${!agent.is_active ? '!bg-raised' : ''}`}
             >
               <div className="px-5 py-4 flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0 flex flex-wrap items-center gap-x-3 gap-y-1.5">

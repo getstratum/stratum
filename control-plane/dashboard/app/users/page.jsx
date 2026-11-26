@@ -508,12 +508,14 @@ export default function UsersPage() {
       <div className="flex flex-wrap gap-3 mb-4">
         <input
           type="search"
+          aria-label="Buscar personas"
           placeholder="Buscar por nombre, email o equipo…"
           value={search}
           onChange={e => setSearch(e.target.value)}
           className="flex-1 min-w-[200px] bg-raised border border-border rounded-lg px-3.5 py-2 text-sm text-strong placeholder-subtle focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent"
         />
         <select
+          aria-label="Mostrar"
           value={filter}
           onChange={e => setFilter(e.target.value)}
           className="bg-raised border border-border rounded-lg px-3 py-2 text-sm text-default focus:outline-none focus:ring-2 focus:ring-accent/30"
@@ -525,7 +527,7 @@ export default function UsersPage() {
       </div>
 
       {/* Table; on a phone, one card per person */}
-      <div className="relative bg-card border border-border rounded-[10px] overflow-x-auto">
+      <div className="relative bg-card border border-border rounded-[10px] overflow-x-auto" tabIndex={0} role="region" aria-label="Usuarios">
         {loading ? (
           <div className="p-10 text-center text-muted text-sm">Cargando…</div>
         ) : filtered.length === 0 ? (
@@ -535,7 +537,7 @@ export default function UsersPage() {
         ) : narrow ? (
           <ul className="divide-y divide-border">
             {filtered.map(user => (
-              <li key={user.id} className={`px-4 py-3.5 flex flex-col gap-2 ${!user.is_active ? 'opacity-50' : ''}`}>
+              <li key={user.id} className={`px-4 py-3.5 flex flex-col gap-2 ${!user.is_active ? 'bg-raised' : ''}`}>
                 <div className="min-w-0">
                   <div className="font-semibold text-strong truncate">{user.name}</div>
                   <div className="text-xs text-muted truncate">{user.email}</div>
@@ -565,7 +567,7 @@ export default function UsersPage() {
             <tbody className="divide-y divide-border">
               {filtered.map(user => (
                 <tr key={user.id}
-                  className={`hover:bg-raised transition-colors ${!user.is_active ? 'opacity-50' : ''}`}>
+                  className={`hover:bg-raised transition-colors ${!user.is_active ? 'bg-raised' : ''}`}>
                   <td className="px-5 py-3.5">
                     <div className="font-semibold text-strong">{user.name}</div>
                     <div className="text-xs text-muted">{user.email}</div>
