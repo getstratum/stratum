@@ -111,6 +111,12 @@ gateway:
   upstreamHeaderTimeout: 120s
   streamIdleTimeout: 60s
   piiEnabled: true
+  # Where each request came from, in Requests: the client's address and its
+  # User-Agent. false leaves them out.
+  recordClient: true
+  # X-Forwarded-For is believed only from these (addresses or CIDRs): the
+  # ingress or load balancer in front. Empty: the connection's address.
+  trustedProxies: []
   corsAllowedOrigins: ""
   logLevel: info
 

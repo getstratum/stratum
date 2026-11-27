@@ -574,6 +574,8 @@ test('policies: personal data and credentials, blocked or hidden by the gateway,
     const row = page.getByRole('row').filter({ hasText: name }).filter({ hasText: '200' }).first()
     await row.click()
     await expect(page.getByTestId('request-sensitive').first()).toContainText('email')
+    // And where it came from: this test's address and program (migration 054).
+    await expect(page.getByTestId('request-origin').first()).toContainText(/Origen \S+/)
   } finally {
     expect((await api('PATCH', `/api/policies/${team.policy_id}`, { piiAction: 'off', dlpAction: 'off' })).status).toBe(200)
   }

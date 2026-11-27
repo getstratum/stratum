@@ -20,6 +20,7 @@
  * goes to task_outcomes (ingestOutcomes), not request_logs.
  */
 
+import { isIP } from 'node:net'
 import { estimate } from './impacts/index.js'
 
 export const MAX_RECORDS = 500
@@ -85,6 +86,9 @@ export function normalizeRecord(r, now = Date.now()) {
     tokens_out: clampInt(r.tokens_out),
     tokens_cache_write: cacheWrite,
     tokens_cache_read: cacheRead,
+    // Where it came from (from 1.0): an address, and printable text.
+    client_ip: typeof r.client_ip === 'string' && isIP(r.client_ip) ? r.client_ip : null,
+    user_agent: typeof r.user_agent === 'string' ? (r.user_agent.replace(/[^\x20-\x7e]/g, '').trim().slice(0, 200) || null) : null,
     flags: [...new Set(flags)].join(','),
     labels: [...new Set(labels)].sort().join(','),
     // The route the request asked for (from 0.6); anything else is dropped.
@@ -149,11 +153,11 @@ export async function ingest(db, instance, records) {
          $18::text[], $19::text[],
          $20::float8[], $21::float8[], $22::float8[], $23::float8[], $24::float8[],
          $25::float8[], $26::float8[], $27::float8[], $28::float8[], $29::float8[], $30::text[], $31::text[],
-         $32::text[], $33::int[], $34::float8[], $35::text[], $36::text[], $37::int[], $38::int[]
+         $32::text[], $33::int[], $34::float8[], $35::text[], $36::text[], $37::int[], $38::int[], $39::text[], $40::text[]
        ) AS t(id, ts, request_id, key_id, team_id, provider, model,
               status, reason, stream, duration_ms, upstream_ms, tokens_in, tokens_out, flags, user_id, labels,
               e_min, e_max, g_min, g_max, w_min, w_max, pe_min, pe_max, ad_min, ad_max, zone, method, alias,
-              images, audio_seconds, task, agent_version, cache_write, cache_read)
+              images, audio_seconds, task, agent_version, cache_write, cache_read, client_ip, user_agent)
      )
      INSERT INTO request_logs (
        id, created_at, org_id, team_id, user_id, agent_id, provider, model_id,
@@ -162,7 +166,7 @@ export async function ingest(db, instance, records) {
        impact_energy_wh_min, impact_energy_wh_max, impact_gwp_g_min, impact_gwp_g_max,
        impact_water_ml_min, impact_water_ml_max, impact_pe_kj_min, impact_pe_kj_max,
        impact_adpe_mg_min, impact_adpe_mg_max, impact_zone, impact_method, alias, images, audio_seconds, task, agent_version,
-       tokens_cache_write, tokens_cache_read)
+       tokens_cache_write, tokens_cache_read, client_ip, user_agent)
      SELECT r.id, r.ts, $1::uuid, tm.id, u.id, a.id, r.provider, r.model,
             r.tokens_in, r.tokens_out,
             -- No price for a request that used tokens: NULL, "sin precio",
@@ -199,7 +203,7 @@ export async function ingest(db, instance, records) {
             r.e_min, r.e_max, r.g_min, r.g_max, r.w_min, r.w_max, r.pe_min, r.pe_max,
             r.ad_min, r.ad_max, r.zone, r.method, r.alias,
             NULLIF(r.images, 0), NULLIF(r.audio_seconds, 0), r.task, r.agent_version,
-            NULLIF(r.cache_write, 0), NULLIF(r.cache_read, 0)
+            NULLIF(r.cache_write, 0), NULLIF(r.cache_read, 0), r.client_ip::inet, r.user_agent
        FROM r
        LEFT JOIN teams tm  ON tm.id::text = r.team_id AND tm.org_id = $1::uuid
        -- The person: the one a delegating key acted for, else the key's owner.
@@ -238,7 +242,7 @@ export async function ingest(db, instance, records) {
      col(records, 'tokens_in'), col(records, 'tokens_out'), col(records, 'flags'), col(records, 'user_id'),
      col(records, 'labels'), ...impactColumns(records), col(records, 'alias'),
      col(records, 'images'), col(records, 'audio_seconds'), col(records, 'task'), col(records, 'agent_version'),
-     col(records, 'tokens_cache_write'), col(records, 'tokens_cache_read')])
+     col(records, 'tokens_cache_write'), col(records, 'tokens_cache_read'), col(records, 'client_ip'), col(records, 'user_agent')])
   await db.query('UPDATE data_plane_instances SET last_usage_at = now() WHERE id = $1', [instance.id])
   return rowCount
 }

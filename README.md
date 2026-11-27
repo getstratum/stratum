@@ -293,6 +293,8 @@ See [Traces](docs/architecture/traces.md) and [ADR-0013](docs/adr/0013-traces.md
 | `STRATUM_TRACE_PROPAGATION` | `true` | Send `traceparent` to the provider and the decision services: the gateway's span with traces on, the client's own with them off. `false` sends none. |
 | `STRATUM_DRAIN_DELAY` / `STRATUM_SHUTDOWN_TIMEOUT` | `5s` / `10m` | Graceful shutdown: readiness fails first, then in-flight streams get up to the timeout to finish. |
 | `STRATUM_PII_ENABLED` | `true` | Global switch for PII/DLP scanning (actions are set per policy). |
+| `STRATUM_RECORD_CLIENT` | `true` | Each request's usage record says where it came from: the client's address and its User-Agent, shown in Requests. `false` leaves them out. They are kept as long as the request. |
+| `STRATUM_TRUSTED_PROXIES` | | Addresses or CIDRs, comma separated, of the proxies in front of the gateway (an ingress, a load balancer). Only from them is `X-Forwarded-For` believed; the client's address is then the nearest one in it that is not a trusted proxy. Empty: the connection's address. |
 | `STRATUM_CORS_ALLOWED_ORIGINS` | | Comma-separated origins allowed to call the gateway from a browser. |
 | `STRATUM_VALKEY_URL` | | Shared quota counters across replicas and the shared snapshot copy, e.g. `redis://valkey:6379/0` or `rediss://` for TLS. Without it each replica counts on its own. See [Quotas](#quotas-across-replicas). |
 | `STRATUM_VALKEY_PASSWORD` | | Overrides the password in the URL, so the URL can live in a ConfigMap. |

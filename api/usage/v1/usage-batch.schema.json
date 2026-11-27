@@ -48,6 +48,14 @@
           "description": "Optional, from 1.0. The part of tokens_in written to the provider's prompt cache (Anthropic's cache_creation_input_tokens), priced apart.",
           "type": "integer", "minimum": 0
         },
+        "client_ip": {
+          "description": "Optional, from 1.0. The address the request came from: the connection's, or X-Forwarded-For's from a trusted proxy (STRATUM_TRUSTED_PROXIES). Left out with STRATUM_RECORD_CLIENT=false.",
+          "type": "string", "maxLength": 45
+        },
+        "user_agent": {
+          "description": "Optional, from 1.0. The User-Agent the client sent, printable ASCII only. Left out with STRATUM_RECORD_CLIENT=false.",
+          "type": "string", "maxLength": 200
+        },
         "tokens_cache_read": {
           "description": "Optional, from 1.0. The part of tokens_in read from the provider's prompt cache (Anthropic's cache_read_input_tokens, OpenAI's prompt_tokens_details.cached_tokens), priced apart.",
           "type": "integer", "minimum": 0

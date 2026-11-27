@@ -205,6 +205,22 @@ test('usage: the prompt cache is input, priced apart: Anthropic\'s multipliers, 
   }
 })
 
+test('usage: where a request came from, as the gateway saw it (migration 054); anything malformed is left out', { skip }, async () => {
+  const ok = record(A, { client_ip: '198.51.100.9', user_agent: 'daty-worker/1.4 (cron)' })
+  const v6 = record(A, { client_ip: '2001:db8::7', user_agent: `x\u0001y${'z'.repeat(300)}` })
+  const bad = record(A, { client_ip: 'not-an-ip; DROP TABLE', user_agent: 42 })
+  const none = record(A)
+  assert.equal((await post(A.token, { records: [ok, v6, bad, none] })).body.accepted, 4)
+  const row = async r => (await sql('SELECT host(client_ip) AS ip, user_agent FROM request_logs WHERE id = $1', [r.id]))[0]
+  assert.deepEqual(await row(ok), { ip: '198.51.100.9', user_agent: 'daty-worker/1.4 (cron)' })
+  const six = await row(v6)
+  assert.equal(six.ip, '2001:db8::7')
+  assert.equal(six.user_agent.length, 200)
+  assert.ok(six.user_agent.startsWith('xyz'))
+  assert.deepEqual(await row(bad), { ip: null, user_agent: null })
+  assert.deepEqual(await row(none), { ip: null, user_agent: null })
+})
+
 test('usage: each request gets its estimated impact; an unknown model or no output gets none', { skip }, async () => {
   const known = record(A, { provider: 'openai', model: 'gpt-4o-mini', tokens_out: 400, duration_ms: 6000 })
   const unknown = record(A, { provider: 'ollama', model: 'mock-fast', tokens_out: 400 })
