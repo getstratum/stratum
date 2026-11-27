@@ -334,9 +334,11 @@ jobs:
               [ "$profile" = values-prod.yaml ] && args+=(--set global.domain=stratum.example.com)
               echo "== $profile ${platform:-(no platform)}"
               helm lint --strict . "${args[@]}"
+              # Route is OpenShift's own API, not a CRD: no public schema
+              # for kubeconform (its fields are few: expose.yaml).
               helm template stratum . -n stratum "${args[@]}" \
                 | "$(go env GOPATH)/bin/kubeconform" -strict -summary \
-                    -kubernetes-version 1.29.0 -skip ServiceMonitor,PrometheusRule \
+                    -kubernetes-version 1.29.0 -skip ServiceMonitor,PrometheusRule,Route \
                     -schema-location default \
                     -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'
           done
