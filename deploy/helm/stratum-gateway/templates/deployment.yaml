@@ -105,6 +105,14 @@ spec:
               value: {{ .Values.gateway.piiEnabled | quote }}
             - name: STRATUM_RECORD_CLIENT
               value: {{ .Values.gateway.recordClient | quote }}
+            {{- if .Values.incidents.url }}
+            - name: STRATUM_INCIDENTS_URL
+              value: {{ .Values.incidents.url | quote }}
+            {{- if .Values.incidents.tokenSecret }}
+            - name: STRATUM_INCIDENTS_TOKEN
+              valueFrom: { secretKeyRef: { name: {{ .Values.incidents.tokenSecret | quote }}, key: {{ .Values.incidents.tokenSecretKey | quote }} } }
+            {{- end }}
+            {{- end }}
             {{- with .Values.gateway.trustedProxies }}
             - name: STRATUM_TRUSTED_PROXIES
               value: {{ join "," . | quote }}

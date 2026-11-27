@@ -426,3 +426,15 @@ func TestClientOrigin(t *testing.T) {
 		t.Fatalf("a name instead of an address: %v", err)
 	}
 }
+
+func TestIncidentService(t *testing.T) {
+	m := map[string]string{"STRATUM_CONFIG_FILE": "/etc/stratum/stratum.json", "STRATUM_INCIDENTS_URL": "http://enterprise:3300/", "STRATUM_INCIDENTS_TOKEN": "tok"}
+	c, err := Load(envOf(m))
+	if err != nil || c.IncidentsURL != "http://enterprise:3300" || c.IncidentsToken != "tok" {
+		t.Fatalf("%q %q %v", c.IncidentsURL, c.IncidentsToken, err)
+	}
+	m["STRATUM_INCIDENTS_URL"] = "enterprise:3300"
+	if _, err := Load(envOf(m)); err == nil || !strings.Contains(err.Error(), "STRATUM_INCIDENTS_URL") {
+		t.Fatalf("not a URL: %v", err)
+	}
+}

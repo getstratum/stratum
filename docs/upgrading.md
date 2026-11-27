@@ -64,6 +64,12 @@ Back up the database before you upgrade.
   own price in Modelos; without one, Anthropic's (1.25 and 0.1 times the
   input price) and, for other providers, the input price, as before.
   Upgrade the gateways for it: older ones keep reporting without the cache.
+- **Agents report problems** (ADR-0021): `POST /v1/stratum/incidents` on
+  the gateway, with the agent's key, goes to Stratum Enterprise's
+  Incidentes. Set `STRATUM_INCIDENTS_URL` and `STRATUM_INCIDENTS_TOKEN`
+  (chart: `incidents.url`, `incidents.tokenSecret`) on the gateways, and
+  the same token as `STRATUM_ENTERPRISE_INCIDENTS_TOKEN` in Stratum
+  Enterprise. Without them the endpoint answers 404.
 - **Where each request came from** (migration 054). Gateways from 1.0
   report the client's address and its User-Agent; Requests shows them
   and its CSV has two columns. Behind an ingress or a load balancer, set

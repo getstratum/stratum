@@ -242,6 +242,15 @@ approval before a sensitive tool, rules on what it may be called with.
 Protocol: [Decision services](docs/architecture/decision-services.md);
 why: [ADR-0014](docs/adr/0014-decision-services.md).
 
+**An agent reports a problem.** `POST /v1/stratum/incidents` with its key and
+`{ "what": "<what happened, 20 to 4000 characters>", "about": "agent" |
+"chat" | "other", "task": "<task>" }`: the gateway passes it on, with the
+agent, team and person its key is, to the incident service (Stratum
+Enterprise → Incidentes) and answers 201 with its reference (`INC-0042`).
+The agent needs no other secret and only talks to the gateway. Requests
+records that it reported, never what. Why:
+[ADR-0021](docs/adr/0021-agent-incident-reports.md).
+
 **An agent's results.** The task a request names stays on its record, and
 when the task ends the application says how: `POST /v1/stratum/tasks/<task>`
 with `{ "outcome": "resolved" | "escalated" | "failed", "reason": "<code>" }`.
@@ -294,6 +303,7 @@ See [Traces](docs/architecture/traces.md) and [ADR-0013](docs/adr/0013-traces.md
 | `STRATUM_DRAIN_DELAY` / `STRATUM_SHUTDOWN_TIMEOUT` | `5s` / `10m` | Graceful shutdown: readiness fails first, then in-flight streams get up to the timeout to finish. |
 | `STRATUM_PII_ENABLED` | `true` | Global switch for PII/DLP scanning (actions are set per policy). |
 | `STRATUM_RECORD_CLIENT` | `true` | Each request's usage record says where it came from: the client's address and its User-Agent, shown in Requests. `false` leaves them out. They are kept as long as the request. |
+| `STRATUM_INCIDENTS_URL` / `STRATUM_INCIDENTS_TOKEN` | | Where agents' reports of a problem go (`POST /v1/stratum/incidents`, ADR-0021): Stratum Enterprise's address and the token it expects. Empty: the endpoint answers 404. |
 | `STRATUM_TRUSTED_PROXIES` | | Addresses or CIDRs, comma separated, of the proxies in front of the gateway (an ingress, a load balancer). Only from them is `X-Forwarded-For` believed; the client's address is then the nearest one in it that is not a trusted proxy. Empty: the connection's address. |
 | `STRATUM_CORS_ALLOWED_ORIGINS` | | Comma-separated origins allowed to call the gateway from a browser. |
 | `STRATUM_VALKEY_URL` | | Shared quota counters across replicas and the shared snapshot copy, e.g. `redis://valkey:6379/0` or `rediss://` for TLS. Without it each replica counts on its own. See [Quotas](#quotas-across-replicas). |

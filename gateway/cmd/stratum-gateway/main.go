@@ -198,6 +198,7 @@ func serve() int {
 		StreamIdleTimeout: cfg.StreamIdleTimeout,
 		PIIEnabled:        cfg.PIIEnabled,
 		RecordClient:      cfg.RecordClient,
+		Incidents:         incidentService(cfg),
 		TrustedProxies:    cfg.TrustedProxies,
 		UserAgent:         userAgent(),
 		RequestID:         server.RequestID,
@@ -253,7 +254,8 @@ func serve() int {
 	}
 	opts := server.Options{Proxy: px, Models: http.HandlerFunc(px.Models), Instructions: http.HandlerFunc(px.Instructions),
 		MCPServers: http.HandlerFunc(px.MCPServers), TaskOutcome: http.HandlerFunc(px.TaskOutcome),
-		MCP: http.HandlerFunc(px.MCP), Health: hc, Metrics: m, Log: log,
+		Incidents: http.HandlerFunc(px.ReportIncident),
+		MCP:       http.HandlerFunc(px.MCP), Health: hc, Metrics: m, Log: log,
 		MaxInflight: cfg.MaxInflight, AllowedOrigins: cfg.CORSAllowedOrigins}
 
 	public := server.NewHTTPServer(cfg.ListenAddr, server.Public(opts), log)
@@ -542,4 +544,13 @@ func revision() string {
 		}
 	}
 	return "unknown"
+}
+
+// incidentService is where agents' reports go (ADR-0021), or nil.
+func incidentService(cfg *config.Config) *proxy.IncidentService {
+	if cfg.IncidentsURL == "" {
+		return nil
+	}
+	return &proxy.IncidentService{URL: cfg.IncidentsURL, Token: cfg.IncidentsToken,
+		Client: &http.Client{Transport: &http.Transport{Proxy: http.ProxyFromEnvironment, IdleConnTimeout: 90 * time.Second}}}
 }

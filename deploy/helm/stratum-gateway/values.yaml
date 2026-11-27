@@ -120,6 +120,16 @@ gateway:
   corsAllowedOrigins: ""
   logLevel: info
 
+# Agents' reports of a problem (ADR-0021): POST /v1/stratum/incidents goes
+# to Stratum Enterprise, which keeps them in Incidentes. Its address, as the
+# gateway reaches it, and a Secret with the token Stratum Enterprise expects
+# (STRATUM_ENTERPRISE_INCIDENTS_TOKEN there). Empty url: the endpoint
+# answers 404.
+incidents:
+  url: ""
+  tokenSecret: ""
+  tokenSecretKey: token
+
 # Shared monthly token quotas across replicas (docs/adr/0004). Valkey is never
 # on the request path: a Valkey outage does not fail requests in the default
 # fail mode. Without it each replica counts on its own, so a team can spend up

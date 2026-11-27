@@ -71,6 +71,9 @@ type Handler struct {
 	RecordClient   bool
 	TrustedProxies []netip.Prefix
 
+	// Where agents' reports of a problem go (incidents.go, ADR-0021); nil: nowhere.
+	Incidents *IncidentService
+
 	// OpenTelemetry traces (ADR-0013). A nil Traces turns them off; the
 	// client's traceparent then goes to the provider unchanged.
 	Traces    *trace.Exporter
