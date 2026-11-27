@@ -50,7 +50,9 @@
       "upstream_ms": 240,
       "tokens_in": 812,
       "tokens_out": 230,
-      "tokens_cache_read": 768
+      "tokens_cache_read": 768,
+      "client_ip": "198.51.100.9",
+      "user_agent": "triage-bot/2.1 (python-httpx)"
     }
   ]
 }

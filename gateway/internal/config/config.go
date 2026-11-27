@@ -9,6 +9,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"net/netip"
 	"net/url"
 	"os"
 	"slices"
@@ -94,6 +95,13 @@ type Config struct {
 	// arguments, not only their hash (ADR-0017).
 	DecisionToolArguments bool
 
+	// Where each request came from, in its usage record: the client's
+	// address and User-Agent (STRATUM_RECORD_CLIENT, on by default).
+	// X-Forwarded-For is believed only from these proxies
+	// (STRATUM_TRUSTED_PROXIES: addresses or CIDRs, comma separated).
+	RecordClient   bool
+	TrustedProxies []netip.Prefix
+
 	// Traces (ADR-0013), from the standard OpenTelemetry variables. An empty
 	// TracesEndpoint: no spans; the client's traceparent is still passed on
 	// to the provider unless TracePropagation is off.
@@ -169,6 +177,8 @@ func Load(getenv func(string) string) (*Config, error) {
 		DecisionToken:          e.str("STRATUM_DECISION_TOKEN", ""),
 		DecisionTimeout:        e.dur("STRATUM_DECISION_TIMEOUT", 200*time.Millisecond),
 		DecisionToolArguments:  e.bool("STRATUM_DECISION_TOOL_ARGUMENTS", false),
+		RecordClient:           e.bool("STRATUM_RECORD_CLIENT", true),
+		TrustedProxies:         e.prefixes("STRATUM_TRUSTED_PROXIES"),
 		DecisionToolTimeout:    e.dur("STRATUM_DECISION_TOOL_TIMEOUT", time.Second),
 
 		ValkeyURL:         e.str("STRATUM_VALKEY_URL", ""),
@@ -435,6 +445,21 @@ func (e *env) dur(k string, def time.Duration) time.Duration {
 		return def
 	}
 	return d
+}
+
+// prefixes takes addresses (a single host) or CIDRs, comma separated.
+func (e *env) prefixes(k string) []netip.Prefix {
+	var out []netip.Prefix
+	for _, v := range e.list(k) {
+		if p, err := netip.ParsePrefix(v); err == nil {
+			out = append(out, p.Masked())
+		} else if a, err := netip.ParseAddr(v); err == nil {
+			out = append(out, netip.PrefixFrom(a.Unmap(), a.Unmap().BitLen()))
+		} else {
+			e.fail(fmt.Sprintf("%s: %q is not an address or a CIDR", k, v))
+		}
+	}
+	return out
 }
 
 func (e *env) list(k string) []string {

@@ -50,9 +50,13 @@ type Record struct {
 	TokensOut  int64     `json:"tokens_out"`
 	// The part of TokensIn written to or read from the provider's prompt
 	// cache (from 1.0), priced apart by the control plane.
-	TokensCacheWrite int64    `json:"tokens_cache_write,omitempty"`
-	TokensCacheRead  int64    `json:"tokens_cache_read,omitempty"`
-	ContentFlags     []string `json:"content_flags,omitempty"`
+	TokensCacheWrite int64 `json:"tokens_cache_write,omitempty"`
+	TokensCacheRead  int64 `json:"tokens_cache_read,omitempty"`
+	// Where the request came from (from 1.0): the client's address and the
+	// User-Agent it sent, unless the gateway is set not to record them.
+	ClientIP     string   `json:"client_ip,omitempty"`
+	UserAgent    string   `json:"user_agent,omitempty"`
+	ContentFlags []string `json:"content_flags,omitempty"`
 	// Labels the application put on the request (X-Stratum-Labels).
 	Labels []string `json:"labels,omitempty"`
 	// Alias is the route the request asked for (ADR-0015), so the control

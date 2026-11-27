@@ -401,3 +401,28 @@ func TestUpstreamConnectTimeout(t *testing.T) {
 		}
 	}
 }
+
+func TestClientOrigin(t *testing.T) {
+	base := map[string]string{"STRATUM_CONFIG_FILE": "/etc/stratum/stratum.json"}
+	c, err := Load(envOf(base))
+	if err != nil || !c.RecordClient || len(c.TrustedProxies) != 0 {
+		t.Fatalf("defaults: record=%v proxies=%v err=%v", c.RecordClient, c.TrustedProxies, err)
+	}
+	m := map[string]string{"STRATUM_CONFIG_FILE": "/etc/stratum/stratum.json", "STRATUM_RECORD_CLIENT": "false",
+		"STRATUM_TRUSTED_PROXIES": "10.0.0.0/8, 192.168.1.20, fd00::/8, 10.1.2.3/8"}
+	c, err = Load(envOf(m))
+	if err != nil || c.RecordClient {
+		t.Fatalf("off: %v %v", c.RecordClient, err)
+	}
+	var got []string
+	for _, p := range c.TrustedProxies {
+		got = append(got, p.String())
+	}
+	if strings.Join(got, " ") != "10.0.0.0/8 192.168.1.20/32 fd00::/8 10.0.0.0/8" {
+		t.Fatalf("proxies = %v", got)
+	}
+	m["STRATUM_TRUSTED_PROXIES"] = "ingress.local"
+	if _, err := Load(envOf(m)); err == nil || !strings.Contains(err.Error(), "STRATUM_TRUSTED_PROXIES") {
+		t.Fatalf("a name instead of an address: %v", err)
+	}
+}

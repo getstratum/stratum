@@ -51,12 +51,21 @@ function RequestFacts({ log }) {
   const sensitive = Array.isArray(log.pii_types) ? log.pii_types : []
   const cacheW = Number(log.tokens_cache_write ?? 0)
   const cacheR = Number(log.tokens_cache_read ?? 0)
-  if (!log.error_message && !labels.length && !log.images && !secs && !sensitive.length && !cacheW && !cacheR) return null
+  const origin = log.client_ip || log.user_agent
+  if (!log.error_message && !labels.length && !log.images && !secs && !sensitive.length && !cacheW && !cacheR && !origin) return null
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs mb-3" data-testid="request-facts">
       {log.error_message && (
         <span className="text-muted">
           Motivo <code className="font-mono text-strong">{log.error_message}</code>
+        </span>
+      )}
+      {origin && (
+        <span className="text-muted min-w-0 break-all" data-testid="request-origin"
+              title="De dónde vino el pedido: la dirección del cliente y el programa que dijo ser (User-Agent), según el gateway.">
+          Origen {log.client_ip && <code className="font-mono text-strong">{log.client_ip}</code>}
+          {log.client_ip && log.user_agent && ' · '}
+          {log.user_agent && <span className="text-strong">{log.user_agent}</span>}
         </span>
       )}
       {(cacheW > 0 || cacheR > 0) && (

@@ -101,6 +101,7 @@ func (h *Handler) MCP(w http.ResponseWriter, r *http.Request) {
 	}
 	// model is "server/tool" for a call, the server alone when the server
 	// itself is refused.
+	ip, ua := h.origin(r)
 	report := func(model string, st int, why string, labels ...string) {
 		if h.Usage == nil {
 			return
@@ -109,6 +110,7 @@ func (h *Handler) MCP(w http.ResponseWriter, r *http.Request) {
 			ID: usage.NewID(), Time: start.UTC(), KeyID: key.ID, UserID: userID, TeamID: teamID, Task: task, AgentVersion: version,
 			Provider: "mcp", Model: usage.Clip(model, 100), Status: st, Reason: why,
 			DurationMs: time.Since(start).Milliseconds(), Labels: mergeLabels(mergeLabels([]string{"mcp"}, appLabels), labels),
+			ClientIP: ip, UserAgent: ua,
 		})
 	}
 	if !pol.MCPAllowed(name, "") {

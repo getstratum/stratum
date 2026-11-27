@@ -29,6 +29,7 @@ export const GET = route('logs.read', async (req, { session, db }) => {
   const { rows } = await db.query(`
     SELECT r.id, r.created_at, r.provider, r.model_id,
            r.tokens_input, r.tokens_output, r.tokens_cache_write, r.tokens_cache_read, r.cost_usd,
+           host(r.client_ip) AS client_ip, r.user_agent,
            r.latency_ms, r.auth_ms, r.policy_ms, r.provider_ms,
            r.trace_id, r.status_code, r.error_message, r.labels, r.pii_types, r.images, r.audio_seconds, r.is_stream,
            t.name  AS team_name,

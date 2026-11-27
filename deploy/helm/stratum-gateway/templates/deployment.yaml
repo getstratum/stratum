@@ -103,6 +103,12 @@ spec:
               value: {{ .Values.gateway.streamIdleTimeout | quote }}
             - name: STRATUM_PII_ENABLED
               value: {{ .Values.gateway.piiEnabled | quote }}
+            - name: STRATUM_RECORD_CLIENT
+              value: {{ .Values.gateway.recordClient | quote }}
+            {{- with .Values.gateway.trustedProxies }}
+            - name: STRATUM_TRUSTED_PROXIES
+              value: {{ join "," . | quote }}
+            {{- end }}
             - name: STRATUM_LOG_LEVEL
               value: {{ .Values.gateway.logLevel | quote }}
             - name: STRATUM_DRAIN_DELAY

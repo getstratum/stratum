@@ -64,6 +64,14 @@ Back up the database before you upgrade.
   own price in Modelos; without one, Anthropic's (1.25 and 0.1 times the
   input price) and, for other providers, the input price, as before.
   Upgrade the gateways for it: older ones keep reporting without the cache.
+- **Where each request came from** (migration 054). Gateways from 1.0
+  report the client's address and its User-Agent; Requests shows them
+  and its CSV has two columns. Behind an ingress or a load balancer, set
+  `STRATUM_TRUSTED_PROXIES` (chart: `gateway.trustedProxies`) to its
+  addresses, or every request shows the proxy's: `X-Forwarded-For` is
+  believed only from them. `STRATUM_RECORD_CLIENT=false`
+  (`gateway.recordClient`) leaves both out. They are kept as long as the
+  request.
 - **Models that retire are told** (migration 053). When the catalog says a
   model retires and an organization names it in a policy or a route, or
   used it in the last 30 days, its Owners and Admins, and the team managers

@@ -17,6 +17,7 @@ import (
 	"math"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"slices"
 	"strconv"
@@ -63,6 +64,12 @@ type Handler struct {
 	Usage             UsageSink // optional
 	Decision          Decider   // optional: external decision services (ADR-0014)
 	ToolArguments     bool      // MCP tool calls go to them with their arguments (ADR-0017)
+
+	// Where each request came from, in its usage record (origin.go): the
+	// client's address and User-Agent. RecordClient false leaves both out;
+	// X-Forwarded-For is believed only from TrustedProxies.
+	RecordClient   bool
+	TrustedProxies []netip.Prefix
 
 	// OpenTelemetry traces (ADR-0013). A nil Traces turns them off; the
 	// client's traceparent then goes to the provider unchanged.
@@ -729,6 +736,7 @@ func (h *Handler) finish(r *http.Request, rec *record) {
 	// Usage is reported for every request made with a valid key, refused
 	// ones included: the console shows denials too. Requests without a
 	// valid key belong to no organization and are only logged and counted.
+	ip, ua := h.origin(r)
 	if h.Usage != nil && rec.keyID != "" {
 		h.Usage.Add(usage.Record{
 			ID: usage.NewID(), Time: rec.start.UTC(), RequestID: usage.Clip(requestID, 128),
@@ -737,6 +745,7 @@ func (h *Handler) finish(r *http.Request, rec *record) {
 			DurationMs: duration, UpstreamMs: rec.upstreamMs,
 			TokensIn: rec.usage.Input, TokensOut: rec.usage.Output, ContentFlags: rec.piiTypes, Labels: rec.labels,
 			TokensCacheWrite: rec.usage.CacheWrite, TokensCacheRead: rec.usage.CacheRead,
+			ClientIP: ip, UserAgent: ua,
 			Alias: rec.alias, Images: rec.usage.Images, AudioSeconds: rec.usage.AudioSeconds, Task: rec.task,
 			AgentVersion: rec.version,
 		})
@@ -877,4 +886,13 @@ func cutDeployment(p string) (before, name, after string, ok bool) {
 		return "", "", "", false
 	}
 	return before, name, after, true
+}
+
+// origin is the client's address and User-Agent, or "" for both when the
+// gateway is set not to record them.
+func (h *Handler) origin(r *http.Request) (ip, ua string) {
+	if !h.RecordClient {
+		return "", ""
+	}
+	return clientIP(r, h.TrustedProxies), clientAgent(r)
 }

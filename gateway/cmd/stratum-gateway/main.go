@@ -197,6 +197,8 @@ func serve() int {
 		MaxAudioBytes:     cfg.MaxAudioBytes,
 		StreamIdleTimeout: cfg.StreamIdleTimeout,
 		PIIEnabled:        cfg.PIIEnabled,
+		RecordClient:      cfg.RecordClient,
+		TrustedProxies:    cfg.TrustedProxies,
 		UserAgent:         userAgent(),
 		RequestID:         server.RequestID,
 	}
