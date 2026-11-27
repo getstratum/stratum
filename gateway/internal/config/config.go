@@ -102,6 +102,12 @@ type Config struct {
 	RecordClient   bool
 	TrustedProxies []netip.Prefix
 
+	// Agents' reports of a problem (ADR-0021): POST /v1/stratum/incidents
+	// goes to {IncidentsURL}/api/internal/incidents (Stratum Enterprise)
+	// with IncidentsToken as bearer. Empty: the endpoint answers 404.
+	IncidentsURL   string
+	IncidentsToken string
+
 	// Traces (ADR-0013), from the standard OpenTelemetry variables. An empty
 	// TracesEndpoint: no spans; the client's traceparent is still passed on
 	// to the provider unless TracePropagation is off.
@@ -179,6 +185,8 @@ func Load(getenv func(string) string) (*Config, error) {
 		DecisionToolArguments:  e.bool("STRATUM_DECISION_TOOL_ARGUMENTS", false),
 		RecordClient:           e.bool("STRATUM_RECORD_CLIENT", true),
 		TrustedProxies:         e.prefixes("STRATUM_TRUSTED_PROXIES"),
+		IncidentsURL:           strings.TrimRight(e.str("STRATUM_INCIDENTS_URL", ""), "/"),
+		IncidentsToken:         e.str("STRATUM_INCIDENTS_TOKEN", ""),
 		DecisionToolTimeout:    e.dur("STRATUM_DECISION_TOOL_TIMEOUT", time.Second),
 
 		ValkeyURL:         e.str("STRATUM_VALKEY_URL", ""),
@@ -196,6 +204,11 @@ func Load(getenv func(string) string) (*Config, error) {
 
 	if c.UpstreamConnectTimeout < 100*time.Millisecond || c.UpstreamConnectTimeout > time.Minute {
 		e.fail("STRATUM_UPSTREAM_CONNECT_TIMEOUT must be between 100ms and 1m")
+	}
+	if c.IncidentsURL != "" {
+		if u, err := url.Parse(c.IncidentsURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			e.fail("STRATUM_INCIDENTS_URL must be an http(s) URL (Stratum Enterprise's address)")
+		}
 	}
 	if c.UpstreamRetries < 0 || c.UpstreamRetries > 5 {
 		e.fail("STRATUM_UPSTREAM_RETRIES must be between 0 and 5")
