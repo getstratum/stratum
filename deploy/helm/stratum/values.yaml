@@ -65,6 +65,15 @@ bootstrap:
   ownerEmail: ""
   invite: false
   gatewayName: kubernetes
+  # What applications installed next to the console need from it, declared
+  # (stratum-admin bootstrap --spec): teams, agents, applications that sign
+  # people in, service tokens, each secret in an environment variable of
+  # env. Stratum Enterprise's chart sets both. With the demo, the demo Job
+  # applies it to the demo organization.
+  spec: {}
+  env: []
+  #  - name: PORTAL_SECRET
+  #    valueFrom: { secretKeyRef: { name: stratum-portal-oidc, key: client-secret } }
   resources:
     requests: { cpu: 50m, memory: 128Mi }
     limits: { memory: 256Mi }
@@ -227,6 +236,8 @@ expose:
 # the gateway. With secrets.mode demo. DEMO ONLY: never alongside real data.
 demo:
   enabled: false
+  # The demo organization's name (files/demo/seed.sql).
+  orgName: Acme Corp (Demo)
   mockLlm:
     image: ghcr.io/getstratum/stratum-mock-llm
     # Defaults to the chart's appVersion.

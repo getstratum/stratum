@@ -107,6 +107,23 @@ spec:
           resources: {{- toYaml $d.resources | nindent 12 }}
           securityContext: {{- include "stratum.containerSecurity" . | nindent 12 }}
           volumeMounts: {{- $mounts | nindent 12 }}
+        {{- if .Values.bootstrap.spec }}
+        # What applications next to the console need (bootstrap.spec), in
+        # the demo organization.
+        - name: spec
+          image: {{ include "stratum.consoleImage" . | quote }}
+          command: [node, scripts/stratum-admin.mjs, bootstrap, --org-name, {{ .Values.demo.orgName | quote }}]
+          env:
+            {{- $env | nindent 12 }}
+            - { name: STRATUM_BOOTSTRAP_SPEC, value: {{ toJson .Values.bootstrap.spec | quote }} }
+            {{- with .Values.bootstrap.env }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          resources: {{- toYaml $d.resources | nindent 12 }}
+          securityContext: {{- include "stratum.containerSecurity" . | nindent 12 }}
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+        {{- end }}
         {{- if $d.traffic }}
         # The gateway serves once it has synced the registration above.
         {{- include "stratum.waitFor" (dict "name" "wait-gateway" "url" (printf "%s/readyz" $gateway) "root" .) | nindent 8 }}

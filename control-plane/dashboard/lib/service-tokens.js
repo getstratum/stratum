@@ -16,6 +16,9 @@
 import { randomBytes } from 'node:crypto'
 import { hashToken } from './session.js'
 import { badRequest } from './route.js'
+import { SCOPES } from './service-token-scopes.js'
+
+export { SCOPES }
 
 export const PREFIX = 'stsvc_'
 export const MAX_DAYS = 365
@@ -24,15 +27,6 @@ export const EXPIRY_CHOICES = [30, 90, 180, 365]
 // What a token may be given. Left out on purpose: the session's own routes
 // (org.read), anything that holds or hands out a secret of the organization
 // (providers, gateways, applications, SSO) and tokens themselves.
-export const SCOPES = [
-  'users.read', 'users.manage', 'keys.manage',
-  'teams.read', 'teams.manage', 'teams.budget',
-  'policies.read', 'policies.manage',
-  'alerts.read', 'alerts.manage',
-  'models.read', 'models.manage',
-  'providers.read', 'gateways.read', 'apps.read', 'sso.read',
-  'usage.read', 'logs.read', 'audit.read',
-]
 
 /** A Bearer token that looks like a service token, or null. */
 export function bearerToken(req) {

@@ -24,7 +24,7 @@
  *   node scripts/stratum-admin.mjs platform-token-list
  *   node scripts/stratum-admin.mjs platform-token-revoke --id <uuid>
  *   node scripts/stratum-admin.mjs bootstrap --org-name "Acme" [--owner-email ana@acme.com] [--invite]
- *                                            [--gateway-name k8s]
+ *                                            [--gateway-name k8s] [--spec bootstrap.json]
  *
  * create-owner makes (or promotes) the Owner of an organization: the first
  * account of a new installation, or a way back in when nobody can sign in.
@@ -91,6 +91,23 @@
  * Gateways, without the plan's limit). An instance id of another
  * organization is refused.
  *
+ * With --spec (a JSON file, or STRATUM_BOOTSTRAP_SPEC), what applications
+ * installed next to the console need from it, declared and kept as said
+ * (Stratum Enterprise's chart uses it): teams (made if missing, with a
+ * policy that allows no model: an agent that acts for people uses each
+ * person's), agents, applications that sign people in (OIDC) and service
+ * tokens, each with its secret in an environment variable the spec names:
+ *   { "teams": [{ "name": "Aplicaciones" }],
+ *     "agents": [{ "id": "<uuid>", "name": "portal", "team": "Aplicaciones",
+ *                  "keyEnv": "PORTAL_KEY", "delegates": true }],
+ *     "apps": [{ "id": "app_<24 hex>", "name": "Portal", "secretEnv": "PORTAL_SECRET",
+ *                "redirectUris": ["https://portal.example.com/api/auth/callback"],
+ *                "requireMfa": true, "usageReports": true, "historyAudit": false, "consoleLink": false }],
+ *     "serviceTokens": [{ "name": "Stratum Enterprise", "tokenEnv": "CONSOLE_TOKEN",
+ *                         "scopes": ["users.read", "providers.read"] }] }
+ * Running it again changes what differs (a new key, other redirect URIs)
+ * and renews a service token with less than 60 days left.
+ *
  * catalog-update applies the model catalog feed now (ADR-0012): from
  * STRATUM_MODEL_CATALOG_URL or the default feed, a URL, or a local file for
  * installations without internet access (the repository's
@@ -108,6 +125,7 @@ import pg from 'pg'
 // the output.
 process.removeAllListeners('warning')
 const { hashPassword, passwordProblem } = await import('../lib/password.js')
+const serviceTokens = await import('../lib/service-token-scopes.js')
 const totp = await import('../lib/totp.js')
 const { encryptSecret } = await import('../lib/secrets.js')
 const feed = await import('../lib/model-feed.js')
@@ -139,7 +157,7 @@ const USAGE = 'usage: stratum-admin create-owner --email <email> [--name <name>]
               '       stratum-admin platform-token-create --name <name> [--days <1-365>]\n' +
               '       stratum-admin platform-token-list\n' +
               '       stratum-admin platform-token-revoke --id <uuid>\n' +
-              '       stratum-admin bootstrap --org-name <name> [--owner-email <email>] [--invite] [--gateway-name <name>]'
+              '       stratum-admin bootstrap --org-name <name> [--owner-email <email>] [--invite] [--gateway-name <name>] [--spec <file.json>]'
 
 const FLAGS = new Set(['password-stdin', 'secret-stdin', 'invite'])
 
@@ -498,8 +516,9 @@ async function bootstrap(db, opts) {
   if (instanceId && !INSTANCE_RE.test(instanceId)) throw new Error('STRATUM_GATEWAY_INSTANCE_ID: dp_ and 8 to 64 lowercase letters, digits or _.')
   if (syncToken && !SYNC_RE.test(syncToken)) throw new Error('STRATUM_GATEWAY_SYNC_TOKEN: dp_sync_ and 64 hex characters (openssl rand -hex 32).')
   if (opts.invite && !process.env.STRATUM_CONSOLE_URL?.trim()) throw new Error('--invite needs STRATUM_CONSOLE_URL: the link is the console\'s address.')
+  const spec = await readSpec(opts)
 
-  let org, owner = null, invite = false, gateway = null
+  let org, owner = null, invite = false, gateway = null, applied = []
   await db.query('BEGIN')
   try {
     await db.query('SELECT pg_advisory_xact_lock($1)', [BOOTSTRAP_LOCK])
@@ -531,6 +550,8 @@ async function bootstrap(db, opts) {
       }
     }
 
+    if (spec) applied = await applySpec(db, org.id, spec)
+
     if (instanceId) {
       const hash = createHash('sha256').update(syncToken).digest('hex')
       const { rows: [had] } = await db.query('SELECT org_id, sync_token_hash FROM data_plane_instances WHERE id = $1', [instanceId])
@@ -559,6 +580,145 @@ async function bootstrap(db, opts) {
   if (invite === 'open') console.log(`${email} has an open invitation: it was not sent again (org-invite sends a new one).`)
   if (!owner && !invite && email) console.log('It already has an Owner: nobody was added.')
   if (gateway) console.log(`Gateway ${instanceId}: ${gateway}.`)
+  for (const line of applied) console.log(line)
+}
+
+// ── bootstrap --spec ────────────────────────────────────────────────────
+
+const sha256hex = (s) => createHash('sha256').update(s).digest('hex')
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+async function readSpec(opts) {
+  let text = process.env.STRATUM_BOOTSTRAP_SPEC?.trim()
+  if (opts.spec) text = (await import('node:fs')).readFileSync(opts.spec, 'utf8')
+  if (!text) return null
+  let spec
+  try {
+    spec = JSON.parse(text)
+  } catch (err) {
+    throw new Error(`--spec: not JSON (${err.message})`)
+  }
+  const secret = (name, re, what) => {
+    const v = process.env[name]?.trim()
+    if (!v) throw new Error(`--spec: ${what} needs ${name} in the environment`)
+    if (!re.test(v)) throw new Error(`--spec: ${name} does not look like ${what}`)
+    return v
+  }
+  const out = { teams: [], agents: [], apps: [], serviceTokens: [] }
+  for (const t of spec.teams ?? []) {
+    if (typeof t.name !== 'string' || !t.name.trim() || t.name.length > 100) throw new Error('--spec: a team needs a name')
+    out.teams.push({ name: t.name.trim() })
+  }
+  for (const a of spec.agents ?? []) {
+    if (!UUID_RE.test(a.id ?? '')) throw new Error(`--spec: agent ${a.name}: id must be a UUID`)
+    if (typeof a.name !== 'string' || !a.name.trim() || typeof a.team !== 'string') throw new Error(`--spec: agent ${a.id}: name and team`)
+    out.agents.push({ id: a.id, name: a.name.trim().slice(0, 255), team: a.team, description: a.description ?? null,
+      delegates: a.delegates === true, key: secret(a.keyEnv, /^aig_agt_[A-Za-z0-9_]{24,}$/, `agent ${a.name}'s key (aig_agt_...)`) })
+  }
+  for (const p of spec.apps ?? []) {
+    if (!/^app_[0-9a-f]{24}$/.test(p.id ?? '')) throw new Error(`--spec: application ${p.name}: id is app_ and 24 hex characters`)
+    if (typeof p.name !== 'string' || !p.name.trim() || p.name.length > 100) throw new Error(`--spec: application ${p.id}: a name`)
+    const uris = [...new Set(p.redirectUris ?? [])]
+    if (!uris.length || uris.length > 10) throw new Error(`--spec: application ${p.name}: one to ten redirectUris`)
+    for (const u of uris) {
+      let url
+      try { url = new URL(u) } catch { throw new Error(`--spec: application ${p.name}: ${u} is not a URL`) }
+      const loopback = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)
+      if (url.hash || u.includes('#') || url.username || !(url.protocol === 'https:' || (url.protocol === 'http:' && loopback))) {
+        throw new Error(`--spec: application ${p.name}: ${u} must be https (or http on localhost), without a fragment`)
+      }
+    }
+    for (const f of ['requireMfa', 'usageReports', 'historyAudit', 'consoleLink']) {
+      if (p[f] !== undefined && typeof p[f] !== 'boolean') throw new Error(`--spec: application ${p.name}: ${f} is true or false`)
+    }
+    out.apps.push({ id: p.id, name: p.name.trim(), uris, requireMfa: p.requireMfa ?? true, usageReports: p.usageReports ?? false,
+      historyAudit: p.historyAudit ?? false, consoleLink: p.consoleLink ?? false,
+      secret: secret(p.secretEnv, /^stsec_[0-9a-f]{64}$/, `application ${p.name}'s secret (stsec_ and 64 hex)`) })
+  }
+  for (const t of spec.serviceTokens ?? []) {
+    const scopes = t.scopes ?? []
+    const unknown = scopes.filter(x => !serviceTokens.SCOPES.includes(x))
+    if (!scopes.length || unknown.length) throw new Error(`--spec: service token ${t.name}: scopes from ${serviceTokens.SCOPES.join(', ')}${unknown.length ? ` (not ${unknown.join(', ')})` : ''}`)
+    if (typeof t.name !== 'string' || !t.name.trim() || t.name.length > 100) throw new Error('--spec: a service token needs a name')
+    out.serviceTokens.push({ name: t.name.trim(), scopes: serviceTokens.SCOPES.filter(x => scopes.includes(x)),
+      token: secret(t.tokenEnv, /^stsvc_[A-Za-z0-9_]{32,}$/, `service token ${t.name} (stsvc_...)`) })
+  }
+  return out
+}
+
+// Inside bootstrap's transaction. → what it did, one line each.
+async function applySpec(db, orgId, spec) {
+  const done = []
+  const teams = new Map()
+  const { rows: existing } = await db.query('SELECT id, name FROM teams WHERE org_id = $1', [orgId])
+  for (const t of existing) teams.set(t.name.toLowerCase(), t.id)
+  for (const t of spec.teams) {
+    if (teams.has(t.name.toLowerCase())) continue
+    // Its policy allows no model: whoever acts for people uses theirs.
+    const { rows: [pol] } = await db.query(
+      `INSERT INTO policies (org_id, name, allowed_models, allow_all_models, monthly_token_quota, monthly_budget_usd)
+       VALUES ($1, $2, '{}', false, 0, 0) RETURNING id`, [orgId, `${t.name} (sin modelos)`])
+    const { rows: [team] } = await db.query(
+      'INSERT INTO teams (org_id, name, policy_id, monthly_budget_usd) VALUES ($1, $2, $3, 0) RETURNING id', [orgId, t.name, pol.id])
+    teams.set(t.name.toLowerCase(), team.id)
+    await audit(db, orgId, 'team.bootstrap', team.id, { name: t.name }, 'team')
+    done.push(`Team ${t.name}: made, with a policy that allows no model.`)
+  }
+  for (const a of spec.agents) {
+    const teamId = teams.get(a.team.toLowerCase())
+    if (!teamId) throw new Error(`--spec: agent ${a.name}: no team ${a.team} (add it to "teams")`)
+    const hash = sha256hex(a.key)
+    const { rows: [had] } = await db.query('SELECT org_id, api_key_hash, team_id, delegates FROM agents WHERE id = $1', [a.id])
+    if (had && had.org_id !== orgId) throw new Error(`--spec: agent ${a.id} belongs to another organization`)
+    if (!had) {
+      await db.query(
+        `INSERT INTO agents (id, org_id, team_id, name, description, api_key_hash, api_key_prefix, delegates)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [a.id, orgId, teamId, a.name, a.description, hash, `${a.key.slice(0, 14)}...`, a.delegates])
+      await audit(db, orgId, 'agent.bootstrap', a.id, { name: a.name, delegates: a.delegates }, 'agent')
+      done.push(`Agent ${a.name}: made.`)
+    } else if (had.api_key_hash !== hash || had.delegates !== a.delegates) {
+      await db.query('UPDATE agents SET api_key_hash = $2, api_key_prefix = $3, delegates = $4 WHERE id = $1',
+        [a.id, hash, `${a.key.slice(0, 14)}...`, a.delegates])
+      await audit(db, orgId, 'agent.bootstrap', a.id, { name: a.name, changed: true }, 'agent')
+      done.push(`Agent ${a.name}: its key or delegation changed.`)
+    }
+  }
+  for (const p of spec.apps) {
+    const hash = sha256hex(p.secret)
+    const { rows: [had] } = await db.query(
+      'SELECT org_id, name, secret_hash, redirect_uris, require_mfa, usage_reports, history_audit, console_link FROM oidc_clients WHERE id = $1', [p.id])
+    if (had && had.org_id !== orgId) throw new Error(`--spec: application ${p.id} belongs to another organization`)
+    const same = had && had.name === p.name && had.secret_hash === hash && had.require_mfa === p.requireMfa &&
+      had.usage_reports === p.usageReports && had.history_audit === p.historyAudit && had.console_link === p.consoleLink &&
+      JSON.stringify(had.redirect_uris) === JSON.stringify(p.uris)
+    if (same) continue
+    await db.query(
+      `INSERT INTO oidc_clients (id, org_id, name, secret_hash, redirect_uris, require_mfa, usage_reports, history_audit, console_link)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       ON CONFLICT (id) DO UPDATE SET name = $3, secret_hash = $4, redirect_uris = $5, require_mfa = $6,
+         usage_reports = $7, history_audit = $8, console_link = $9`,
+      [p.id, orgId, p.name, hash, p.uris, p.requireMfa, p.usageReports, p.historyAudit, p.consoleLink])
+    await audit(db, orgId, 'app.bootstrap', p.id, { name: p.name, redirectUris: p.uris }, 'oidc_client')
+    done.push(`Application ${p.name}: ${had ? 'changed' : 'registered'}.`)
+  }
+  for (const t of spec.serviceTokens) {
+    const hash = sha256hex(t.token)
+    const { rows: [had] } = await db.query(
+      `SELECT id, org_id, scopes, expires_at, revoked_at FROM service_tokens WHERE token_hash = $1`, [hash])
+    if (had && had.org_id !== orgId) throw new Error(`--spec: service token ${t.name} belongs to another organization`)
+    const fresh = had && !had.revoked_at && had.expires_at > new Date(Date.now() + 60 * 86_400_000) &&
+      JSON.stringify(had.scopes) === JSON.stringify(t.scopes)
+    if (fresh) continue
+    // Renewed with the same value: a token lasts a year at most.
+    if (had) await db.query('DELETE FROM service_tokens WHERE id = $1', [had.id])
+    await db.query(
+      `INSERT INTO service_tokens (org_id, name, token_hash, token_prefix, scopes, expires_at)
+       VALUES ($1, $2, $3, $4, $5, now() + interval '365 days')`, [orgId, t.name, hash, t.token.slice(0, 12), t.scopes])
+    await audit(db, orgId, 'service_token.bootstrap', t.name, { name: t.name, scopes: t.scopes, renewed: Boolean(had) }, 'service_token')
+    done.push(`Service token ${t.name}: ${had ? 'renewed' : 'made'}.`)
+  }
+  return done
 }
 
 async function main() {
