@@ -542,10 +542,19 @@ jobs:
       - name: what went wrong
         if: failure()
         run: |
+          # Pod by pod: logs by label stop at five streams (--max-log-requests).
           for ns in demo test; do
             kubectl -n $ns get pods -o wide || true
-            kubectl -n $ns describe pods | tail -n 80 || true
-            kubectl -n $ns logs --all-containers --prefix --tail=40 -l app.kubernetes.io/instance=stratum || true
+            kubectl -n $ns get events --sort-by=.lastTimestamp | tail -n 40 || true
+            for p in $(kubectl -n $ns get pods -o name 2>/dev/null); do
+              echo "::group::$ns $p"
+              kubectl -n $ns logs "$p" --all-containers --prefix --tail=60 || true
+              echo "::endgroup::"
+            done
+            # What the gateways say about themselves, through the API server.
+            for p in $(kubectl -n $ns get pods -l app.kubernetes.io/name=gateway -o name 2>/dev/null); do
+              echo "$ns $p /readyz: $(kubectl get --raw "/api/v1/namespaces/$ns/pods/${p#pod/}:20128/proxy/readyz" 2>&1)"
+            done
           done
 
   gcp-kit:
