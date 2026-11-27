@@ -6,8 +6,8 @@ description: >-
   environment or production, by profile (values-demo.yaml,
   values-nonprod.yaml, values-prod.yaml).
 type: application
-version: 0.9.0 # x-release-please-version
-appVersion: "0.9.0" # x-release-please-version
+version: 0.10.0 # x-release-please-version
+appVersion: "0.10.0" # x-release-please-version
 kubeVersion: ">=1.29.0-0"
 home: https://github.com/getstratum/stratum
 sources:
@@ -19,11 +19,11 @@ keywords: [ai-gateway, llm, governance]
 dependencies:
   - name: stratum-gateway
     alias: gateway
-    version: 0.9.0 # x-release-please-version
+    version: 0.10.0 # x-release-please-version
     repository: file://../stratum-gateway
   - name: stratum-control-plane
     alias: control-plane
-    version: 0.9.0 # x-release-please-version
+    version: 0.10.0 # x-release-please-version
     repository: file://../stratum-control-plane
     condition: control-plane.enabled
   - name: valkey

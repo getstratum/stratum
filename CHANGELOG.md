@@ -1,5 +1,38 @@
 # Changelog
 
+## [0.10.0](https://github.com/getstratum/stratum/compare/v0.9.0...v0.10.0) (2026-11-27)
+
+
+### Features
+
+* "Mi organización", and what the plan fixes, in the organization's console ([#154](https://github.com/getstratum/stratum/issues/154)) ([65b572a](https://github.com/getstratum/stratum/commit/65b572a9f0dd5b12183e73a2f23271ef35a4bd53))
+* a suspended organization is refused by its gateways too ([#148](https://github.com/getstratum/stratum/issues/148)) ([673e13a](https://github.com/getstratum/stratum/commit/673e13a2554f5c1e5f36e88ce1a133048e3929bd))
+* an agent reports a problem through the gateway ([#171](https://github.com/getstratum/stratum/issues/171)) ([e7a10a7](https://github.com/getstratum/stratum/commit/e7a10a765485cdaedf53d33088344ba4962b5d1a))
+* **console:** bootstrap declares what applications next to the console need ([#173](https://github.com/getstratum/stratum/issues/173)) ([b0012b0](https://github.com/getstratum/stratum/commit/b0012b04a496be92829e38a244a4d8076ceb6121))
+* **console:** personal data and credentials in each policy ([#159](https://github.com/getstratum/stratum/issues/159)) ([cd44ab3](https://github.com/getstratum/stratum/commit/cd44ab36642e1fac2f71bf6b6960031184e465da))
+* **console:** personal data and credentials in each policy ([#160](https://github.com/getstratum/stratum/issues/160)) ([362c5c8](https://github.com/getstratum/stratum/commit/362c5c87a0f1002e4d2ffb6aac07e8a861e57f0d))
+* **console:** usable on a phone ([#158](https://github.com/getstratum/stratum/issues/158)) ([3e49b04](https://github.com/getstratum/stratum/commit/3e49b046f978bbad6a7379c9dbae0dbcc1bf9cbb))
+* delete an organization in two steps, with a platform audit log ([#151](https://github.com/getstratum/stratum/issues/151)) ([293bc9e](https://github.com/getstratum/stratum/commit/293bc9efa65fae00feb83a556b328395fd860512))
+* **deploy:** one chart for demo, non-production and production ([#172](https://github.com/getstratum/stratum/issues/172)) ([7f0e22d](https://github.com/getstratum/stratum/commit/7f0e22d1ff6d28639d8521514351632b32609094))
+* invitations, for an organization's first Owner and for its people ([#153](https://github.com/getstratum/stratum/issues/153)) ([6bff7e9](https://github.com/getstratum/stratum/commit/6bff7e9b5cc1915b067e703ff6fa2ce8c3c7eb06))
+* plan limits per organization ([#150](https://github.com/getstratum/stratum/issues/150)) ([0e12e26](https://github.com/getstratum/stratum/commit/0e12e26461d22d718c4715e3857087aef2e771a4))
+* platform API to manage organizations from outside them ([#152](https://github.com/getstratum/stratum/issues/152)) ([f647367](https://github.com/getstratum/stratum/commit/f647367069df041f7c565d16a1deb2d5c978c77d))
+* the catalog kept current — providers listed daily, models that retire are told ([#166](https://github.com/getstratum/stratum/issues/166)) ([661f031](https://github.com/getstratum/stratum/commit/661f03145e72d94aaabbe7cf10f30031077c7e1a))
+* the paid functions each organization's plan includes, for Enterprise to read ([#155](https://github.com/getstratum/stratum/issues/155)) ([b913642](https://github.com/getstratum/stratum/commit/b91364270feb9c9efc7da29ef59a21646161743e))
+* where each request came from — the client's address and User-Agent in Requests ([#170](https://github.com/getstratum/stratum/issues/170)) ([aa22595](https://github.com/getstratum/stratum/commit/aa22595f0b7c9e489cbb2a7796463eb9781217f4))
+
+
+### Bug Fixes
+
+* **ci:** a catalog change skips the jobs instead of not running them ([#169](https://github.com/getstratum/stratum/issues/169)) ([4d6bad9](https://github.com/getstratum/stratum/commit/4d6bad92b5dd2dd1d58722e8f3f63d5b1e596d17))
+* **console:** modals close only when asked; Owners and Auditors without a team sign in to applications ([#162](https://github.com/getstratum/stratum/issues/162)) ([0d42605](https://github.com/getstratum/stratum/commit/0d426052d1b9e8a2f291115e37520f790e91e638))
+* **console:** modals close only when asked; Owners and Auditors without a team sign in to applications ([#163](https://github.com/getstratum/stratum/issues/163)) ([dee52b2](https://github.com/getstratum/stratum/commit/dee52b2e16cb80e461bfa523cba62167f9206790))
+* **console:** what axe-core found against WCAG 2.2 AA, and axe in the e2e ([#164](https://github.com/getstratum/stratum/issues/164)) ([ee4cbf8](https://github.com/getstratum/stratum/commit/ee4cbf882420818e1b8f8a25d4c25d9f80b5096c))
+* **deps:** 1 actualización de dependencias ([#167](https://github.com/getstratum/stratum/issues/167)) ([907afc6](https://github.com/getstratum/stratum/commit/907afc65bcb74bcdf0b935317de9ea7f1dee6c4b))
+* **deps:** 13 actualizaciones de dependencias ([e9e00e1](https://github.com/getstratum/stratum/commit/e9e00e11d7f5657599e370906670e4d796ee3a26))
+* **deps:** 2 actualizaciones de dependencias ([b29ace7](https://github.com/getstratum/stratum/commit/b29ace7286ecf3ce9d446be25e7697b093880099))
+* **gateway,console:** the prompt cache is counted and priced ([#165](https://github.com/getstratum/stratum/issues/165)) ([3df4dd4](https://github.com/getstratum/stratum/commit/3df4dd412ed899ee4b31f9699b03218bdbb6ad03))
+
 ## [0.9.0](https://github.com/getstratum/stratum/compare/v0.8.0...v0.9.0) (2026-11-19)
 
 
