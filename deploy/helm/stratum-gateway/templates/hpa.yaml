@@ -1,6 +1,6 @@
 {{- if .Values.autoscaling.enabled }}
-{{- if lt (int .Values.autoscaling.minReplicas) 2 }}
-{{- fail "autoscaling.minReplicas must be at least 2 (3 recommended)" }}
+{{- if and (lt (int .Values.autoscaling.minReplicas) 2) (not .Values.allowSingleReplica) }}
+{{- fail "autoscaling.minReplicas must be at least 2 (3 recommended); allowSingleReplica: true for a demo" }}
 {{- end }}
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler

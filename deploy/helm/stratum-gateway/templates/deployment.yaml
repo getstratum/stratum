@@ -47,9 +47,9 @@ spec:
       {{- end }}
       securityContext:
         runAsNonRoot: true
-        runAsUser: 65532
-        runAsGroup: 65532
-        fsGroup: 65532
+        {{- with include "stratum-gateway.podIdentity" . }}
+        {{- . | nindent 8 }}
+        {{- end }}
         seccompProfile:
           type: RuntimeDefault
       {{- if .Values.topologySpread.enabled }}

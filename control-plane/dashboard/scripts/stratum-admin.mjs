@@ -23,6 +23,8 @@
  *   node scripts/stratum-admin.mjs platform-token-create --name "stratum-operator" [--days 90]
  *   node scripts/stratum-admin.mjs platform-token-list
  *   node scripts/stratum-admin.mjs platform-token-revoke --id <uuid>
+ *   node scripts/stratum-admin.mjs bootstrap --org-name "Acme" [--owner-email ana@acme.com] [--invite]
+ *                                            [--gateway-name k8s]
  *
  * create-owner makes (or promotes) the Owner of an organization: the first
  * account of a new installation, or a way back in when nobody can sign in.
@@ -77,6 +79,18 @@
  * the plan of organizations and reads their usage per month, and never
  * reaches inside one. Without tokens the platform API is closed.
  *
+ * bootstrap prepares a new installation without the console, and can run
+ * again with nothing changing (the umbrella chart runs it after every
+ * install and upgrade, deploy/helm/stratum): the organization, made if no
+ * organization has that name; its first Owner, only while it has none
+ * (a password printed once, or with --invite an invitation, as org-invite,
+ * not sent again while one is open);
+ * and a gateway registered with the instance id and sync token in
+ * STRATUM_GATEWAY_INSTANCE_ID and STRATUM_GATEWAY_SYNC_TOKEN, which the
+ * installation generated and keeps (the same as registering one in
+ * Gateways, without the plan's limit). An instance id of another
+ * organization is refused.
+ *
  * catalog-update applies the model catalog feed now (ADR-0012): from
  * STRATUM_MODEL_CATALOG_URL or the default feed, a URL, or a local file for
  * installations without internet access (the repository's
@@ -86,7 +100,7 @@
  *   docker compose exec control-plane node scripts/stratum-admin.mjs create-owner --email ...
  */
 
-import { randomBytes } from 'node:crypto'
+import { createHash, randomBytes } from 'node:crypto'
 import pg from 'pg'
 
 // lib/password.js is an ES module in a package without "type": "module"
@@ -124,9 +138,10 @@ const USAGE = 'usage: stratum-admin create-owner --email <email> [--name <name>]
               '       stratum-admin platform-audit [--org-id <uuid>] [--limit <n>]\n' +
               '       stratum-admin platform-token-create --name <name> [--days <1-365>]\n' +
               '       stratum-admin platform-token-list\n' +
-              '       stratum-admin platform-token-revoke --id <uuid>'
+              '       stratum-admin platform-token-revoke --id <uuid>\n' +
+              '       stratum-admin bootstrap --org-name <name> [--owner-email <email>] [--invite] [--gateway-name <name>]'
 
-const FLAGS = new Set(['password-stdin', 'secret-stdin'])
+const FLAGS = new Set(['password-stdin', 'secret-stdin', 'invite'])
 
 function parseArgs(argv) {
   const [command, ...rest] = argv
@@ -467,9 +482,88 @@ async function platformAuditList(db, opts) {
   }
 }
 
+// A new installation, prepared without the console; safe to run again.
+const INSTANCE_RE = /^dp_[0-9a-z_]{8,64}$/
+const SYNC_RE = /^dp_sync_[0-9a-f]{64}$/
+const BOOTSTRAP_LOCK = 4723002
+
+async function bootstrap(db, opts) {
+  const name = opts['org-name']?.trim()
+  if (!name) throw new Error(USAGE)
+  const email = opts['owner-email']?.trim().toLowerCase()
+  if (email !== undefined && !email.includes('@')) throw new Error('--owner-email: an email address.')
+  const instanceId = process.env.STRATUM_GATEWAY_INSTANCE_ID?.trim()
+  const syncToken = process.env.STRATUM_GATEWAY_SYNC_TOKEN?.trim()
+  if (Boolean(instanceId) !== Boolean(syncToken)) throw new Error('STRATUM_GATEWAY_INSTANCE_ID and STRATUM_GATEWAY_SYNC_TOKEN go together.')
+  if (instanceId && !INSTANCE_RE.test(instanceId)) throw new Error('STRATUM_GATEWAY_INSTANCE_ID: dp_ and 8 to 64 lowercase letters, digits or _.')
+  if (syncToken && !SYNC_RE.test(syncToken)) throw new Error('STRATUM_GATEWAY_SYNC_TOKEN: dp_sync_ and 64 hex characters (openssl rand -hex 32).')
+  if (opts.invite && !process.env.STRATUM_CONSOLE_URL?.trim()) throw new Error('--invite needs STRATUM_CONSOLE_URL: the link is the console\'s address.')
+
+  let org, owner = null, invite = false, gateway = null
+  await db.query('BEGIN')
+  try {
+    await db.query('SELECT pg_advisory_xact_lock($1)', [BOOTSTRAP_LOCK])
+    const { rows: found } = await db.query('SELECT id, name FROM organizations WHERE name = $1 ORDER BY created_at LIMIT 1', [name])
+    org = found[0] ?? (await db.query('INSERT INTO organizations (name) VALUES ($1) RETURNING id, name', [name])).rows[0]
+    const created = !found[0]
+    if (created) await audit(db, org.id, 'org.bootstrap', org.id, { name }, 'organization')
+
+    if (email) {
+      const { rows: owners } = await db.query(`SELECT 1 FROM users WHERE org_id = $1 AND role = 'owner' AND is_active LIMIT 1`, [org.id])
+      if (!owners.length) {
+        const { rows: taken } = await db.query('SELECT org_id FROM users WHERE lower(email) = $1', [email])
+        if (taken[0] && taken[0].org_id !== org.id) throw new Error(`${email} already belongs to another organization.`)
+        if (opts.invite) {
+          // One open invitation is enough: running again does not replace its link.
+          const { rows: open } = await db.query(
+            `SELECT 1 FROM invitations WHERE org_id = $1 AND lower(email) = $2 AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at > now()`, [org.id, email])
+          invite = open.length ? 'open' : true
+        } else {
+          const { password, generated } = await newPassword(opts)
+          const hash = await hashPassword(password)
+          const { rows } = taken[0]
+            ? await db.query(`UPDATE users SET role = 'owner', is_active = true, password_hash = $2 WHERE lower(email) = $1 RETURNING id`, [email, hash])
+            : await db.query(`INSERT INTO users (org_id, email, name, role, password_hash) VALUES ($1, $2, $3, 'owner', $4) RETURNING id`,
+              [org.id, email, email.split('@')[0], hash])
+          await audit(db, org.id, 'owner.bootstrap', rows[0].id, { email, orgCreated: created })
+          owner = { email, password: generated ? password : null }
+        }
+      }
+    }
+
+    if (instanceId) {
+      const hash = createHash('sha256').update(syncToken).digest('hex')
+      const { rows: [had] } = await db.query('SELECT org_id, sync_token_hash FROM data_plane_instances WHERE id = $1', [instanceId])
+      if (had && had.org_id !== org.id) throw new Error(`Gateway ${instanceId} belongs to another organization.`)
+      if (!had) {
+        await db.query('INSERT INTO data_plane_instances (id, org_id, name, sync_token_hash) VALUES ($1, $2, $3, $4)',
+          [instanceId, org.id, (opts['gateway-name'] ?? 'kubernetes').slice(0, 255), hash])
+        await audit(db, org.id, 'gateway.register', instanceId, { name: opts['gateway-name'] ?? 'kubernetes', by: 'bootstrap' }, 'gateway')
+        gateway = 'registered'
+      } else if (had.sync_token_hash !== hash) {
+        // The installation's Secret changed (a new token): the gateway follows it.
+        await db.query('UPDATE data_plane_instances SET sync_token_hash = $2 WHERE id = $1', [instanceId, hash])
+        await audit(db, org.id, 'gateway.token_rotated', instanceId, { by: 'bootstrap' }, 'gateway')
+        gateway = 'token changed'
+      } else gateway = 'already registered'
+    }
+    await db.query('COMMIT')
+  } catch (err) {
+    await db.query('ROLLBACK')
+    throw err
+  }
+
+  console.log(`Organization "${org.name}" (${org.id}).`)
+  if (owner) console.log(`Owner ${owner.email} created.${owner.password ? ` Password (shown once): ${owner.password}` : ''}`)
+  if (invite === true) await orgInvite(db, { 'org-id': org.id, email })
+  if (invite === 'open') console.log(`${email} has an open invitation: it was not sent again (org-invite sends a new one).`)
+  if (!owner && !invite && email) console.log('It already has an Owner: nobody was added.')
+  if (gateway) console.log(`Gateway ${instanceId}: ${gateway}.`)
+}
+
 async function main() {
   const { command, opts } = parseArgs(process.argv.slice(2))
-  if (!['create-owner', 'reset-password', 'reset-mfa', 'enroll-mfa', 'catalog-update', 'org-list', 'org-suspend', 'org-resume', 'org-limits', 'org-delete', 'org-undelete', 'org-purge', 'platform-audit', 'org-create', 'org-invite', 'platform-token-create', 'platform-token-list', 'platform-token-revoke'].includes(command)) throw new Error(USAGE)
+  if (!['create-owner', 'reset-password', 'reset-mfa', 'enroll-mfa', 'catalog-update', 'org-list', 'org-suspend', 'org-resume', 'org-limits', 'org-delete', 'org-undelete', 'org-purge', 'platform-audit', 'org-create', 'org-invite', 'platform-token-create', 'platform-token-list', 'platform-token-revoke', 'bootstrap'].includes(command)) throw new Error(USAGE)
   if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is not set.')
   const db = new pg.Client({ connectionString: process.env.DATABASE_URL })
   await db.connect()
@@ -492,6 +586,7 @@ async function main() {
     else if (command === 'platform-token-create') await platformTokenCreate(db, opts)
     else if (command === 'platform-token-list') await platformTokenList(db)
     else if (command === 'platform-token-revoke') await platformTokenRevoke(db, opts)
+    else if (command === 'bootstrap') await bootstrap(db, opts)
     else throw new Error(USAGE)
   } finally {
     await db.end()

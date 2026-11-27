@@ -1,0 +1,71 @@
+{{- if .Values.networkPolicy.enabled }}
+# helm test: a pod with none of Stratum's labels must not reach the console
+# nor the gateways' metrics port (only the ingress controller and this
+# release's pods do). It first checks that it can
+# reach the Kubernetes API: if it cannot, egress from this namespace is
+# restricted by something else and the result would mean nothing.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ .Release.Name }}-test-networkpolicy
+  # Not the release's instance label: the release's own deny-all policy
+  # would then block this pod's way out too, and prove nothing.
+  labels:
+    app.kubernetes.io/part-of: stratum
+    app.kubernetes.io/component: networkpolicy-test
+  annotations:
+    helm.sh/hook: test
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    {{- if not .Values.global.openshift }}
+    runAsUser: 1000
+    runAsGroup: 1000
+    {{- end }}
+    seccompProfile: { type: RuntimeDefault }
+  containers:
+    - name: check
+      image: {{ include "stratum.consoleImage" . | quote }}
+      command: [node, -e]
+      args:
+        - |
+          const net = require('net')
+          const reach = (host, port) => new Promise(done => {
+            const s = net.connect({ host, port, timeout: 4000 })
+            s.on('connect', () => { s.destroy(); done(true) })
+            s.on('timeout', () => { s.destroy(); done(false) })
+            s.on('error', () => done(false))
+          })
+          ;(async () => {
+            if (!(await reach('kubernetes.default.svc', 443))) {
+              console.log('This pod cannot reach the Kubernetes API: egress from the namespace is restricted, so the check means nothing.')
+              process.exit(1)
+            }
+            const blocked = [
+              {{- if dig "metrics" "enabled" true .Values.gateway }}
+              ['{{ include "stratum.subFullname" (dict "name" "gateway" "root" .) }}-metrics', {{ dig "metrics" "port" 9090 .Values.gateway }}, "the gateways' metrics"],
+              {{- end }}
+              {{- if (index .Values "control-plane").enabled }}
+              ['{{ include "stratum.subFullname" (dict "name" "control-plane" "root" .) }}', {{ dig "service" "port" 80 (index .Values "control-plane") }}, 'the console'],
+              {{- end }}
+            ]
+            let ok = true
+            for (const [host, port, what] of blocked) {
+              if (await reach(host, port)) {
+                console.log(`Reached ${what} (${host}:${port}) from a pod that should not: NetworkPolicies are not enforced here.`)
+                ok = false
+              } else console.log(`Blocked: ${what}.`)
+            }
+            process.exit(ok ? 0 : 1)
+          })()
+      resources:
+        requests: { cpu: 50m, memory: 64Mi }
+        limits: { cpu: 50m, memory: 64Mi }
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities: { drop: [ALL] }
+{{- end }}

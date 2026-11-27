@@ -143,7 +143,28 @@ make up                                              # PostgreSQL + control plan
 Then follow the comments in `deploy/compose/docker-compose.yml` to register a
 gateway and start it.
 
-## Quick start: Kubernetes (highly available)
+## Quick start: Kubernetes
+
+One chart for a demo, a non-production environment or production, by
+profile ([deploy/helm/stratum](deploy/helm/stratum/README.md),
+[docs/deploy](docs/deploy/README.md) for on-premise, OpenShift, EKS, GKE
+and AKS):
+
+```sh
+# A demo in minutes: the demo organization and a mock LLM (DEMO ONLY)
+helm install stratum oci://ghcr.io/getstratum/charts/stratum -n stratum-demo --create-namespace \
+  -f values-demo.yaml
+
+# Non-production: its own secrets, the organization and its Owner made for you
+helm install stratum oci://ghcr.io/getstratum/charts/stratum -n stratum-test --create-namespace \
+  -f values-nonprod.yaml --set global.domain=test.example.com \
+  --set bootstrap.orgName="Acme (pruebas)" --set bootstrap.ownerEmail=ana@acme.com
+```
+
+The same with Docker Compose: [deploy/demo](deploy/demo/README.md) and
+[deploy/nonprod](deploy/nonprod/README.md).
+
+### The component charts (highly available)
 
 ```sh
 # Control plane: two stateless replicas on your PostgreSQL

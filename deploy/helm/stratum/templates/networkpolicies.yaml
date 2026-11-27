@@ -1,0 +1,214 @@
+{{- if .Values.networkPolicy.enabled }}
+{{- $np := .Values.networkPolicy }}
+{{- $cpOn := (index .Values "control-plane").enabled }}
+{{- $pod := dict }}
+{{- range $n := list "gateway" "control-plane" "postgresql" "valkey" "mock-llm" "backup" }}
+{{- $_ := set $pod $n (dict "podSelector" (dict "matchLabels" (fromYaml (include "stratum.select" (dict "name" $n "root" $))))) }}
+{{- end }}
+{{- /* The Jobs that use the console's code (bootstrap, demo) carry this label. */}}
+{{- $jobs := dict "podSelector" (dict "matchLabels" (dict "app.kubernetes.io/instance" .Release.Name "stratum.io/console-client" "true")) }}
+{{- $pgMode := .Values.postgresql.mode }}
+{{- $dbTo := $np.databaseTo }}
+{{- if eq $pgMode "bundled" }}{{ $dbTo = list (index $pod "postgresql") }}{{ end }}
+{{- if eq $pgMode "cnpg" }}{{ $dbTo = list (dict "podSelector" (dict "matchLabels" (dict "cnpg.io/cluster" (include "stratum.subFullname" (dict "name" "cnpg" "root" .))))) }}{{ end }}
+# Every pod of this release: nothing in or out unless a policy below allows
+# it (policies add up). Pods of other releases are not selected.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-default-deny
+  labels: {{- include "stratum.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: {{- include "stratum.selectAll" . | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+---
+# Name resolution, wherever the cluster's DNS answers.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-dns
+  labels: {{- include "stratum.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: {{- include "stratum.selectAll" . | nindent 6 }}
+  policyTypes: [Egress]
+  egress:
+    - ports:
+        - { port: 53, protocol: UDP }
+        - { port: 53, protocol: TCP }
+---
+# Gateways: the applications allowed to call them, the ingress controller
+# (expose) and this release's Jobs; metrics only from metricsFrom. Their
+# way out stays open: providers, models in the network, Valkey, the
+# console.
+{{- $clients := concat $np.gatewayClients (list $jobs) }}
+{{- if ne .Values.expose.type "none" }}{{ $clients = concat $clients $np.ingressFrom }}{{ end }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-gateway
+  labels: {{- include "stratum.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: {{- include "stratum.select" (dict "name" "gateway" "root" .) | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from: {{- toYaml $clients | nindent 8 }}
+      ports:
+        - { port: 20128, protocol: TCP }
+    {{- with $np.metricsFrom }}
+    - from: {{- toYaml . | nindent 8 }}
+      ports:
+        - { port: 9090, protocol: TCP }
+    {{- end }}
+  egress:
+    - {}
+{{- if $cpOn }}
+---
+# Console: the gateways (sync and usage), this release's Jobs, consoleClients
+# and the ingress controller (people, applications' sign-in). Out:
+# PostgreSQL, and webhooks, email and the model catalog.
+{{- $callers := concat (list (index $pod "gateway") $jobs) $np.consoleClients }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-control-plane
+  labels: {{- include "stratum.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: {{- include "stratum.select" (dict "name" "control-plane" "root" .) | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from: {{- toYaml $callers | nindent 8 }}
+      ports:
+        - { port: 3000, protocol: TCP }
+    {{- with $np.ingressFrom }}
+    - from: {{- toYaml . | nindent 8 }}
+      ports:
+        - { port: 3000, protocol: TCP }
+    {{- end }}
+  egress:
+    - ports:
+        - { port: 5432, protocol: TCP }
+      {{- with $dbTo }}
+      to: {{- toYaml . | nindent 8 }}
+      {{- end }}
+    {{- with $np.consoleEgressPorts }}
+    - ports:
+        {{- range . }}
+        - { port: {{ . }}, protocol: TCP }
+        {{- end }}
+    {{- end }}
+    {{- with $np.consoleExtraEgress }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+---
+# This release's Jobs (bootstrap, demo): the console, PostgreSQL and the
+# gateways, nothing else. The backup: only PostgreSQL.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-jobs
+  labels: {{- include "stratum.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: {{- toYaml $jobs.podSelector.matchLabels | nindent 6 }}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - {{- toYaml (index $pod "control-plane") | nindent 10 }}
+      ports:
+        - { port: 3000, protocol: TCP }
+    - to:
+        - {{- toYaml (index $pod "gateway") | nindent 10 }}
+      ports:
+        - { port: 20128, protocol: TCP }
+    - ports:
+        - { port: 5432, protocol: TCP }
+      {{- with $dbTo }}
+      to: {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}
+{{- if .Values.backup.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-backup
+  labels: {{- include "stratum.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: {{- include "stratum.select" (dict "name" "backup" "root" .) | nindent 6 }}
+  policyTypes: [Egress]
+  egress:
+    - ports:
+        - { port: 5432, protocol: TCP }
+      {{- with $dbTo }}
+      to: {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}
+{{- if .Values.demo.enabled }}
+---
+# The mock LLM: the gateways and the demo Job.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-mock-llm
+  labels: {{- include "stratum.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: {{- include "stratum.select" (dict "name" "mock-llm" "root" .) | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - {{- toYaml (index $pod "gateway") | nindent 10 }}
+        - {{- toYaml $jobs | nindent 10 }}
+      ports:
+        - { port: 8080, protocol: TCP }
+  egress: []
+{{- end }}
+{{- if eq $pgMode "bundled" }}
+---
+# Bundled PostgreSQL: the console, this release's Jobs and backup, and
+# databaseClients. (A CloudNativePG cluster's pods are the operator's.)
+{{- $dbClients := concat (list (index $pod "control-plane") $jobs (index $pod "backup")) $np.databaseClients }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-postgresql
+  labels: {{- include "stratum.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: {{- include "stratum.select" (dict "name" "postgresql" "root" .) | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    - from: {{- toYaml $dbClients | nindent 8 }}
+      ports:
+        - { port: 5432, protocol: TCP }
+{{- end }}
+{{- if .Values.valkey.enabled }}
+---
+# Valkey: the gateways, and its replicas among themselves.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-valkey
+  labels: {{- include "stratum.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: {{- include "stratum.select" (dict "name" "valkey" "root" .) | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - {{- toYaml (index $pod "gateway") | nindent 10 }}
+        - {{- toYaml (index $pod "valkey") | nindent 10 }}
+      ports:
+        - { port: 6379, protocol: TCP }
+  egress:
+    - to:
+        - {{- toYaml (index $pod "valkey") | nindent 10 }}
+      ports:
+        - { port: 6379, protocol: TCP }
+{{- end }}
+{{- end }}

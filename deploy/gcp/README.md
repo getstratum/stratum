@@ -69,7 +69,7 @@ gateway with `helm/values-gcp.yaml`, the control plane with
 `helm/values-gcp-control-plane.yaml` (Cloud SQL Auth Proxy as a native
 sidecar); the control plane's pods apply the database migrations before
 they start. A new installation starts
-empty; the kit loads the **demo organization** (`control-plane/seed/demo.sql`)
+empty; the kit loads the **demo organization** (`deploy/helm/stratum/files/demo/seed.sql`)
 at bootstrap and gives its users random keys that only exist in Secret
 Manager.
 

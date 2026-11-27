@@ -1,0 +1,69 @@
+{{- $pg := .Values.postgresql.mode -}}
+{{- $ns := .Release.Namespace -}}
+{{- $console := include "stratum.consoleUrl" . -}}
+{{- $gwHost := include "stratum.host" (dict "key" "gateway" "prefix" "gateway" "root" .) -}}
+Stratum {{ .Chart.AppVersion }}: gateway{{ if (index .Values "control-plane").enabled }}, console{{ end }}{{ if eq $pg "cnpg" }}, PostgreSQL (CloudNativePG, {{ .Values.cnpg.cluster.instances }} instances){{ end }}{{ if eq $pg "bundled" }}, PostgreSQL (one instance){{ end }}{{ if .Values.valkey.enabled }}, Valkey{{ end }}{{ if .Values.demo.enabled }}, the demo{{ end }}.
+
+Wait until every pod is ready:
+  kubectl -n {{ $ns }} get pods -l app.kubernetes.io/instance={{ .Release.Name }}
+{{- if ne .Values.expose.type "none" }}
+
+Console:  {{ $console }}
+Gateway:  {{ .Values.global.scheme }}://{{ $gwHost }}/v1
+{{- else }}
+
+Nothing is exposed (expose.type none). To look:
+  kubectl -n {{ $ns }} port-forward svc/{{ include "stratum.subFullname" (dict "name" "control-plane" "root" .) }} 3000:80
+  kubectl -n {{ $ns }} port-forward svc/{{ include "stratum.subFullname" (dict "name" "gateway" "root" .) }} 20128:80
+and open http://localhost:3000 (the gateway: http://localhost:20128/v1).
+{{- end }}
+{{- if .Values.demo.enabled }}
+
+DEMO ONLY: fixed, public secrets and a mock LLM. The demo organization
+loads in a minute or two:
+  kubectl -n {{ $ns }} logs -f job/{{ .Release.Name }}-demo-{{ .Release.Revision }} -c setup
+Accounts (deploy/demo/README.md): auditor@acme.com / stratum-demo-auditor
+(reads everything), owner@acme.com / stratum-demo-owner (sets up a second
+factor at the first sign-in).
+{{- end }}
+{{- if .Values.bootstrap.enabled }}
+
+First run: {{ .Values.bootstrap.orgName }}{{ with .Values.bootstrap.ownerEmail }}, its Owner {{ . }}{{ end }}, and this gateway.
+{{- if and .Values.bootstrap.ownerEmail (not .Values.bootstrap.invite) }} The
+Owner's password is in the Job's log, shown once (change it at the first
+sign-in, then delete the Job):
+{{- else if .Values.bootstrap.invite }} The invitation goes by email
+(STRATUM_SMTP_URL in the console's Secret) or is in the Job's log:
+{{- end }}
+  kubectl -n {{ $ns }} logs job/{{ .Release.Name }}-bootstrap-{{ .Release.Revision }}
+{{- end }}
+{{- if eq .Values.secrets.mode "generate" }}
+
+The chart made the Secrets ({{ .Values.secrets.controlPlane }}, {{ .Values.secrets.gateway }}{{ if ne $pg "external" }}, {{ .Values.secrets.postgresql }}{{ end }}{{ if .Values.valkey.enabled }}, {{ .Values.secrets.valkey }}{{ end }})
+and keeps them across upgrades and after an uninstall. Copy them somewhere
+safe: without STRATUM_ENCRYPTION_KEY the providers' keys and second
+factors cannot be read.
+  kubectl -n {{ $ns }} get secret {{ .Values.secrets.controlPlane }} -o yaml
+{{- if eq $pg "external" }}
+Your database needs the user "stratum" with the password in {{ .Values.secrets.postgresql }}:
+  kubectl -n {{ $ns }} get secret {{ .Values.secrets.postgresql }} -o jsonpath='{.data.password}' | base64 -d
+{{- end }}
+{{- end }}
+{{- if eq $pg "cnpg" }}
+
+  kubectl -n {{ $ns }} get clusters.postgresql.cnpg.io
+The console's pods restart until the database is ready; that is expected.
+{{- if not .Values.cnpg.backups.enabled }}
+WARNING: the CloudNativePG cluster has no backups (cnpg.backups.enabled).
+{{- end }}
+{{- end }}
+{{- if eq $pg "bundled" }}
+
+The bundled PostgreSQL is one instance with no replica and no failover: for
+demos and tests.{{ if .Values.backup.enabled }} A dump of each database goes to the volume {{ .Release.Name }}-backup every day ({{ .Values.backup.schedule }}, kept {{ .Values.backup.keepDays }} days).{{ else }} No backups (backup.enabled).{{ end }}
+{{- end }}
+{{- if .Values.networkPolicy.enabled }}
+
+NetworkPolicies: on. Check that this cluster enforces them:
+  helm test {{ .Release.Name }} -n {{ $ns }}
+{{- end }}

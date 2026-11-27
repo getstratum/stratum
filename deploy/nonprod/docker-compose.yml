@@ -1,0 +1,159 @@
+# Stratum for a non-production environment on one machine: functional
+# tests, policy validation, training. Not highly available. The released
+# images, its own secrets (init.sh), a daily backup, HTTPS by Caddy.
+#
+#   ./init.sh consola.example.com gateway.example.com "Acme (pruebas)" ana@acme.com
+#   docker compose up -d --wait
+#   docker compose logs bootstrap        # the Owner's password, shown once
+#
+# Kubernetes: the chart deploy/helm/stratum with values-nonprod.yaml does
+# the same. README.md has the rest (upgrades, restoring a backup).
+
+name: stratum-nonprod
+
+x-console-env: &console-env
+  DATABASE_URL: "postgresql://stratum:${POSTGRES_PASSWORD}@postgres:5432/stratum"
+  STRATUM_ENCRYPTION_KEY: "${STRATUM_ENCRYPTION_KEY:?run init.sh}"
+  STRATUM_CONSOLE_URL: "https://${STRATUM_CONSOLE_HOST}"
+
+services:
+  postgres:
+    image: postgres:16-alpine@sha256:f2f98726820d0342055351c6e9d36e705f5bfffb3dd53ff556325114b08afb6d
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: stratum
+      POSTGRES_USER: stratum
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?run init.sh}"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U stratum -d stratum"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  migrate:
+    image: ghcr.io/getstratum/stratum-migrations:${STRATUM_VERSION}
+    restart: "no"
+    environment:
+      DATABASE_URL: "postgresql://stratum:${POSTGRES_PASSWORD}@postgres:5432/stratum"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  control-plane:
+    image: ghcr.io/getstratum/stratum-control-plane:${STRATUM_VERSION}
+    restart: unless-stopped
+    environment:
+      <<: *console-env
+      # Behind Caddy: one proxy adds X-Forwarded-For.
+      STRATUM_TRUSTED_PROXY_HOPS: "1"
+      STRATUM_SYNC_INTERVAL_S: "30"
+      STRATUM_SMTP_URL: "${STRATUM_SMTP_URL:-}"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/healthz').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+      interval: 5s
+      timeout: 4s
+      retries: 30
+
+  # The organization, its first Owner (while it has none: password in this
+  # service's log, shown once) and the gateways' registration. Runs on every
+  # `up` and changes nothing once all is there (stratum-admin bootstrap).
+  bootstrap:
+    image: ghcr.io/getstratum/stratum-control-plane:${STRATUM_VERSION}
+    restart: "no"
+    environment:
+      <<: *console-env
+      STRATUM_GATEWAY_INSTANCE_ID: "${STRATUM_INSTANCE_ID:?run init.sh}"
+      STRATUM_GATEWAY_SYNC_TOKEN: "${STRATUM_SYNC_TOKEN:?run init.sh}"
+    command: ["node", "scripts/stratum-admin.mjs", "bootstrap", "--org-name", "${STRATUM_ORG_NAME:?run init.sh}",
+              "--owner-email", "${STRATUM_OWNER_EMAIL:?run init.sh}", "--gateway-name", "nonprod"]
+    depends_on:
+      control-plane:
+        condition: service_healthy
+
+  valkey:
+    image: valkey/valkey:8.1-alpine
+    restart: unless-stopped
+    command: ["valkey-server", "--appendonly", "yes", "--requirepass", "${STRATUM_VALKEY_PASSWORD:?run init.sh}"]
+    volumes:
+      - valkey-data:/data
+
+  # Two gateways behind Caddy, sharing quotas and the snapshot copy
+  # through Valkey: one restarts while the other serves.
+  gateway:
+    image: ghcr.io/getstratum/stratum-gateway:${STRATUM_VERSION}
+    restart: unless-stopped
+    read_only: true
+    deploy:
+      replicas: 2
+    environment:
+      STRATUM_CP_URL: "http://control-plane:3000"
+      STRATUM_CP_ALLOW_HTTP: "true"   # inside this machine's network
+      STRATUM_INSTANCE_ID: "${STRATUM_INSTANCE_ID}"
+      STRATUM_SYNC_TOKEN: "${STRATUM_SYNC_TOKEN}"
+      STRATUM_SNAPSHOT_KEY: "${STRATUM_SNAPSHOT_KEY:?run init.sh}"
+      STRATUM_VALKEY_URL: "redis://valkey:6379/0"
+      STRATUM_VALKEY_PASSWORD: "${STRATUM_VALKEY_PASSWORD}"
+      STRATUM_TRUSTED_PROXIES: "172.16.0.0/12,10.0.0.0/8,192.168.0.0/16"
+    tmpfs:
+      - /var/lib/stratum
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
+      valkey:
+        condition: service_started
+    stop_grace_period: 2m
+
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    environment:
+      STRATUM_CONSOLE_HOST: "${STRATUM_CONSOLE_HOST}"
+      STRATUM_GATEWAY_HOST: "${STRATUM_GATEWAY_HOST}"
+      STRATUM_TLS: "${STRATUM_TLS:-}"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+    depends_on:
+      control-plane:
+        condition: service_healthy
+
+  # A dump of the database every day at 03:17 UTC, kept STRATUM_BACKUP_DAYS
+  # days in ./backups. Restore: README.md.
+  backup:
+    image: postgres:16-alpine@sha256:f2f98726820d0342055351c6e9d36e705f5bfffb3dd53ff556325114b08afb6d
+    restart: unless-stopped
+    environment:
+      PGHOST: postgres
+      PGUSER: stratum
+      PGPASSWORD: "${POSTGRES_PASSWORD}"
+      KEEP_DAYS: "${STRATUM_BACKUP_DAYS:-7}"
+    volumes:
+      - ./backups:/backup
+    entrypoint:
+      - sh
+      - -c
+      - |
+        while :; do
+          now=$$(date -u +%s); next=$$(date -u -d "$$(date -u +%F) 03:17" +%s 2>/dev/null || echo $$now)
+          [ "$$next" -le "$$now" ] && next=$$((next + 86400))
+          sleep $$((next - now))
+          day=$$(date -u +%Y-%m-%dT%H%M)
+          pg_dump -Fc -d stratum -f /backup/stratum-$$day.dump.part && mv /backup/stratum-$$day.dump.part /backup/stratum-$$day.dump && echo "dumped stratum-$$day.dump"
+          find /backup -name '*.dump' -mtime +$$KEEP_DAYS -print -delete
+        done
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres-data:
+  valkey-data:
+  caddy-data:

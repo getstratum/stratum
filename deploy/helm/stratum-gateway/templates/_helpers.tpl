@@ -70,11 +70,20 @@ app.kubernetes.io/component: data-plane
 {{- if not (regexMatch "^([0-9]+(\\.[0-9]+)?(ms|s|m|h))+$" (toString .Values.snapshot.bootstrapTimeout)) -}}
 {{- fail "snapshot.bootstrapTimeout must be a duration such as 10s" -}}
 {{- end -}}
-{{- if lt (int .Values.replicaCount) 2 -}}
-{{- fail "replicaCount must be at least 2 for a highly available deployment (3 recommended)" -}}
+{{- if and (lt (int .Values.replicaCount) 2) (not .Values.allowSingleReplica) -}}
+{{- fail "replicaCount must be at least 2 for a highly available deployment (3 recommended); allowSingleReplica: true for a demo" -}}
 {{- end -}}
 {{- end -}}
 
 {{- define "stratum-gateway.configMapName" -}}
 {{- default (printf "%s-config" (include "stratum-gateway.fullname" .)) .Values.static.existingConfigMap -}}
+{{- end -}}
+
+{{/* The pod's user, group and fsGroup: fixed, unless the platform assigns them (global.openshift). */}}
+{{- define "stratum-gateway.podIdentity" -}}
+{{- if not (.Values.global | default dict).openshift -}}
+runAsUser: 65532
+runAsGroup: 65532
+fsGroup: 65532
+{{- end -}}
 {{- end -}}

@@ -313,6 +313,43 @@ jobs:
                     -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'
             done
           done
+      # The umbrella chart, with each profile, alone and on each platform.
+      - name: umbrella chart, every profile
+        run: |
+          helm dependency update deploy/helm/stratum
+          cd deploy/helm/stratum
+          sets=(--set global.domain=stratum.example.com --set bootstrap.orgName=Acme --set bootstrap.ownerEmail=ana@acme.com)
+          for profile in values-demo.yaml values-nonprod.yaml values-prod.yaml; do
+            for platform in "" platforms/*.yaml; do
+              [ "$profile" = values-demo.yaml ] && [ -n "$platform" ] && continue
+              args=(-f "$profile" ${platform:+-f "$platform"})
+              [ "$profile" = values-nonprod.yaml ] && args+=("${sets[@]}")
+              [ "$profile" = values-prod.yaml ] && args+=(--set global.domain=stratum.example.com)
+              echo "== $profile ${platform:-(no platform)}"
+              helm lint --strict . "${args[@]}"
+              helm template stratum . -n stratum "${args[@]}" \
+                | "$(go env GOPATH)/bin/kubeconform" -strict -summary \
+                    -kubernetes-version 1.29.0 -skip ServiceMonitor,PrometheusRule \
+                    -schema-location default \
+                    -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'
+            done
+          done
+      - name: umbrella chart refuses what cannot work
+        run: |
+          cd deploy/helm/stratum
+          refuses() {
+            local want="$1" out; shift
+            if out="$(helm template "${RELEASE:-stratum}" . "$@" 2>&1)"; then
+              echo "::error::accepted: $*"; exit 1
+            fi
+            grep -qF "$want" <<<"$out" || { echo "::error::refused for another reason: $out"; exit 1; }
+          }
+          RELEASE=other refuses 'name the release "stratum"' -f values-demo.yaml
+          refuses "set bootstrap.orgName" -f values-nonprod.yaml --set global.domain=x.example.com
+          refuses "does not run on OpenShift" -f values-demo.yaml --set global.openshift=true
+          refuses "demo.enabled needs secrets.mode demo" -f values-demo.yaml --set secrets.mode=generate
+          refuses "set expose.parentRefs" -f values-prod.yaml --set global.domain=x.example.com --set expose.type=gatewayApi
+          refuses "set global.domain" -f values-prod.yaml
       # The gateway's alerting rules: valid PromQL, and they fire when they
       # should (deploy/helm/stratum-gateway/tests).
       - name: alerting rules
@@ -421,6 +458,87 @@ jobs:
           kubectl -n stratum describe pods | tail -n 120
           kubectl -n stratum logs --all-containers --prefix --tail=50 -l app.kubernetes.io/instance=cp || true
           kubectl -n stratum logs --all-containers --prefix --tail=50 -l app.kubernetes.io/instance=gw || true
+
+  umbrella-kind:
+    name: umbrella chart on kind
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    # The umbrella chart as people install it: the demo profile (the demo
+    # organization loads and today's traffic goes through the gateway), then
+    # the non-production one in another namespace (generated secrets, the
+    # bootstrap Job registers the gateway, which then serves; Valkey; the
+    # daily backup run once; NetworkPolicies enforced, helm test).
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: azure/setup-helm@2f5e7bc67f1f9972ab16657bb795f36d8f04de0e # v5.1.0
+        with:
+          version: v4.3.0
+      - uses: helm/kind-action@ea822c7bf1874f08e5a491df991c228edffc3376 # v1.15.2
+        with:
+          cluster_name: stratum
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: migrations image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with: { context: control-plane/migrations, load: true, tags: "stratum-migrations:ci", cache-from: "type=gha,scope=migrations" }
+      - name: control plane image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with: { context: control-plane/dashboard, load: true, tags: "stratum-control-plane:ci", cache-from: "type=gha,scope=cp" }
+      - name: gateway image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with: { context: gateway, load: true, tags: "stratum-gateway:ci", cache-from: "type=gha,scope=gateway" }
+      - name: mock LLM image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with: { context: deploy/gcp/mock-llm, load: true, tags: "stratum-mock-llm:ci" }
+      - name: images into the cluster
+        run: |
+          for i in stratum-migrations stratum-control-plane stratum-gateway stratum-mock-llm; do
+            kind load docker-image "$i:ci" --name stratum
+          done
+      - name: demo profile
+        run: |
+          helm dependency update deploy/helm/stratum
+          images=(--set gateway.image.repository=stratum-gateway --set gateway.image.tag=ci
+                  --set control-plane.image.repository=stratum-control-plane --set control-plane.image.tag=ci
+                  --set control-plane.migrations.image.repository=stratum-migrations --set control-plane.migrations.image.tag=ci)
+          echo "IMAGES=${images[*]}" >> "$GITHUB_ENV"
+          helm install stratum deploy/helm/stratum -n demo --create-namespace \
+            -f deploy/helm/stratum/values-demo.yaml "${images[@]}" \
+            --set demo.mockLlm.image=stratum-mock-llm --set demo.mockLlm.tag=ci
+          kubectl -n demo wait --for=condition=complete job/stratum-demo-1 --timeout=10m
+          kubectl -n demo logs job/stratum-demo-1 -c traffic --tail=5
+          kubectl -n demo rollout status deployment/stratum-gateway --timeout=2m
+      - name: non-production profile
+        run: |
+          helm install stratum deploy/helm/stratum -n test --create-namespace \
+            -f deploy/helm/stratum/values-nonprod.yaml $IMAGES \
+            --set global.domain=test.example.com --set expose.type=none \
+            --set bootstrap.orgName="Acme (pruebas)" --set bootstrap.ownerEmail=ana@acme.com \
+            --set 'networkPolicy.ingressFrom=null'
+          kubectl -n test wait --for=condition=complete job/stratum-bootstrap-1 --timeout=10m
+          kubectl -n test logs job/stratum-bootstrap-1 | grep -v Password
+          # Registered by the Job: the gateways sync and serve.
+          kubectl -n test rollout status deployment/stratum-gateway --timeout=5m
+          kubectl -n test create job --from=cronjob/stratum-backup backup-now
+          kubectl -n test wait --for=condition=complete job/backup-now --timeout=5m
+          kubectl -n test logs job/backup-now
+          # An upgrade keeps the secrets and changes nothing in the console.
+          before="$(kubectl -n test get secret stratum-control-plane -o jsonpath='{.data.STRATUM_ENCRYPTION_KEY}')"
+          helm upgrade stratum deploy/helm/stratum -n test --reuse-values
+          [ "$(kubectl -n test get secret stratum-control-plane -o jsonpath='{.data.STRATUM_ENCRYPTION_KEY}')" = "$before" ] || { echo "::error::the upgrade changed the encryption key"; exit 1; }
+          kubectl -n test wait --for=condition=complete job/stratum-bootstrap-2 --timeout=5m
+          kubectl -n test logs job/stratum-bootstrap-2 | grep -q "already registered"
+          helm test stratum -n test
+      - name: what went wrong
+        if: failure()
+        run: |
+          for ns in demo test; do
+            kubectl -n $ns get pods -o wide || true
+            kubectl -n $ns describe pods | tail -n 80 || true
+            kubectl -n $ns logs --all-containers --prefix --tail=40 -l app.kubernetes.io/instance=stratum || true
+          done
 
   gcp-kit:
     name: GCP reference deployment

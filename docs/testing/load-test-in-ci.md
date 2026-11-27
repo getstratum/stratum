@@ -42,7 +42,7 @@ A workflow `load.yml`, separate from `ci.yml` (it takes about 12 minutes):
 - **Database:** PostgreSQL 16 as a plain Deployment with an emptyDir, and
   the control plane chart with its migrations image (the chart has been
   installed this way on Docker Desktop's Kubernetes).
-- **Bootstrap:** `control-plane/seed/demo.sql`, an owner with a second factor
+- **Bootstrap:** `deploy/helm/stratum/files/demo/seed.sql`, an owner with a second factor
   (`stratum-admin create-owner` and `enroll-mfa`), a gateway registration and
   the mock as the `ollama` provider, through the console API, the way
   `control-plane/e2e/run-local.sh` does.

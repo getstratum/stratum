@@ -1,0 +1,27 @@
+# HTTPS for the console and the gateways' API. With public names, Caddy
+# gets certificates from Let's Encrypt; STRATUM_TLS="tls internal" uses its
+# own CA instead (a private network: trust Caddy's root, see README.md).
+{
+	servers {
+		timeouts {
+			idle 15m
+		}
+	}
+}
+
+{$STRATUM_CONSOLE_HOST} {
+	{$STRATUM_TLS}
+	encode zstd gzip
+	reverse_proxy control-plane:3000
+}
+
+{$STRATUM_GATEWAY_HOST} {
+	{$STRATUM_TLS}
+	reverse_proxy {
+		dynamic a gateway 20128
+		lb_policy round_robin
+		health_uri /readyz
+		# Streamed answers go out as they come.
+		flush_interval -1
+	}
+}

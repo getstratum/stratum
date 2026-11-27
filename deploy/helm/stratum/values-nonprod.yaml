@@ -1,0 +1,66 @@
+# Non-production: functional tests, policy validation, training. Data that
+# lasts weeks, real providers, nothing shared with production.
+#
+#   helm install stratum oci://ghcr.io/getstratum/charts/stratum -n stratum-test \
+#     --create-namespace -f values-nonprod.yaml \
+#     --set global.domain=test.stratum.example.com \
+#     --set bootstrap.orgName="Acme (pruebas)" --set bootstrap.ownerEmail=ana@acme.com \
+#     --set expose.className=nginx --set expose.tls.clusterIssuer=letsencrypt
+#
+# One console, two gateways sharing quotas through Valkey, PostgreSQL in
+# the cluster with a dump every day, its own secrets (made once and kept),
+# NetworkPolicies, and the way in with TLS. The bootstrap Job leaves the
+# organization, its Owner (password in its log) and this gateway ready.
+# Not highly available: a node down stops the console and the database
+# until they move; the gateways keep serving meanwhile.
+
+secrets:
+  mode: generate
+
+bootstrap:
+  enabled: true
+  orgName: ""
+  ownerEmail: ""
+
+postgresql:
+  mode: bundled
+  bundled:
+    storage:
+      size: 20Gi
+
+backup:
+  enabled: true
+  keepDays: 7
+
+valkey:
+  enabled: true
+
+gateway:
+  replicaCount: 2
+  autoscaling:
+    enabled: false
+  topologySpread:
+    # One zone is enough here.
+    zoneWhenUnsatisfiable: ScheduleAnyway
+  quota:
+    valkey:
+      url: redis://stratum-valkey:6379/0
+  resources:
+    requests: { cpu: 250m, memory: 192Mi }
+    limits: { memory: 384Mi }
+
+control-plane:
+  replicaCount: 1
+  allowSingleReplica: true
+  podDisruptionBudget:
+    enabled: false
+  topologySpread:
+    zoneWhenUnsatisfiable: ScheduleAnyway
+
+expose:
+  type: ingress
+  tls:
+    enabled: true
+
+networkPolicy:
+  enabled: true

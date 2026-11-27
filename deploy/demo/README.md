@@ -79,5 +79,5 @@ the Marketing key is refused: its policy does not allow it.
 | History | About 2,400 requests over 28 days, reported the way a gateway reports usage, across OpenAI, Anthropic, Gemini, Mistral and a local Ollama model (which has no price and no emissions estimate, and the console says so) |
 | Today | About 40 requests through the gateway (`traffic.mjs`) |
 
-`setup.mjs` and `traffic.mjs` hold the details. Running `make demo` again
+`setup.mjs` and `traffic.mjs` (in [deploy/helm/stratum/files/demo](../helm/stratum/files/demo), shared with the chart's demo) hold the details. Running `make demo` again
 keeps the data; `make demo-down` deletes it.

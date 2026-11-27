@@ -13,6 +13,17 @@ Back up the database before you upgrade.
 
 ## From 0.9 to 1.0
 
+- **One chart for demo, non-production and production**
+  ([ADR-0022](adr/0022-deployment-profiles.md)): `stratum`, with the
+  gateway's and the console's charts inside and a profile file for each
+  use; and Compose for non-production in `deploy/nonprod`. Installations
+  with the two charts keep working as they are. Both charts gain
+  `allowSingleReplica` (only for a demo or a test) and `global.openshift`
+  (no fixed user or group, for restricted-v2). `stratum-admin bootstrap`
+  prepares an empty installation and can run again with nothing changing.
+  The demo's files moved to `deploy/helm/stratum/files/demo` (the seed was
+  `control-plane/seed/demo.sql`).
+
 - **Suspending an organization stops its gateways too**
   ([ADR-0020](adr/0020-organizations-and-the-operator.md)). The sync now
   says the organization's state; a gateway from 1.0 refuses every request

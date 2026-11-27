@@ -1,0 +1,40 @@
+# OpenShift 4.14+ (and OKD), with values-prod.yaml (or values-nonprod.yaml
+# with postgresql.mode cnpg):
+#
+#   helm install stratum oci://ghcr.io/getstratum/charts/stratum -n stratum \
+#     -f values-prod.yaml -f platforms/openshift.yaml --set global.domain=apps.cluster.example.com
+#
+# Every pod runs under the restricted-v2 SCC, with the user and group
+# OpenShift assigns. Routes with edge TLS (the router's certificate, or set
+# expose.tls / your own on the Route). The database: CloudNativePG from
+# OperatorHub (certified operator) or external. docs/deploy/openshift.md.
+
+global:
+  openshift: true
+
+expose:
+  type: route
+  routeTermination: edge
+
+postgresql:
+  mode: cnpg
+cnpg:
+  enabled: true
+
+# Valkey: a managed Redis, or Valkey's chart with a security context that
+# restricted-v2 admits (no fixed runAsUser): set it in valkey.* and turn it
+# on. Until then each gateway counts quotas on its own.
+valkey:
+  enabled: false
+
+networkPolicy:
+  # The router's pods.
+  ingressFrom:
+    - namespaceSelector:
+        matchLabels:
+          policy-group.network.openshift.io/ingress: ""
+  # Cluster monitoring for user workloads scrapes the gateways' metrics.
+  metricsFrom:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: openshift-user-workload-monitoring

@@ -130,7 +130,7 @@ step "Bootstrap: demo organization, test keys and policies"
 ENG_HASH="$(printf '%s' "$ENG_KEY" | sha256sum | cut -d' ' -f1)"
 MKT_HASH="$(printf '%s' "$MKT_KEY" | sha256sum | cut -d' ' -f1)"
 k create configmap stratum-bootstrap --from-file="$GCP_DIR/sql/bootstrap.sql" \
-  --from-file=demo.sql="$REPO_ROOT/control-plane/seed/demo.sql" \
+  --from-file=demo.sql="$REPO_ROOT/deploy/helm/stratum/files/demo/seed.sql" \
   --dry-run=client -o yaml | k apply -f - >/dev/null
 run_sql_job stratum-bootstrap stratum-bootstrap \
   "[\"psql\", \"-X\", \"-v\", \"eng_hash=$ENG_HASH\", \"-v\", \"mkt_hash=$MKT_HASH\", \"-f\", \"/sql/bootstrap.sql\"]"
