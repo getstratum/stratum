@@ -48,8 +48,8 @@ app.kubernetes.io/component: control-plane
 {{- if not .Values.existingSecret -}}
 {{- fail "existingSecret is required (DATABASE_URL, STRATUM_ENCRYPTION_KEY)" -}}
 {{- end -}}
-{{- if lt (int .Values.replicaCount) 2 -}}
-{{- fail "replicaCount must be at least 2 for a highly available deployment" -}}
+{{- if and (lt (int .Values.replicaCount) 2) (not .Values.allowSingleReplica) -}}
+{{- fail "replicaCount must be at least 2 for a highly available deployment; allowSingleReplica: true for a demo or a test installation" -}}
 {{- end -}}
 {{- if and .Values.autoscaling.enabled (lt (int .Values.autoscaling.minReplicas) 2) -}}
 {{- fail "autoscaling.minReplicas must be at least 2" -}}
@@ -79,4 +79,16 @@ allowPrivilegeEscalation: false
 readOnlyRootFilesystem: true
 capabilities:
   drop: ["ALL"]
+{{- end -}}
+
+{{/* The console's public address: console.publicUrl, or, in the umbrella
+     chart (deploy/helm/stratum), the one its global values give. */}}
+{{- define "stratum-cp.publicUrl" -}}
+{{- $g := .Values.global | default dict -}}
+{{- $hosts := $g.hosts | default dict -}}
+{{- if .Values.console.publicUrl -}}
+{{- .Values.console.publicUrl -}}
+{{- else if or $hosts.console $g.domain -}}
+{{- printf "%s://%s" ($g.scheme | default "https") ($hosts.console | default (printf "consola.%s" $g.domain)) -}}
+{{- end -}}
 {{- end -}}

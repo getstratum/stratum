@@ -7,6 +7,22 @@
 
 replicaCount: 2
 
+# One replica, for a demo or a test installation only (the umbrella chart's
+# values-demo.yaml and values-nonprod.yaml): the chart otherwise refuses
+# fewer than 2. The gateways keep serving while it restarts.
+allowSingleReplica: false
+
+# OpenShift, or any platform that assigns each namespace's user and group
+# (the restricted-v2 security context constraint): the containers ask for
+# no fixed user or group. The umbrella chart sets global.openshift.
+global:
+  openshift: false
+  # In the umbrella chart: with console.publicUrl empty, the console's
+  # address is <scheme>://<hosts.console>, or consola.<domain>.
+  domain: ""
+  scheme: https
+  hosts: {}
+
 image:
   repository: ghcr.io/getstratum/stratum-control-plane
   # Defaults to the chart's appVersion.

@@ -1,0 +1,45 @@
+# Azure Kubernetes Service, with values-prod.yaml:
+#
+#   helm install stratum oci://ghcr.io/getstratum/charts/stratum -n stratum \
+#     -f values-prod.yaml -f platforms/aks.yaml --set global.domain=stratum.example.com
+#
+# Needs: the application routing add-on (managed NGINX) with the
+# certificate in Key Vault, Azure Database for PostgreSQL flexible server
+# (zone-redundant HA), Azure Cache for Redis (Standard or Premium, TLS),
+# the External Secrets Operator reading Key Vault through Workload
+# Identity, and a network policy engine (Azure NPM or Cilium). Spread
+# across availability zones: a node pool in zones 1, 2 and 3.
+# docs/deploy/aks.md.
+
+expose:
+  type: ingress
+  className: webapprouting.kubernetes.azure.com
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "900"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "900"
+    nginx.ingress.kubernetes.io/proxy-body-size: 30m
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    # The certificate from Key Vault (the add-on keeps it in a Secret).
+    kubernetes.azure.com/tls-cert-keyvault-uri: ""   # https://<vault>.vault.azure.net/certificates/<name>
+  tls:
+    secretName: keyvault-stratum
+
+postgresql:
+  mode: external
+
+externalSecrets:
+  enabled: true
+  secretStoreRef:
+    kind: ClusterSecretStore
+    name: azure-key-vault
+
+gateway:
+  quota:
+    valkey:
+      url: ""   # rediss://<name>.redis.cache.windows.net:6380/0
+
+networkPolicy:
+  ingressFrom:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: app-routing-system

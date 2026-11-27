@@ -1,0 +1,3 @@
+# helm dependency update fills these; the release packages them.
+charts/
+Chart.lock

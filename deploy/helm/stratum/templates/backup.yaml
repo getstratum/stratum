@@ -1,0 +1,85 @@
+{{- if .Values.backup.enabled }}
+{{- $b := .Values.backup }}
+{{- $name := printf "%s-backup" .Release.Name }}
+{{- if not (include "stratum.databaseHost" .) }}
+{{- fail "backup.enabled with postgresql.mode external: set postgresql.external.host" }}
+{{- end }}
+# A pg_dump of each database, every day, kept keepDays days (values.yaml).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $name }}
+  labels: {{- include "stratum.labels" . | nindent 4 }}
+  annotations:
+    # The dumps outlive the release.
+    helm.sh/resource-policy: keep
+spec:
+  accessModes: [ReadWriteOnce]
+  {{- with $b.storage.storageClassName }}
+  storageClassName: {{ . }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ $b.storage.size }}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ $name }}
+  labels: {{- include "stratum.labels" . | nindent 4 }}
+spec:
+  schedule: {{ $b.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 3600
+      template:
+        metadata:
+          labels:
+            {{- include "stratum.select" (dict "name" "backup" "root" .) | nindent 12 }}
+            app.kubernetes.io/part-of: stratum
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            {{- include "stratum.podIdentity" (dict "uid" 70 "root" .) | nindent 12 }}
+            seccompProfile: { type: RuntimeDefault }
+          containers:
+            - name: pg-dump
+              image: {{ .Values.postgresql.bundled.image | quote }}
+              command:
+                - sh
+                - -ec
+                - |
+                  day="$(date -u +%Y-%m-%dT%H%M)"
+                  for db in {{ join " " .Values.postgresql.databases }}; do
+                    pg_dump -Fc -f "/backup/${db}-${day}.dump.part" "$db"
+                    mv "/backup/${db}-${day}.dump.part" "/backup/${db}-${day}.dump"
+                    echo "dumped ${db}: $(du -h "/backup/${db}-${day}.dump" | cut -f1)"
+                  done
+                  find /backup -name '*.dump' -mtime +{{ int $b.keepDays }} -print -delete
+                  find /backup -name '*.part' -mmin +120 -delete
+              env:
+                - { name: PGHOST, value: {{ include "stratum.databaseHost" . | quote }} }
+                - { name: PGPORT, value: {{ .Values.postgresql.external.port | default 5432 | toString | quote }} }
+                - name: PGUSER
+                  valueFrom: { secretKeyRef: { name: {{ .Values.secrets.postgresql }}, key: username } }
+                - name: PGPASSWORD
+                  valueFrom: { secretKeyRef: { name: {{ .Values.secrets.postgresql }}, key: password } }
+                {{- if eq .Values.postgresql.mode "external" }}
+                - { name: PGSSLMODE, value: {{ .Values.postgresql.external.sslmode | quote }} }
+                {{- end }}
+              resources: {{- toYaml $b.resources | nindent 16 }}
+              securityContext: {{- include "stratum.containerSecurity" . | nindent 16 }}
+              volumeMounts:
+                - { name: backup, mountPath: /backup }
+                - { name: tmp, mountPath: /tmp }
+          volumes:
+            - name: backup
+              persistentVolumeClaim: { claimName: {{ $name }} }
+            - { name: tmp, emptyDir: {} }
+{{- end }}

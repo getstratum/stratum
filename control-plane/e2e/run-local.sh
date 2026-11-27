@@ -6,7 +6,7 @@
 #   DATABASE_URL=postgres://...  control-plane/e2e/run-local.sh [playwright args]
 #
 # DATABASE_URL must point to a database with every migration applied. The
-# script changes it: it adds the demo organization (control-plane/seed/demo.sql),
+# script changes it: it adds the demo organization (deploy/helm/stratum/files/demo/seed.sql),
 # makes dev@acme.com its owner with a random password, lets the Engineering
 # policy use every model, registers a gateway and points the ollama provider
 # at the mock. Use a throwaway database.
@@ -73,7 +73,7 @@ wait_for "$CONSOLE/login" 200 "the console"
 
 # The owner, with a second factor (required for owners): the test computes
 # its codes from TOTP_SECRET, as an authenticator app would.
-psql "$DATABASE_URL" -X -q -v ON_ERROR_STOP=1 -f "$ROOT/control-plane/seed/demo.sql" || fail "could not load the demo data"
+psql "$DATABASE_URL" -X -q -v ON_ERROR_STOP=1 -f "$ROOT/deploy/helm/stratum/files/demo/seed.sql" || fail "could not load the demo data"
 PASSWORD="e2e-$(openssl rand -hex 12)"
 TOTP_SECRET="$(openssl rand 20 | base32 | tr -d '=\n')"
 printf '%s' "$PASSWORD" | (cd "$DASH" && DATABASE_URL="$DATABASE_URL" node scripts/stratum-admin.mjs create-owner \

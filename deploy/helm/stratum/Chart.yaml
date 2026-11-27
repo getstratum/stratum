@@ -1,0 +1,39 @@
+apiVersion: v2
+name: stratum
+description: >-
+  Stratum in one release: the console (control plane), the gateways and what
+  they need (PostgreSQL, Valkey, the way in), for a demo, a non-production
+  environment or production, by profile (values-demo.yaml,
+  values-nonprod.yaml, values-prod.yaml).
+type: application
+version: 0.9.0 # x-release-please-version
+appVersion: "0.9.0" # x-release-please-version
+kubeVersion: ">=1.29.0-0"
+home: https://github.com/getstratum/stratum
+sources:
+  - https://github.com/getstratum/stratum
+keywords: [ai-gateway, llm, governance]
+# The component charts of this repository, under short names: with release
+# "stratum" the services are stratum-gateway and stratum-control-plane.
+# Valkey and CloudNativePG's cluster from their own projects, when on.
+dependencies:
+  - name: stratum-gateway
+    alias: gateway
+    version: 0.9.0 # x-release-please-version
+    repository: file://../stratum-gateway
+  - name: stratum-control-plane
+    alias: control-plane
+    version: 0.9.0 # x-release-please-version
+    repository: file://../stratum-control-plane
+    condition: control-plane.enabled
+  - name: valkey
+    version: 0.12.0
+    repository: https://valkey.io/valkey-helm/
+    condition: valkey.enabled
+  # Needs the CloudNativePG operator in the cluster (cluster-wide resources,
+  # not part of this chart): its Helm chart, or OperatorHub on OpenShift.
+  - name: cluster
+    alias: cnpg
+    version: 0.9.0
+    repository: https://cloudnative-pg.github.io/charts
+    condition: cnpg.enabled

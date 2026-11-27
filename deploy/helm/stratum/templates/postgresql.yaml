@@ -1,0 +1,99 @@
+{{- if eq .Values.postgresql.mode "bundled" }}
+{{- $pg := .Values.postgresql.bundled }}
+{{- $dbs := .Values.postgresql.databases }}
+{{- $secret := .Values.secrets.postgresql }}
+{{- $name := printf "%s-postgresql" .Release.Name }}
+# One PostgreSQL for trials and small installations (values.yaml): the
+# databases of postgresql.databases, in one instance with a volume.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}-init
+  labels: {{- include "stratum.labels" . | nindent 4 }}
+data:
+  # The first database comes from POSTGRES_DB; the rest are created here,
+  # once, when the volume is empty.
+  10-databases.sh: |
+    #!/bin/sh
+    set -eu
+    for db in {{ join " " (rest $dbs) }}; do
+      psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" -c "CREATE DATABASE \"$db\""
+    done
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels: {{- include "stratum.labels" . | nindent 4 }}
+spec:
+  selector: {{- include "stratum.select" (dict "name" "postgresql" "root" .) | nindent 4 }}
+  ports:
+    - { name: postgresql, port: 5432, targetPort: postgresql }
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $name }}
+  labels: {{- include "stratum.labels" . | nindent 4 }}
+spec:
+  serviceName: {{ $name }}
+  replicas: 1
+  selector:
+    matchLabels: {{- include "stratum.select" (dict "name" "postgresql" "root" .) | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "stratum.select" (dict "name" "postgresql" "root" .) | nindent 8 }}
+        app.kubernetes.io/part-of: stratum
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        {{- include "stratum.podIdentity" (dict "uid" 70 "root" .) | nindent 8 }}
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: postgresql
+          image: {{ $pg.image | quote }}
+          env:
+            - { name: POSTGRES_USER, value: stratum }
+            - name: POSTGRES_PASSWORD
+              valueFrom: { secretKeyRef: { name: {{ $secret }}, key: password } }
+            - { name: POSTGRES_DB, value: {{ first $dbs | quote }} }
+            - { name: PGDATA, value: /var/lib/postgresql/data/pgdata }
+          ports:
+            - { name: postgresql, containerPort: 5432 }
+          readinessProbe:
+            exec: { command: [pg_isready, -h, 127.0.0.1, -U, stratum, -d, {{ first $dbs | quote }}] }
+            periodSeconds: 5
+          livenessProbe:
+            exec: { command: [pg_isready, -h, 127.0.0.1, -U, stratum, -d, {{ first $dbs | quote }}] }
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            failureThreshold: 6
+          resources: {{- toYaml $pg.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          volumeMounts:
+            - { name: data, mountPath: /var/lib/postgresql/data }
+            - { name: run, mountPath: /var/run/postgresql }
+            - { name: tmp, mountPath: /tmp }
+            - { name: init, mountPath: /docker-entrypoint-initdb.d, readOnly: true }
+      volumes:
+        - { name: run, emptyDir: {} }
+        - { name: tmp, emptyDir: {} }
+        - name: init
+          configMap: { name: {{ $name }}-init, defaultMode: 0555 }
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        {{- with $pg.storage.storageClassName }}
+        storageClassName: {{ . }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ $pg.storage.size }}
+{{- end }}

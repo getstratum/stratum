@@ -74,8 +74,10 @@ spec:
                   name: {{ .Values.existingSecret }}
                   key: DATABASE_URL
           securityContext:
+            {{- if not (.Values.global | default dict).openshift }}
             runAsUser: 70
             runAsGroup: 70
+            {{- end }}
             {{- include "stratum-cp.containerSecurityContext" . | nindent 12 }}
           resources:
             {{- toYaml .Values.migrations.resources | nindent 12 }}
@@ -103,7 +105,7 @@ spec:
             - name: STRATUM_MODEL_CATALOG_URL
               value: {{ . | quote }}
             {{- end }}
-            {{- with .Values.console.publicUrl }}
+            {{- with include "stratum-cp.publicUrl" . }}
             - name: STRATUM_CONSOLE_URL
               value: {{ . | quote }}
             {{- end }}
@@ -156,8 +158,10 @@ spec:
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           securityContext:
+            {{- if not (.Values.global | default dict).openshift }}
             runAsUser: 1000
             runAsGroup: 1000
+            {{- end }}
             {{- include "stratum-cp.containerSecurityContext" . | nindent 12 }}
           volumeMounts:
             - name: next-cache

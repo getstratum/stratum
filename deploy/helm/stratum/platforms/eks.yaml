@@ -1,0 +1,54 @@
+# Amazon EKS, with values-prod.yaml:
+#
+#   helm install stratum oci://ghcr.io/getstratum/charts/stratum -n stratum \
+#     -f values-prod.yaml -f platforms/eks.yaml --set global.domain=stratum.example.com
+#
+# Needs: the AWS Load Balancer Controller (ALB), a certificate in ACM,
+# RDS for PostgreSQL 16 Multi-AZ, ElastiCache for Valkey (cluster mode
+# off, with a replica, in-transit encryption), the External Secrets Operator
+# reading Secrets Manager through IRSA or Pod Identity, and the VPC CNI's
+# network policy agent (enableNetworkPolicy). docs/deploy/eks.md.
+
+expose:
+  type: ingress
+  className: alb
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
+    alb.ingress.kubernetes.io/ssl-policy: ELBSecurityPolicy-TLS13-1-2-2021-06
+    alb.ingress.kubernetes.io/certificate-arn: ""   # arn:aws:acm:...
+    # One ALB for both hosts; long streamed answers.
+    alb.ingress.kubernetes.io/group.name: stratum
+    alb.ingress.kubernetes.io/load-balancer-attributes: idle_timeout.timeout_seconds=900
+  hostAnnotations:
+    console:
+      alb.ingress.kubernetes.io/healthcheck-path: /api/healthz
+    gateway:
+      alb.ingress.kubernetes.io/healthcheck-path: /readyz
+  tls:
+    # The certificate is ACM's (certificate-arn), not a Secret.
+    secretName: ""
+
+postgresql:
+  mode: external
+
+externalSecrets:
+  enabled: true
+  secretStoreRef:
+    kind: ClusterSecretStore
+    name: aws-secrets-manager
+
+gateway:
+  quota:
+    valkey:
+      url: ""   # rediss://master.<name>.<id>.<region>.cache.amazonaws.com:6379/0
+  gateway:
+    # The VPC's CIDR: the ALB's addresses (target-type ip).
+    trustedProxies: []
+
+networkPolicy:
+  # The ALB reaches the pods from the VPC's addresses.
+  ingressFrom:
+    - ipBlock:
+        cidr: 10.0.0.0/16   # your VPC's CIDR

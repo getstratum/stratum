@@ -1,0 +1,68 @@
+# Google Kubernetes Engine (Standard or Autopilot), with values-prod.yaml:
+#
+#   helm install stratum oci://ghcr.io/getstratum/charts/stratum -n stratum \
+#     -f values-prod.yaml -f platforms/gke.yaml --set global.domain=stratum.example.com
+#
+# deploy/gcp is the full reference, tested under failure: Terraform for a
+# regional Autopilot cluster, Cloud SQL HA through the Auth Proxy,
+# Memorystore for Valkey, the global load balancer with Cloud Armor. This
+# file is the same choices for this chart. docs/deploy/gke.md.
+
+# GKE Gateway (Gateway API): a Gateway of class
+# gke-l7-global-external-managed, and HealthCheckPolicies for /readyz and
+# /api/healthz (docs/deploy/gke.md has them).
+expose:
+  type: gatewayApi
+  parentRefs:
+    - name: stratum
+      namespace: stratum
+
+postgresql:
+  mode: external
+
+# Cloud SQL through the Auth Proxy, next to the console (a native sidecar):
+# DATABASE_URL then points at 127.0.0.1:5432 with sslmode=disable (the
+# proxy encrypts). Workload Identity gives it the Cloud SQL Client role.
+control-plane:
+  sidecars:
+    - name: cloud-sql-proxy
+      image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.14.1
+      restartPolicy: Always
+      args: [--private-ip, --structured-logs, --port=5432, "<project>:<region>:<instance>"]
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities: { drop: [ALL] }
+      resources:
+        requests: { cpu: 50m, memory: 64Mi }
+        limits: { memory: 128Mi }
+  serviceAccount:
+    annotations:
+      iam.gke.io/gcp-service-account: ""   # stratum-cp@<project>.iam.gserviceaccount.com
+
+externalSecrets:
+  enabled: true
+  secretStoreRef:
+    kind: ClusterSecretStore
+    name: gcp-secret-manager
+
+gateway:
+  quota:
+    valkey:
+      url: ""   # rediss://<Memorystore IP>:6379/0
+      caConfigMap: valkey-ca
+  gateway:
+    # Google's load balancer: its proxy ranges.
+    trustedProxies: [35.191.0.0/16, 130.211.0.0/22]
+
+networkPolicy:
+  # Container-native load balancing: the load balancer reaches the pods
+  # from Google's ranges.
+  ingressFrom:
+    - ipBlock: { cidr: 35.191.0.0/16 }
+    - ipBlock: { cidr: 130.211.0.0/22 }
+  # The Auth Proxy reaches Cloud SQL (3307) and Google's APIs (443).
+  consoleExtraEgress:
+    - ports:
+        - { port: 3307, protocol: TCP }
+        - { port: 443, protocol: TCP }

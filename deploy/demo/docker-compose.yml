@@ -85,9 +85,9 @@ services:
       <<: *demo-env
       STRATUM_CP_URL: "http://control-plane:3000"
     volumes:
-      - ./setup.mjs:/app/demo/setup.mjs:ro
-      - ./traffic.mjs:/app/demo/traffic.mjs:ro
-      - ../../control-plane/seed/demo.sql:/app/demo/seed.sql:ro
+      - ../helm/stratum/files/demo/setup.mjs:/app/demo/setup.mjs:ro
+      - ../helm/stratum/files/demo/traffic.mjs:/app/demo/traffic.mjs:ro
+      - ../helm/stratum/files/demo/seed.sql:/app/demo/seed.sql:ro
     command: ["node", "/app/demo/setup.mjs"]
     restart: "no"
     depends_on:
@@ -123,8 +123,8 @@ services:
       <<: *demo-env
       STRATUM_GATEWAY_URL: "http://gateway:20128"
     volumes:
-      - ./setup.mjs:/app/demo/setup.mjs:ro
-      - ./traffic.mjs:/app/demo/traffic.mjs:ro
+      - ../helm/stratum/files/demo/setup.mjs:/app/demo/setup.mjs:ro
+      - ../helm/stratum/files/demo/traffic.mjs:/app/demo/traffic.mjs:ro
     command: ["node", "/app/demo/traffic.mjs"]
     restart: "no"
     depends_on:

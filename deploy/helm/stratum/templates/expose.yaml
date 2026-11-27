@@ -1,0 +1,104 @@
+{{- /*
+One way in per host, as expose.type says: an Ingress, an OpenShift Route or
+a Gateway API HTTPRoute. A named template, so Stratum Enterprise's chart
+exposes its portal and app the same way:
+  include "stratum.expose" (dict "name" "portal" "host" "portal.example.com"
+                                 "service" "stratum-portal" "port" 80 "root" $)
+*/ -}}
+{{- define "stratum.expose" -}}
+{{- $e := .root.Values.expose -}}
+{{- $name := printf "%s-%s" .root.Release.Name .name -}}
+{{- $tlsSecret := index ($e.tls.secretNames | default dict) .name | default $e.tls.secretName | default (ternary (printf "%s-tls" $name) "" (not (empty $e.tls.clusterIssuer))) -}}
+{{- $annotations := merge (deepCopy (index ($e.hostAnnotations | default dict) .name | default dict)) ($e.annotations | default dict) -}}
+{{- if eq $e.type "ingress" }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $name }}
+  labels: {{- include "stratum.labels" .root | nindent 4 }}
+  {{- if or $annotations $e.tls.clusterIssuer }}
+  annotations:
+    {{- with $annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    {{- with $e.tls.clusterIssuer }}
+    cert-manager.io/cluster-issuer: {{ . | quote }}
+    {{- end }}
+  {{- end }}
+spec:
+  {{- with $e.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- if and $e.tls.enabled $tlsSecret }}
+  tls:
+    - hosts: [{{ .host | quote }}]
+      secretName: {{ $tlsSecret }}
+  {{- end }}
+  rules:
+    - host: {{ .host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .service }}
+                port: { number: {{ .port }} }
+{{- else if eq $e.type "route" }}
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: {{ $name }}
+  labels: {{- include "stratum.labels" .root | nindent 4 }}
+  annotations:
+    # Long streamed answers: the router's default (30 s) cuts them.
+    haproxy.router.openshift.io/timeout: 15m
+    {{- with $annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  host: {{ .host | quote }}
+  to:
+    kind: Service
+    name: {{ .service }}
+    weight: 100
+  port:
+    targetPort: http
+  {{- if $e.tls.enabled }}
+  tls:
+    termination: {{ $e.routeTermination }}
+    insecureEdgeTerminationPolicy: Redirect
+  {{- end }}
+  wildcardPolicy: None
+{{- else if eq $e.type "gatewayApi" }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ $name }}
+  labels: {{- include "stratum.labels" .root | nindent 4 }}
+  {{- with $annotations }}
+  annotations: {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  parentRefs: {{- toYaml $e.parentRefs | nindent 4 }}
+  hostnames: [{{ .host | quote }}]
+  rules:
+    - matches:
+        - path: { type: PathPrefix, value: / }
+      backendRefs:
+        - name: {{ .service }}
+          port: {{ .port }}
+      timeouts:
+        # Long streamed answers.
+        request: 15m
+{{- end }}
+{{- end -}}
+{{- if ne .Values.expose.type "none" }}
+{{- if and .Values.expose.console (index .Values "control-plane").enabled }}
+{{- include "stratum.expose" (dict "name" "console" "host" (include "stratum.host" (dict "key" "console" "prefix" "consola" "root" .)) "service" (include "stratum.subFullname" (dict "name" "control-plane" "root" .)) "port" 80 "root" .) }}
+---
+{{- end }}
+{{- if .Values.expose.gateway }}
+{{- include "stratum.expose" (dict "name" "gateway" "host" (include "stratum.host" (dict "key" "gateway" "prefix" "gateway" "root" .)) "service" (include "stratum.subFullname" (dict "name" "gateway" "root" .)) "port" 80 "root" .) }}
+{{- end }}
+{{- end }}

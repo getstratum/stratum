@@ -1,0 +1,69 @@
+# On-premise Kubernetes (kubeadm, RKE2, k3s, Rancher...), with values-prod.yaml:
+#
+#   helm install stratum oci://ghcr.io/getstratum/charts/stratum -n stratum \
+#     -f values-prod.yaml -f platforms/onprem.yaml --set global.domain=stratum.example.com
+#
+# Needs in the cluster: ingress-nginx (with MetalLB or your load balancer in
+# front), cert-manager or your certificates, the CloudNativePG operator, a
+# StorageClass with replicated volumes (Ceph RBD, Longhorn, your SAN's CSI),
+# S3-compatible object storage for the database's backups (MinIO, Ceph RGW),
+# and a network plugin that enforces NetworkPolicies (Calico, Cilium).
+# docs/deploy/onprem.md walks through it.
+
+expose:
+  type: ingress
+  className: nginx
+  annotations:
+    # Long streamed answers; bodies as large as the gateway accepts.
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "900"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "900"
+    nginx.ingress.kubernetes.io/proxy-body-size: 30m
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+  tls:
+    clusterIssuer: ""   # your cert-manager ClusterIssuer, or tls.secretName
+
+# CloudNativePG: three instances across nodes, with base backups and WAL to
+# object storage (point-in-time recovery). The bucket's keys in the Secret
+# stratum-cnpg-backup (ACCESS_KEY_ID, ACCESS_SECRET_KEY).
+postgresql:
+  mode: cnpg
+cnpg:
+  enabled: true
+  cluster:
+    instances: 3
+    storage:
+      size: 50Gi
+      storageClass: ""   # replicated volumes
+    affinity:
+      topologyKey: kubernetes.io/hostname
+  backups:
+    enabled: true
+    provider: s3
+    endpointURL: https://minio.example.com
+    destinationPath: s3://stratum-backups/
+    s3:
+      bucket: stratum-backups
+      path: /
+    secret:
+      create: false
+      name: stratum-cnpg-backup
+    retentionPolicy: 30d
+
+# Valkey from its chart, with its data on a volume: the gateways' shared
+# quotas. It is never on the request path (a Valkey outage does not fail
+# requests), so one instance that restarts with its data is enough.
+valkey:
+  enabled: true
+gateway:
+  quota:
+    valkey:
+      url: redis://stratum-valkey:6379/0
+  # Where ingress-nginx's pods run: the client's address in Requests.
+  gateway:
+    trustedProxies: []   # e.g. 10.42.0.0/16 (the pod network)
+
+networkPolicy:
+  ingressFrom:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: ingress-nginx

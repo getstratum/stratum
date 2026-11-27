@@ -16,6 +16,10 @@
         {
           "type": "generic",
           "path": "deploy/helm/stratum-control-plane/Chart.yaml"
+        },
+        {
+          "type": "generic",
+          "path": "deploy/helm/stratum/Chart.yaml"
         }
       ]
     }

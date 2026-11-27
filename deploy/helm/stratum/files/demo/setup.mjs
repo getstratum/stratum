@@ -18,8 +18,9 @@
 // history), STRATUM_APP_DIR (default /app).
 
 import { createHash } from 'node:crypto'
-import { readFileSync } from 'node:fs'
+import { readFileSync, realpathSync } from 'node:fs'
 import { createRequire } from 'node:module'
+import { pathToFileURL } from 'node:url'
 
 const APP = process.env.STRATUM_APP_DIR ?? '/app'
 const require = createRequire(`${APP}/package.json`)
@@ -223,7 +224,11 @@ async function report(records) {
   }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Run as a program, not imported (traffic.mjs imports it). By the real path:
+// a ConfigMap mounts each file as a symlink (the chart's demo), and Node
+// gives the main module the path the link points to.
+const main = process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href
+if (main) {
   const db = new pg.Client({ connectionString: process.env.DATABASE_URL })
   await db.connect()
   try {

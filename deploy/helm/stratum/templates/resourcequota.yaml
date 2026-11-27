@@ -1,0 +1,9 @@
+{{- if .Values.resourceQuota.enabled }}
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: {{ .Release.Name }}-stratum
+  labels: {{- include "stratum.labels" . | nindent 4 }}
+spec:
+  hard: {{- toYaml .Values.resourceQuota.hard | nindent 4 }}
+{{- end }}

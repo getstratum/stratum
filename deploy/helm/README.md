@@ -1,5 +1,9 @@
 # Helm chart: stratum-gateway
 
+> Installing everything (console, gateways, database, Valkey, the way in)
+> for a demo, non-production or production: the umbrella chart
+> [stratum](stratum/README.md). This page is the gateway's own chart.
+
 Highly available reference deployment of the Stratum gateway (data plane),
 following [docs/architecture/overview.md](../../docs/architecture/overview.md).
 The control plane has its own chart:

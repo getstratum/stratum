@@ -1,0 +1,68 @@
+# Demo: Stratum in a few minutes, to look around. DEMO ONLY.
+#
+#   helm install stratum oci://ghcr.io/getstratum/charts/stratum -n stratum-demo \
+#     --create-namespace -f values-demo.yaml
+#
+# Everything once, in about 2 CPUs and 2 GiB: a PostgreSQL with a small
+# volume, the console, one gateway, a mock LLM in place of real providers,
+# and the demo organization (Acme, as deploy/demo). Its secrets are fixed
+# and public (secrets.mode demo): never put real data or real provider keys
+# here, and do not expose it beyond a network you trust. Nothing is
+# exposed by default: port-forward, as NOTES says.
+
+global:
+  # With an Ingress (expose below) over plain http on a trusted network.
+  scheme: http
+
+secrets:
+  mode: demo
+
+demo:
+  enabled: true
+
+postgresql:
+  mode: bundled
+  bundled:
+    storage:
+      size: 2Gi
+    resources:
+      requests: { cpu: 100m, memory: 256Mi }
+      limits: { memory: 512Mi }
+
+gateway:
+  replicaCount: 1
+  allowSingleReplica: true
+  autoscaling:
+    enabled: false
+  podDisruptionBudget:
+    enabled: false
+  topologySpread:
+    enabled: false
+  resources:
+    requests: { cpu: 100m, memory: 128Mi }
+    limits: { memory: 256Mi }
+  lifecycle:
+    drainDelaySeconds: 2
+    shutdownTimeoutSeconds: 10
+
+control-plane:
+  replicaCount: 1
+  allowSingleReplica: true
+  podDisruptionBudget:
+    enabled: false
+  topologySpread:
+    enabled: false
+  console:
+    # Plain http: on localhost (port-forward) and on a trusted network.
+    secureCookies: false
+    syncIntervalSeconds: 10
+    # The catalog in the image, not a download.
+    modelCatalogUrl: "off"
+  resources:
+    requests: { cpu: 100m, memory: 384Mi }
+    limits: { memory: 768Mi }
+
+expose:
+  type: none
+  tls:
+    enabled: false

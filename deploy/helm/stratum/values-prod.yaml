@@ -1,0 +1,55 @@
+# Production: no single point of failure in Stratum, your database and
+# secrets, NetworkPolicies. Add one of platforms/*.yaml for your platform.
+#
+#   helm install stratum oci://ghcr.io/getstratum/charts/stratum -n stratum \
+#     -f values-prod.yaml -f platforms/eks.yaml --set global.domain=stratum.example.com
+#
+# Before installing:
+#   - the Secrets (secrets.mode existing): stratum-control-plane
+#     (DATABASE_URL, STRATUM_ENCRYPTION_KEY) and stratum-gateway
+#     (STRATUM_INSTANCE_ID, STRATUM_SYNC_TOKEN, STRATUM_SNAPSHOT_KEY,
+#     STRATUM_VALKEY_PASSWORD), by kubectl or externalSecrets;
+#   - PostgreSQL 16 with high availability: a managed service (Multi-AZ,
+#     regional) or postgresql.mode cnpg with backups to object storage;
+#   - Valkey or Redis with a replica behind a stable endpoint (managed, or
+#     valkey.enabled with replicas): gateway.quota.valkey.url;
+#   - the console's first Owner and this gateway's registration: bootstrap
+#     once (bootstrap.enabled with orgName and ownerEmail, then off), or
+#     stratum-admin create-owner and Gateways in the console.
+#
+# What it gives (docs/architecture/overview.md): gateways 3 to 12 (HPA),
+# spread across zones (a zone down costs a third), rolling updates without
+# losing capacity and draining long streams; two console replicas; a
+# PodDisruptionBudget for each. The gateways serve from their last
+# configuration while the console or the database are away (ADR-0005).
+
+secrets:
+  mode: existing
+
+postgresql:
+  mode: external
+
+gateway:
+  # Requests = limits: the last pods evicted when a node runs short.
+  resources:
+    requests: { cpu: 500m, memory: 256Mi }
+    limits: { cpu: 500m, memory: 256Mi }
+  quota:
+    valkey:
+      url: ""   # rediss://<your Valkey>:6379/0
+  metrics:
+    serviceMonitor:
+      enabled: false   # true with the Prometheus Operator
+  # The ingress controller's or load balancer's addresses, so Requests
+  # records the client's: gateway.trustedProxies
+
+control-plane:
+  replicaCount: 2
+
+expose:
+  type: ingress
+  tls:
+    enabled: true
+
+networkPolicy:
+  enabled: true

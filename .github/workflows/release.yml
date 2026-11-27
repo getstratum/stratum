@@ -77,6 +77,9 @@ jobs:
             context: control-plane/dashboard
           - name: stratum-migrations
             context: control-plane/migrations
+          # The demo's mock LLM (the umbrella chart's values-demo.yaml).
+          - name: stratum-mock-llm
+            context: deploy/gcp/mock-llm
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -203,7 +206,10 @@ jobs:
         run: |
           set -o pipefail
           echo "$GH_TOKEN" | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
-          for chart in stratum-gateway stratum-control-plane; do
+          # The umbrella last: it carries the two charts above inside, and
+          # Valkey's and CloudNativePG's from their projects.
+          helm dependency update deploy/helm/stratum
+          for chart in stratum-gateway stratum-control-plane stratum; do
             helm package "deploy/helm/${chart}" --version "$version" --app-version "$version" -d dist
             helm push "dist/${chart}-${version}.tgz" "oci://ghcr.io/${OWNER}/charts" 2>&1 | tee push.log
             digest=$(sed -n 's/^Digest: \(sha256:[a-f0-9]\{64\}\)$/\1/p' push.log | head -1)
@@ -216,7 +222,7 @@ jobs:
         env:
           version: ${{ needs.tag.outputs.version }}
         run: |
-          for chart in stratum-gateway stratum-control-plane; do
+          for chart in stratum-gateway stratum-control-plane stratum; do
             ref="oci://ghcr.io/${OWNER}/charts/${chart}"
             for i in 1 2 3 4 5 6; do
               out="$(helm show chart "$ref" --version "$version" 2>&1)" && break

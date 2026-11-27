@@ -7,6 +7,17 @@
 
 replicaCount: 3
 
+# A single replica, for a demo or a test installation only (the umbrella
+# chart's values-demo.yaml): the chart otherwise refuses fewer than 2, and
+# with one, every restart or upgrade drops requests.
+allowSingleReplica: false
+
+# OpenShift, or any platform that assigns each namespace's user and group
+# (the restricted-v2 security context constraint): the pods ask for no
+# fixed user, group or fsGroup. The umbrella chart sets global.openshift.
+global:
+  openshift: false
+
 image:
   repository: ghcr.io/getstratum/stratum-gateway
   # Defaults to the chart's appVersion.

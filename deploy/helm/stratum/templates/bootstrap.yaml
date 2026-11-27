@@ -1,0 +1,69 @@
+{{- if .Values.bootstrap.enabled }}
+{{- $b := .Values.bootstrap }}
+{{- $console := printf "http://%s" (include "stratum.subFullname" (dict "name" "control-plane" "root" .)) }}
+# The first run of an empty console (stratum-admin bootstrap): the
+# organization, its first Owner while it has none, and this release's
+# gateway. Changes nothing when all is there. A new Job each revision.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-bootstrap-{{ .Release.Revision }}
+  labels: {{- include "stratum.labels" . | nindent 4 }}
+spec:
+  backoffLimit: 3
+  activeDeadlineSeconds: 1800
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        {{- include "stratum.select" (dict "name" "bootstrap" "root" .) | nindent 8 }}
+        app.kubernetes.io/part-of: stratum
+        stratum.io/console-client: "true"
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        {{- include "stratum.podIdentity" (dict "uid" 1000 "root" .) | nindent 8 }}
+        seccompProfile: { type: RuntimeDefault }
+      initContainers:
+        # The console's pods run the migrations before they answer.
+        {{- include "stratum.waitFor" (dict "name" "wait-console" "url" (printf "%s/api/healthz" $console) "root" .) | nindent 8 }}
+      containers:
+        - name: bootstrap
+          image: {{ include "stratum.consoleImage" . | quote }}
+          command:
+            - node
+            - scripts/stratum-admin.mjs
+            - bootstrap
+            - --org-name
+            - {{ $b.orgName | quote }}
+            {{- with $b.ownerEmail }}
+            - --owner-email
+            - {{ . | quote }}
+            {{- if $b.invite }}
+            - --invite
+            {{- end }}
+            {{- end }}
+            - --gateway-name
+            - {{ $b.gatewayName | quote }}
+          env:
+            - name: DATABASE_URL
+              valueFrom: { secretKeyRef: { name: {{ .Values.secrets.controlPlane }}, key: DATABASE_URL } }
+            - name: STRATUM_ENCRYPTION_KEY
+              valueFrom: { secretKeyRef: { name: {{ .Values.secrets.controlPlane }}, key: STRATUM_ENCRYPTION_KEY } }
+            - name: STRATUM_GATEWAY_INSTANCE_ID
+              valueFrom: { secretKeyRef: { name: {{ .Values.secrets.gateway }}, key: STRATUM_INSTANCE_ID } }
+            - name: STRATUM_GATEWAY_SYNC_TOKEN
+              valueFrom: { secretKeyRef: { name: {{ .Values.secrets.gateway }}, key: STRATUM_SYNC_TOKEN } }
+            {{- with include "stratum.consoleUrl" . }}
+            # The invitation's link.
+            - { name: STRATUM_CONSOLE_URL, value: {{ . | quote }} }
+            {{- end }}
+          resources: {{- toYaml $b.resources | nindent 12 }}
+          securityContext: {{- include "stratum.containerSecurity" . | nindent 12 }}
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - { name: tmp, emptyDir: {} }
+{{- end }}

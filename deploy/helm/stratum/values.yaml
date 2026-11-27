@@ -1,0 +1,298 @@
+# Stratum in one release. Start from a profile, not from this file:
+#
+#   values-demo.yaml     everything once, a demo organization and a mock LLM;
+#                        fixed public secrets. DEMO ONLY.
+#   values-nonprod.yaml  tests, policy validation, training: one replica each
+#                        (two gateways), its own secrets, a daily backup.
+#   values-prod.yaml     production: replicas in every zone, your database
+#                        and secrets, NetworkPolicies.
+#
+#   helm install stratum oci://ghcr.io/getstratum/charts/stratum -n stratum \
+#     -f values-nonprod.yaml --set global.domain=stratum.example.com
+#
+# The release is named "stratum" in every profile: the gateways find the
+# console at http://stratum-control-plane, and the chart refuses another
+# name while they do. One release per namespace.
+
+global:
+  # Where people and applications reach it: consola.<domain> (the console)
+  # and gateway.<domain> (the gateways' API), unless hosts says otherwise.
+  domain: ""
+  # https, unless expose.tls is off (a demo on a network you trust).
+  scheme: https
+  hosts: {}
+  #  console: stratum.example.com
+  #  gateway: api.stratum.example.com
+  # OpenShift (or any platform that assigns each namespace's user and
+  # group): no pod asks for a fixed user, group or fsGroup, and expose.type
+  # should be route. The bundled PostgreSQL does not run there: cnpg (from
+  # OperatorHub) or external.
+  openshift: false
+
+# ── Secrets ─────────────────────────────────────────────────────────────────
+#   existing  you create them (kubectl, your secret manager, externalSecrets
+#             below); the chart only reads them. Production.
+#   generate  the chart creates each one the first time, with random values,
+#             and keeps it as it is on every upgrade and after an uninstall
+#             (helm.sh/resource-policy: keep): the encryption key must
+#             outlive the release. Copy them somewhere safe.
+#   demo      fixed values, written in this chart and public. DEMO ONLY.
+# Names, and what each holds:
+#   controlPlane  DATABASE_URL, STRATUM_ENCRYPTION_KEY
+#   gateway       STRATUM_INSTANCE_ID, STRATUM_SYNC_TOKEN, STRATUM_SNAPSHOT_KEY
+#                 (and STRATUM_VALKEY_PASSWORD with Valkey)
+#   postgresql    username, password (kubernetes.io/basic-auth)
+#   valkey        default (the password of Valkey's default user)
+secrets:
+  mode: existing
+  controlPlane: stratum-control-plane
+  gateway: stratum-gateway
+  postgresql: stratum-postgresql
+  valkey: stratum-valkey
+
+# ── First run ───────────────────────────────────────────────────────────────
+# A Job, after every install and upgrade, that prepares an empty console
+# and changes nothing on the next runs (stratum-admin bootstrap): the
+# organization, its first Owner while it has none (a password in the
+# Job's log, shown once; with invite, a link by email or in the log), and
+# this release's gateway registered with the instance id and sync token of
+# secrets.gateway. Without it: create the Owner with stratum-admin
+# create-owner and register the gateway in the console (Gateways), then
+# put what it gives in secrets.gateway.
+bootstrap:
+  enabled: false
+  orgName: ""
+  ownerEmail: ""
+  invite: false
+  gatewayName: kubernetes
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { memory: 256Mi }
+
+# ── Gateway (chart stratum-gateway) ─────────────────────────────────────────
+# Every value of that chart works here, under "gateway".
+gateway:
+  existingSecret: stratum-gateway
+  controlPlane:
+    # Release "stratum", inside the cluster: plain http (the NetworkPolicies
+    # let only this release's pods reach the console). With the control
+    # plane elsewhere (control-plane.enabled: false), its https address.
+    url: http://stratum-control-plane
+    allowHTTP: true
+
+# ── Console (chart stratum-control-plane) ──────────────────────────────────
+# Every value of that chart works here, under "control-plane". Its public
+# address comes from global (consola.<domain>) unless console.publicUrl.
+control-plane:
+  enabled: true
+  existingSecret: stratum-control-plane
+
+# ── PostgreSQL ──────────────────────────────────────────────────────────────
+#   external  yours: a managed service (RDS, Cloud SQL, Azure Database) or
+#             your own cluster. With secrets.mode existing, DATABASE_URL in
+#             secrets.controlPlane says where; with generate, external below.
+#   cnpg      a CloudNativePG cluster from its project's chart (cnpg below):
+#             replicas, failover, backups to object storage. Needs the
+#             CloudNativePG operator.
+#   bundled   one instance with a volume: demos and tests. No replica, no
+#             failover; backup (below) dumps it once a day.
+postgresql:
+  mode: external
+  # The databases this installation uses; the first is the console's.
+  # Stratum Enterprise adds the portal's.
+  databases: [stratum]
+  # Where an external database is, for secrets.mode generate (the chart
+  # writes DATABASE_URL from it and the generated password; the user
+  # "stratum" and its databases must exist).
+  external:
+    host: ""
+    port: 5432
+    sslmode: require
+  bundled:
+    image: postgres:16-alpine@sha256:f2f98726820d0342055351c6e9d36e705f5bfffb3dd53ff556325114b08afb6d
+    storage:
+      size: 20Gi
+      storageClassName: ""
+    resources:
+      requests: { cpu: 250m, memory: 512Mi }
+      limits: { memory: 1Gi }
+
+# CloudNativePG's "cluster" chart (https://github.com/cloudnative-pg/charts),
+# for postgresql.mode cnpg (set enabled: true too). Every value of that
+# chart works here. Production needs its backups: backups.enabled with an
+# object store (s3, azure or google), see its README.
+cnpg:
+  enabled: false
+  cluster:
+    instances: 3
+    storage:
+      size: 20Gi
+    affinity:
+      topologyKey: topology.kubernetes.io/zone
+    initdb:
+      database: stratum
+      owner: stratum
+      secret:
+        name: stratum-postgresql
+    enableSuperuserAccess: false
+    # The consoles' pools (and, with Stratum Enterprise, the portal's and
+    # the app's) with room for a rollout.
+    postgresql:
+      parameters:
+        max_connections: "200"
+    resources:
+      requests: { cpu: 500m, memory: 1Gi }
+      limits: { memory: 1Gi }
+  backups:
+    enabled: false
+
+# ── Backup ──────────────────────────────────────────────────────────────────
+# A pg_dump of every database in postgresql.databases, each day, kept
+# keepDays days on a volume of its own. For the bundled PostgreSQL (and a
+# small external one) in non-production; production keeps its database's
+# own backups (CloudNativePG to object storage, or the managed service's).
+# Restore: pg_restore -d <database> <file>, from a pod that mounts it.
+backup:
+  enabled: false
+  schedule: "17 3 * * *"
+  keepDays: 7
+  storage:
+    size: 10Gi
+    storageClassName: ""
+  resources:
+    requests: { cpu: 100m, memory: 128Mi }
+    limits: { memory: 512Mi }
+
+# ── Valkey ──────────────────────────────────────────────────────────────────
+# Valkey's own chart (https://valkey.io/valkey-helm/): the gateways' shared
+# quotas and snapshot copy. Every value of that chart works here. Its
+# password: secrets.valkey (key default). Then:
+#   gateway.quota.valkey.url: redis://stratum-valkey:6379/0
+# A managed Valkey or Redis instead (ElastiCache, Memorystore, Azure Cache):
+# leave this off and point gateway.quota.valkey.url at it.
+valkey:
+  enabled: false
+  auth:
+    enabled: true
+    usersExistingSecret: stratum-valkey
+    aclUsers:
+      default:
+        permissions: "~* &* +@all"
+  valkeyConfig: |
+    appendonly yes
+  dataStorage:
+    enabled: true
+    requestedSize: 2Gi
+  deploymentStrategy: Recreate
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: 100m, memory: 256Mi }
+
+# ── The way in ──────────────────────────────────────────────────────────────
+#   none        port-forward, or your own Ingress/Route/LoadBalancer
+#   ingress     an Ingress per host (className: your controller's)
+#   route       OpenShift Routes (edge TLS by default)
+#   gatewayApi  HTTPRoutes attached to a Gateway you have (parentRefs)
+# The console's host carries the gateways' sync and the applications'
+# sign-in too; the gateway's host, the API (/v1, /mcp).
+expose:
+  type: none
+  className: ""
+  # On every Ingress/Route/HTTPRoute, and per host (console, gateway; the
+  # Enterprise chart adds portal, enterprise, operator), e.g. a health
+  # check path for a cloud load balancer.
+  annotations: {}
+  hostAnnotations: {}
+  tls:
+    enabled: true
+    # Ingress: the Secret with the certificate (one for every host, or one
+    # per host in secretNames); with cert-manager, its issuer makes it.
+    secretName: ""
+    secretNames: {}
+    clusterIssuer: ""
+  # route: edge (TLS at the router), or reencrypt/passthrough if you
+  # bring your own.
+  routeTermination: edge
+  # gatewayApi: the Gateway these HTTPRoutes attach to.
+  parentRefs: []
+  #  - name: shared-gateway
+  #    namespace: gateway-system
+  console: true
+  gateway: true
+
+# ── Demo ────────────────────────────────────────────────────────────────────
+# A mock LLM in place of real providers (OpenAI and Mistral point at it),
+# and a Job that loads the demo organization (Acme: people, teams,
+# policies, agents, four weeks of usage) and sends today's traffic through
+# the gateway. With secrets.mode demo. DEMO ONLY: never alongside real data.
+demo:
+  enabled: false
+  mockLlm:
+    image: ghcr.io/getstratum/stratum-mock-llm
+    # Defaults to the chart's appVersion.
+    tag: ""
+    resources:
+      requests: { cpu: 50m, memory: 32Mi }
+      limits: { memory: 64Mi }
+  traffic: true
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { memory: 512Mi }
+
+# ── NetworkPolicies ─────────────────────────────────────────────────────────
+# Every pod of this release starts with no traffic in or out; these open
+# only what Stratum needs. They need a network plugin that enforces them
+# (Calico, Cilium, OVN-Kubernetes, GKE Dataplane V2, Azure NPM...).
+networkPolicy:
+  enabled: false
+  # Your ingress controller's pods (or router's, on OpenShift), who reach
+  # the console and, when they call through it, the gateways.
+  ingressFrom:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: ingress-nginx
+  # Who may call the gateways (port 20128): any pod, by default.
+  gatewayClients:
+    - namespaceSelector: {}
+  # Who may scrape the gateways' metrics (port 9090): nobody until set.
+  metricsFrom: []
+  # Where PostgreSQL is in mode external: empty = any address.
+  databaseTo: []
+  # Ports the console reaches on any address: webhooks and the model
+  # catalog (443), email (465, 587).
+  consoleEgressPorts: [443, 465, 587]
+  consoleExtraEgress: []
+  # More pods that reach the console (port 3000) and PostgreSQL (5432):
+  # Stratum Enterprise's portal and app add theirs.
+  consoleClients: []
+  databaseClients: []
+
+# ── External Secrets Operator ───────────────────────────────────────────────
+# With secrets.mode existing: an ExternalSecret for each Secret, from your
+# secret manager through a SecretStore or ClusterSecretStore you have
+# (external-secrets.io/v1). Each value: the secret's name there, or
+# "name#property" for one property of a JSON secret.
+externalSecrets:
+  enabled: false
+  secretStoreRef:
+    kind: ClusterSecretStore
+    name: ""
+  refreshInterval: 1h
+  secrets:
+    stratum-control-plane:
+      DATABASE_URL: stratum-console-database-url
+      STRATUM_ENCRYPTION_KEY: stratum-console-encryption-key
+    stratum-gateway:
+      STRATUM_INSTANCE_ID: stratum-gateway-instance-id
+      STRATUM_SYNC_TOKEN: stratum-gateway-sync-token
+      STRATUM_SNAPSHOT_KEY: stratum-gateway-snapshot-key
+    stratum-postgresql:
+      username: stratum-postgresql-username
+      password: stratum-postgresql-password
+    stratum-valkey:
+      default: stratum-valkey-password
+
+# Optional ResourceQuota for the namespace.
+resourceQuota:
+  enabled: false
+  hard: {}
