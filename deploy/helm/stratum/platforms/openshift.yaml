@@ -26,6 +26,10 @@ cnpg:
 # on. Until then each gateway counts quotas on its own.
 valkey:
   enabled: false
+gateway:
+  quota:
+    valkey:
+      url: ""   # rediss://<your Redis>:6379/0
 
 networkPolicy:
   # The router's pods.

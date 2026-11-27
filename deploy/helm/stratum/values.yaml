@@ -135,6 +135,11 @@ cnpg:
       secret:
         name: stratum-postgresql
     enableSuperuserAccess: false
+    # The consoles' pools (and, with Stratum Enterprise, the portal's and
+    # the app's) with room for a rollout.
+    postgresql:
+      parameters:
+        max_connections: "200"
     resources:
       requests: { cpu: 500m, memory: 1Gi }
       limits: { memory: 1Gi }

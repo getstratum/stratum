@@ -316,12 +316,19 @@ jobs:
       # The umbrella chart, with each profile, alone and on each platform.
       - name: umbrella chart, every profile
         run: |
+          # pipefail: a chart that refuses to render must fail the step, not
+          # hand kubeconform nothing to check.
+          set -o pipefail
           helm dependency update deploy/helm/stratum
           cd deploy/helm/stratum
           sets=(--set global.domain=stratum.example.com --set bootstrap.orgName=Acme --set bootstrap.ownerEmail=ana@acme.com)
-          for profile in values-demo.yaml values-nonprod.yaml values-prod.yaml; do
-            for platform in "" platforms/*.yaml; do
-              [ "$profile" = values-demo.yaml ] && [ -n "$platform" ] && continue
+          # The cloud platforms' files are production's (a managed database,
+          # a secret manager); on-premise and OpenShift serve non-production too.
+          combos=("values-demo.yaml" "values-nonprod.yaml" "values-nonprod.yaml platforms/onprem.yaml"
+                  "values-nonprod.yaml platforms/openshift.yaml" "values-prod.yaml")
+          for platform in platforms/*.yaml; do combos+=("values-prod.yaml $platform"); done
+          for combo in "${combos[@]}"; do
+              read -r profile platform <<<"$combo"
               args=(-f "$profile" ${platform:+-f "$platform"})
               [ "$profile" = values-nonprod.yaml ] && args+=("${sets[@]}")
               [ "$profile" = values-prod.yaml ] && args+=(--set global.domain=stratum.example.com)
@@ -332,7 +339,6 @@ jobs:
                     -kubernetes-version 1.29.0 -skip ServiceMonitor,PrometheusRule \
                     -schema-location default \
                     -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'
-            done
           done
       - name: umbrella chart refuses what cannot work
         run: |
