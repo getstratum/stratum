@@ -23,6 +23,9 @@ Back up the database before you upgrade.
   prepares an empty installation and can run again with nothing changing.
   The demo's files moved to `deploy/helm/stratum/files/demo` (the seed was
   `control-plane/seed/demo.sql`).
+  `stratum-admin bootstrap --spec` also declares what applications next to
+  the console need: teams, agents, applications that sign people in and
+  service tokens (the chart's `bootstrap.spec`).
 
 - **Suspending an organization stops its gateways too**
   ([ADR-0020](adr/0020-organizations-and-the-operator.md)). The sync now

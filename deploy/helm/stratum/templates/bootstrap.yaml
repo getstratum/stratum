@@ -48,6 +48,12 @@ spec:
             - --gateway-name
             - {{ $b.gatewayName | quote }}
           env:
+            {{- if $b.spec }}
+            - { name: STRATUM_BOOTSTRAP_SPEC, value: {{ toJson $b.spec | quote }} }
+            {{- end }}
+            {{- with $b.env }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
             - name: DATABASE_URL
               valueFrom: { secretKeyRef: { name: {{ .Values.secrets.controlPlane }}, key: DATABASE_URL } }
             - name: STRATUM_ENCRYPTION_KEY

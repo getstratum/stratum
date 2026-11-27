@@ -55,3 +55,43 @@ test('bootstrap: refuses another organization\'s gateway and malformed credentia
   await assert.rejects(admin(['--org-name', `${NAME} x`], { ...gw, STRATUM_GATEWAY_SYNC_TOKEN: 'short' }), /dp_sync_ and 64 hex/)
   await assert.rejects(admin(['--org-name', `${NAME} x`], { STRATUM_GATEWAY_INSTANCE_ID: gw.STRATUM_GATEWAY_INSTANCE_ID }), /go together/)
 })
+
+test('bootstrap --spec: a team with no models, an agent that acts for people, an application and a service token, kept as said', { skip }, async () => {
+  const name = `${NAME} spec`
+  const id = (await import('node:crypto')).randomUUID()
+  const app = `app_${randomBytes(12).toString('hex')}`
+  const env = {
+    PORTAL_KEY: `aig_agt_${randomBytes(24).toString('hex')}`,
+    PORTAL_SECRET: `stsec_${randomBytes(32).toString('hex')}`,
+    CONSOLE_TOKEN: `stsvc_${randomBytes(24).toString('hex')}`,
+  }
+  const spec = (uris) => JSON.stringify({
+    teams: [{ name: 'Aplicaciones' }],
+    agents: [{ id, name: 'portal', team: 'Aplicaciones', keyEnv: 'PORTAL_KEY', delegates: true }],
+    apps: [{ id: app, name: 'Portal', secretEnv: 'PORTAL_SECRET', redirectUris: uris, usageReports: true }],
+    serviceTokens: [{ name: 'Stratum Enterprise', tokenEnv: 'CONSOLE_TOKEN', scopes: ['users.read', 'providers.read'] }],
+  })
+  const first = await admin(['--org-name', name], { ...env, STRATUM_BOOTSTRAP_SPEC: spec(['https://portal.example.com/api/auth/callback']) })
+  for (const want of [/Team Aplicaciones: made/, /Agent portal: made/, /Application Portal: registered/, /Service token Stratum Enterprise: made/]) {
+    assert.match(first, want)
+  }
+  const { rows: [o] } = await pool.query('SELECT id FROM organizations WHERE name = $1', [name])
+  const { rows: [pol] } = await pool.query(
+    `SELECT p.allowed_models, p.allow_all_models FROM teams t JOIN policies p ON p.id = t.policy_id WHERE t.org_id = $1 AND t.name = 'Aplicaciones'`, [o.id])
+  assert.deepEqual([pol.allowed_models, pol.allow_all_models], [[], false])
+  const { rows: [ag] } = await pool.query('SELECT delegates, team_id IS NOT NULL AS has_team FROM agents WHERE id = $1', [id])
+  assert.deepEqual([ag.delegates, ag.has_team], [true, true])
+
+  // Again, the same: nothing. Another redirect URI: only that.
+  const again = await admin(['--org-name', name], { ...env, STRATUM_BOOTSTRAP_SPEC: spec(['https://portal.example.com/api/auth/callback']) })
+  assert.doesNotMatch(again, /Team|Agent|Application|Service token/)
+  const moved = await admin(['--org-name', name], { ...env, STRATUM_BOOTSTRAP_SPEC: spec(['https://chat.example.com/api/auth/callback']) })
+  assert.match(moved, /Application Portal: changed/)
+  assert.doesNotMatch(moved, /Agent|Service token/)
+  const { rows: [c] } = await pool.query('SELECT redirect_uris, usage_reports FROM oidc_clients WHERE id = $1', [app])
+  assert.deepEqual([c.redirect_uris, c.usage_reports], [['https://chat.example.com/api/auth/callback'], true])
+
+  // Refused before anything is written: a secret missing, an http address.
+  await assert.rejects(admin(['--org-name', name], { STRATUM_BOOTSTRAP_SPEC: spec(['https://x.example.com/cb']) }), /needs PORTAL_KEY/)
+  await assert.rejects(admin(['--org-name', name], { ...env, STRATUM_BOOTSTRAP_SPEC: spec(['http://x.example.com/cb']) }), /must be https/)
+})
